@@ -83,24 +83,25 @@ const TimeRecordsTable: React.FC<TimeRecordsTableProps> = ({
       // For normal records, handle date grouping
       // For evening shifts with early morning checkout, group with the check-in date
       let date = format(new Date(record.timestamp), 'yyyy-MM-dd');
-      if (record.status === 'check_out' && 
-          record.shift_type === 'evening' && 
-          new Date(record.timestamp).getHours() < 12) {
-        // This is likely an evening shift checkout on the next day
-        // Calculate the previous day to group it correctly
-        const prevDate = new Date(record.timestamp);
-        prevDate.setDate(prevDate.getDate() - 1);
-        date = format(prevDate, 'yyyy-MM-dd');
-      }
       
-      // For night shift check-outs early in the morning, associate with previous day's check-in
-      if (record.status === 'check_out' && 
-          record.shift_type === 'night' && 
-          new Date(record.timestamp).getHours() < 12) {
-        // Calculate the previous day to group it correctly
-        const prevDate = new Date(record.timestamp);
-        prevDate.setDate(prevDate.getDate() - 1);
-        date = format(prevDate, 'yyyy-MM-dd');
+      // Handle night shift and evening shift checkouts in early morning hours
+      if (record.status === 'check_out') {
+        const recordHour = new Date(record.timestamp).getHours();
+        
+        // For night shifts with early morning checkout, associate with previous day
+        if (record.shift_type === 'night' && recordHour < 12) {
+          // This is a night shift checkout on the next day
+          const prevDate = new Date(record.timestamp);
+          prevDate.setDate(prevDate.getDate() - 1);
+          date = format(prevDate, 'yyyy-MM-dd');
+        }
+        // For evening shifts with early morning checkout, associate with previous day
+        else if (record.shift_type === 'evening' && recordHour < 12) {
+          // This is likely an evening shift checkout on the next day
+          const prevDate = new Date(record.timestamp);
+          prevDate.setDate(prevDate.getDate() - 1);
+          date = format(prevDate, 'yyyy-MM-dd');
+        }
       }
 
       if (!groups[date]) {
@@ -423,19 +424,23 @@ const TimeRecordsTable: React.FC<TimeRecordsTableProps> = ({
                   </div>
 
                   <div className="flex flex-wrap gap-2">
-                    <span className={`px-2 py-1 text-xs font-medium rounded-full ${
-                      record.shiftType === 'morning' ? 'bg-blue-100 text-blue-800' : 
-                      record.shiftType === 'evening' ? 'bg-orange-100 text-orange-800' : 
-                      record.shiftType === 'night' ? 'bg-purple-100 text-purple-800' : 
-                      record.shiftType === 'canteen' ? 'bg-yellow-100 text-yellow-800' :
-                      'bg-gray-100 text-gray-800'
-                    }`}>
-                      {record.shiftType === 'canteen' 
-                        ? (record.checkIn && new Date(record.checkIn.timestamp).getHours() === 7)
-                          ? 'Canteen (07:00-16:00)'
-                          : 'Canteen (08:00-17:00)'
-                        : record.shiftType.charAt(0).toUpperCase() + record.shiftType.slice(1)}
-                    </span>
+                    {record.shiftType && (
+                      <span className={`px-2 py-1 text-xs font-medium rounded-full ${
+                        record.shiftType === 'morning' ? 'bg-blue-100 text-blue-800' : 
+                        record.shiftType === 'evening' ? 'bg-orange-100 text-orange-800' : 
+                        record.shiftType === 'night' ? 'bg-purple-100 text-purple-800' : 
+                        record.shiftType === 'canteen' ? 'bg-yellow-100 text-yellow-800' :
+                        'bg-gray-100 text-gray-800'
+                      }`}>
+                        {record.shiftType === 'canteen' 
+                          ? (record.checkIn && new Date(record.checkIn.timestamp).getHours() === 7)
+                            ? 'Canteen (07:00-16:00)'
+                            : 'Canteen (08:00-17:00)'
+                          : record.shiftType && typeof record.shiftType === 'string'
+                            ? record.shiftType.charAt(0).toUpperCase() + record.shiftType.slice(1)
+                            : 'Unknown'}
+                      </span>
+                    )}
                   </div>
                   
                   {(record.checkIn?.notes || record.checkOut?.notes) && (
@@ -544,7 +549,9 @@ const TimeRecordsTable: React.FC<TimeRecordsTableProps> = ({
                         ? (record.checkIn && new Date(record.checkIn.timestamp).getHours() === 7)
                           ? 'Canteen (07:00-16:00)'
                           : 'Canteen (08:00-17:00)'
-                        : record.shiftType.charAt(0).toUpperCase() + record.shiftType.slice(1)}
+                        : record.shiftType && typeof record.shiftType === 'string'
+                          ? record.shiftType.charAt(0).toUpperCase() + record.shiftType.slice(1)
+                          : 'Unknown'}
                     </span>
                   )}
                 </td>
