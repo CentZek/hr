@@ -9,18 +9,21 @@ export const fetchApprovedHours = async (monthFilter: string = ''): Promise<{
   totalHoursSum: number;
 }> => {
   try {
+    // First, select only check-in records (to avoid double-counting hours)
     let query = supabase
       .from('time_records')
       .select(`
         employee_id,
+        timestamp,
+        status,
+        exact_hours,
         employees (
           id,
           name,
           employee_number
-        ),
-        exact_hours,
-        timestamp
+        )
       `)
+      .eq('status', 'check_in')  // Only count check-in records
       .not('exact_hours', 'is', null);
     
     // Apply month filter if provided
@@ -72,10 +75,53 @@ export const fetchApprovedHours = async (monthFilter: string = ''): Promise<{
       }
     });
     
+    // Handle OFF-DAY records separately (they don't have check-in status)
+    const { data: offDayData, error: offDayError } = await supabase
+      .from('time_records')
+      .select(`
+        employee_id,
+        timestamp,
+        status,
+        employees (
+          id,
+          name,
+          employee_number
+        )
+      `)
+      .eq('status', 'off_day');
+    
+    if (offDayError) throw offDayError;
+    
+    // Add OFF-DAY records to the employee totals
+    offDayData?.forEach(record => {
+      if (!record.employees) return;
+      
+      const employeeId = record.employee_id;
+      
+      if (!employeeSummary.has(employeeId)) {
+        employeeSummary.set(employeeId, {
+          id: employeeId,
+          name: record.employees.name,
+          employee_number: record.employees.employee_number,
+          total_days: new Set(),
+          total_hours: 0
+        });
+      }
+      
+      const employee = employeeSummary.get(employeeId);
+      
+      // Add date to set of days for OFF-DAY
+      if (record.timestamp && isValid(new Date(record.timestamp))) {
+        const date = format(new Date(record.timestamp), 'yyyy-MM-dd');
+        employee.total_days.add(date);
+      }
+    });
+    
     // Convert to array and calculate days
     const result = Array.from(employeeSummary.values()).map(emp => ({
       ...emp,
-      total_days: emp.total_days.size
+      total_days: emp.total_days.size,
+      total_hours: parseFloat(emp.total_hours.toFixed(2))
     }));
     
     // Sort by name
