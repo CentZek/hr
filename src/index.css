@@ -1,0 +1,59 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom responsive utility classes */
+@layer utilities {
+  .text-wrap-balance {
+    text-wrap: balance;
+  }
+  
+  .text-break-word {
+    word-break: break-word;
+  }
+  
+  .max-h-90vh {
+    max-height: 90vh;
+  }
+  
+  .max-h-70vh {
+    max-height: 70vh;
+  }
+}
+
+/* Mobile-friendly scrollable areas */
+.scroll-container {
+  @apply overflow-auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Mobile-friendly tables */
+.mobile-table {
+  @apply block w-full overflow-x-auto whitespace-normal;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Prevent text overflow in small screens */
+@media (max-width: 640px) {
+  .mobile-wrap {
+    white-space: normal;
+    word-break: break-word;
+    overflow-wrap: break-word;
+  }
+  
+  .mobile-card {
+    @apply flex flex-col p-3 bg-white border border-gray-200 rounded-md mb-3;
+  }
+  
+  .mobile-card-row {
+    @apply flex justify-between items-start py-1 border-b border-gray-100 last:border-0;
+  }
+  
+  .mobile-card-label {
+    @apply text-xs text-gray-500 w-1/3;
+  }
+  
+  .mobile-card-value {
+    @apply text-sm font-medium text-gray-800 w-2/3 text-right break-words;
+  }
+}
