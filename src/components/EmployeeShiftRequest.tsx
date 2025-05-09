@@ -98,7 +98,7 @@ const EmployeeShiftRequest: React.FC<EmployeeShiftRequestProps> = ({ onShiftAppr
       const records = [
         {
           employee_id: shift.employee_id,
-          timestamp: `${shift.date}T${startTime}:00`, // Don't append :00.000Z to avoid timezone shifts
+          timestamp: `${shift.date}T${startTime}`, // Fixed: removed the extra :00
           status: 'check_in',
           shift_type: shift.shift_type,
           notes: `Employee submitted shift - HR approved; ${hoursNote}`,
@@ -112,7 +112,7 @@ const EmployeeShiftRequest: React.FC<EmployeeShiftRequestProps> = ({ onShiftAppr
         },
         {
           employee_id: shift.employee_id,
-          timestamp: `${checkOutDate}T${endTime}:00`, // Don't append :00.000Z to avoid timezone shifts
+          timestamp: `${checkOutDate}T${endTime}`, // Fixed: removed the extra :00
           status: 'check_out',
           shift_type: shift.shift_type,
           notes: `Employee submitted shift - HR approved; ${hoursNote}`,
