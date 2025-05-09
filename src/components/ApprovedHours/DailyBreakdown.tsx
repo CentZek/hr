@@ -13,16 +13,13 @@ interface DailyBreakdownProps {
 const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records }) => {
   // Group records by date for better display
   const recordsByDate = records.reduce((acc: any, record: any) => {
-    // Use display_date if available, otherwise use timestamp date
-    let date = record.display_date || format(new Date(record.timestamp), 'yyyy-MM-dd');
-    
-    // For night shift check-outs early in the morning, we need to group with previous day 
-    // This is handled by the server, but we'll add a check here for safety
-    if (!record.display_date && record.status === 'check_out' && 
-        record.shift_type === 'night' && 
+    // For evening shifts with early morning checkout, associate with previous day
+    let date = format(new Date(record.timestamp), 'yyyy-MM-dd');
+    if (record.status === 'check_out' && 
+        record.shift_type === 'evening' && 
         new Date(record.timestamp).getHours() < 12) {
-      // This is likely an night shift checkout on the next day
-      // It should already be handled, but let's double check
+      // This is likely an evening shift checkout on the next day
+      // Calculate the previous day to group it correctly
       const prevDate = new Date(record.timestamp);
       prevDate.setDate(prevDate.getDate() - 1);
       date = format(prevDate, 'yyyy-MM-dd');
@@ -236,7 +233,7 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records }) =
                       {checkIn ? (
                         <>
                           {checkIn.is_late && <AlertTriangle className="inline w-3 h-3 mr-1 text-amber-500" />}
-                          {checkIn.display_check_in || formatTimeDisplay(checkIn.timestamp)}
+                          {formatTimeDisplay(checkIn.timestamp)}
                         </>
                       ) : (
                         <span className="text-gray-400">Missing</span>
@@ -250,7 +247,7 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records }) =
                       {checkOut ? (
                         <>
                           {checkOut.early_leave && <AlertTriangle className="inline w-3 h-3 mr-1 text-amber-500" />}
-                          {checkOut.display_check_out || formatTimeDisplay(checkOut.timestamp)}
+                          {formatTimeDisplay(checkOut.timestamp)}
                         </>
                       ) : (
                         <span className="text-gray-400">Missing</span>
@@ -309,7 +306,7 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records }) =
                 {checkIn ? (
                   <div className={`flex items-center ${checkIn.is_late ? 'text-amber-600' : 'text-gray-700'}`}>
                     {checkIn.is_late && <AlertTriangle className="w-3 h-3 mr-1 text-amber-500" />}
-                    {checkIn.display_check_in || formatTimeDisplay(checkIn.timestamp)}
+                    {formatTimeDisplay(checkIn.timestamp)}
                   </div>
                 ) : (
                   <span className="text-gray-400">Missing</span>
@@ -319,7 +316,7 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records }) =
                 {checkOut ? (
                   <div className={`flex items-center ${checkOut.early_leave ? 'text-amber-600' : 'text-gray-700'}`}>
                     {checkOut.early_leave && <AlertTriangle className="w-3 h-3 mr-1 text-amber-500" />}
-                    {checkOut.display_check_out || formatTimeDisplay(checkOut.timestamp)}
+                    {formatTimeDisplay(checkOut.timestamp)}
                   </div>
                 ) : (
                   <span className="text-gray-400">Missing</span>
