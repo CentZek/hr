@@ -24,6 +24,15 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records }) =
       prevDate.setDate(prevDate.getDate() - 1);
       date = format(prevDate, 'yyyy-MM-dd');
     }
+    
+    // For night shifts with early morning checkout, also associate with previous day
+    if (record.status === 'check_out' &&
+        record.shift_type === 'night' &&
+        new Date(record.timestamp).getHours() < 12) {
+      const prevDate = new Date(record.timestamp);
+      prevDate.setDate(prevDate.getDate() - 1);
+      date = format(prevDate, 'yyyy-MM-dd');
+    }
 
     if (!acc[date]) {
       acc[date] = [];
