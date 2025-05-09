@@ -358,6 +358,7 @@ export const fetchManualTimeRecords = async (limit: number = 50): Promise<any[]>
         )
       `)
       .eq('is_manual_entry', true)
+      .not('status', 'eq', 'off_day')  // Exclude off-day records
       .order('timestamp', { ascending: false })
       .limit(limit);
     
