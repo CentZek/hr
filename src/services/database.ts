@@ -44,19 +44,7 @@ export const saveRecordsToDatabase = async (employeeRecords: EmployeeRecord[]) =
           throw createError;
         }
         
-        if (!newEmployee || newEmployee.length === 0) {
-          const errMsg = `Failed to create employee: No ID returned for ${employeeRecord.name}`;
-          console.error(errMsg);
-          throw new Error(errMsg);
-        }
-        
-        employeeId = newEmployee[0]?.id;
-        
-        if (!employeeId) {
-          const errMsg = `Could not get employee ID for newly created employee ${employeeRecord.name}`;
-          console.error(errMsg);
-          throw new Error(errMsg);
-        }
+        employeeId = newEmployee?.[0]?.id;
       } else {
         employeeId = data.id;
       }
@@ -102,7 +90,7 @@ export const saveRecordsToDatabase = async (employeeRecords: EmployeeRecord[]) =
             const { error: offDayError } = await supabase
               .from('time_records')
               .insert({
-                employee_id: employeeId,
+                employee_id: employeeRecord.id,
                 timestamp: `${day.date}T12:00:00.000Z`,
                 status: 'off_day',
                 shift_type: 'off_day',
@@ -220,7 +208,7 @@ export const saveRecordsToDatabase = async (employeeRecords: EmployeeRecord[]) =
             const { error: checkInError } = await supabase
               .from('time_records')
               .insert({
-                employee_id: employeeId, // Use employeeId instead of employeeRecord.id
+                employee_id: employeeRecord.id,
                 timestamp: day.firstCheckIn.toISOString(),
                 status: 'check_in',
                 shift_type: preservedShiftType,
@@ -259,7 +247,7 @@ export const saveRecordsToDatabase = async (employeeRecords: EmployeeRecord[]) =
             const { error: checkOutError } = await supabase
               .from('time_records')
               .insert({
-                employee_id: employeeId, // Use employeeId instead of employeeRecord.id
+                employee_id: employeeRecord.id,
                 timestamp: day.lastCheckOut.toISOString(),
                 status: 'check_out',
                 shift_type: preservedShiftType,
