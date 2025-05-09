@@ -1,5 +1,5 @@
 import { supabase } from '../lib/supabase';
-import { format, parseISO, startOfMonth, endOfMonth, addDays } from 'date-fns';
+import { format, parseISO, startOfMonth, endOfMonth, addDays, isValid } from 'date-fns';
 import { EmployeeRecord, DailyRecord } from '../types';
 import toast from 'react-hot-toast';
 
@@ -18,7 +18,8 @@ export const fetchApprovedHours = async (monthFilter: string = ''): Promise<{
           name,
           employee_number
         ),
-        exact_hours
+        exact_hours,
+        timestamp
       `)
       .not('exact_hours', 'is', null);
     
@@ -64,9 +65,11 @@ export const fetchApprovedHours = async (monthFilter: string = ''): Promise<{
       const employee = employeeSummary.get(employeeId);
       employee.total_hours += hours;
       
-      // Add date to set of days
-      const date = format(new Date(record.timestamp), 'yyyy-MM-dd');
-      employee.total_days.add(date);
+      // Add date to set of days - Only if timestamp is valid
+      if (record.timestamp && isValid(new Date(record.timestamp))) {
+        const date = format(new Date(record.timestamp), 'yyyy-MM-dd');
+        employee.total_days.add(date);
+      }
     });
     
     // Convert to array and calculate days
