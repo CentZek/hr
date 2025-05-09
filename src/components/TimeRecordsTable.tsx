@@ -329,12 +329,12 @@ const TimeRecordsTable: React.FC<TimeRecordsTableProps> = ({
     return result;
   }, [groupedRecords]);
 
-  // Get time in 24-hour format with standard shift times
+  // Get time in 24-hour format
   const getActualTime = (record: any) => {
     if (!record) return '—';
     
     // First check if this is a standard shift type with predefined display times
-    if (record.shift_type && record.is_manual_entry) {
+    if (record.shift_type) {
       const shiftType = record.shift_type;
       if (DISPLAY_SHIFT_TIMES[shiftType as keyof typeof DISPLAY_SHIFT_TIMES]) {
         const displayTimes = DISPLAY_SHIFT_TIMES[shiftType as keyof typeof DISPLAY_SHIFT_TIMES];
@@ -348,14 +348,7 @@ const TimeRecordsTable: React.FC<TimeRecordsTableProps> = ({
       }
     }
     
-    // Use record's display values if available and not "Missing"
-    if (record.status === 'check_in' && record.display_check_in && record.display_check_in !== 'Missing') {
-      return record.display_check_in;
-    } else if (record.status === 'check_out' && record.display_check_out && record.display_check_out !== 'Missing') {
-      return record.display_check_out;
-    }
-    
-    // If no predefined display time or stored display value, use the actual timestamp
+    // If no predefined display time, use the actual timestamp from the database
     const timestamp = new Date(record.timestamp);
     
     // Format with 24-hour format

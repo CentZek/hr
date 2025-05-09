@@ -125,7 +125,7 @@ const ManualEntryModal: React.FC<ManualEntryModalProps> = ({ isOpen, onClose, on
       const timeRecords = [
         {
           employee_id: shift.employee_id,
-          timestamp: `${shift.date}T${startTime}`,
+          timestamp: `${shift.date}T${startTime}`, // Fixed: removed the extra :00
           status: 'check_in',
           shift_type: shift.shift_type,
           notes: 'Employee submitted shift - HR approved; hours:9.00',
@@ -133,7 +133,7 @@ const ManualEntryModal: React.FC<ManualEntryModalProps> = ({ isOpen, onClose, on
         },
         {
           employee_id: shift.employee_id,
-          timestamp: `${checkOutDate}T${endTime}`,
+          timestamp: `${checkOutDate}T${endTime}`, // Fixed: removed the extra :00
           status: 'check_out',
           shift_type: shift.shift_type,
           notes: 'Employee submitted shift - HR approved; hours:9.00',
@@ -226,14 +226,14 @@ const ManualEntryModal: React.FC<ManualEntryModalProps> = ({ isOpen, onClose, on
         });
 
       // Prepare time records
-      const checkInTime = `${selectedDate}T${times.start}`;
+      const checkInTime = `${selectedDate}T${times.start}`; // Fixed: removed the extra :00
       
       // For night shift, checkout is next day
       let checkOutDate = shiftType === 'night' 
         ? format(new Date(new Date(selectedDate).getTime() + 86400000), 'yyyy-MM-dd')
         : selectedDate;
       
-      const checkOutTime = `${checkOutDate}T${times.end}`;
+      const checkOutTime = `${checkOutDate}T${times.end}`; // Fixed: removed the extra :00
 
       // Add records to time_records table
       await supabase
