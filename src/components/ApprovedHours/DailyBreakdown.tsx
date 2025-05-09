@@ -43,32 +43,11 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records }) =
     return acc;
   }, {});
 
-  // Get standardized time display based on shift type
-  const getStandardizedTimeDisplay = (record: any): string => {
-    if (!record || !record.timestamp) return '–';
+  // Format time in 24-hour format
+  const formatTimeDisplay = (timestamp: string | null): string => {
+    if (!timestamp) return '–';
     
-    // For manual entries, use standard shift times based on shift type
-    if (record.is_manual_entry && record.shift_type) {
-      const shiftDisplayTimes = DISPLAY_SHIFT_TIMES[record.shift_type as keyof typeof DISPLAY_SHIFT_TIMES];
-      if (shiftDisplayTimes) {
-        if (record.status === 'check_in') {
-          return shiftDisplayTimes.startTime;
-        } else if (record.status === 'check_out') {
-          return shiftDisplayTimes.endTime;
-        }
-      }
-    }
-    
-    // Use display values if available
-    if (record.status === 'check_in' && record.display_check_in && record.display_check_in !== 'Missing') {
-      return record.display_check_in;
-    } 
-    else if (record.status === 'check_out' && record.display_check_out && record.display_check_out !== 'Missing') {
-      return record.display_check_out;
-    }
-    
-    // Fall back to formatted timestamp
-    const date = new Date(record.timestamp);
+    const date = new Date(timestamp);
     return formatTime24H(date);
   };
 
@@ -177,7 +156,10 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records }) =
           
           // Get check-in and check-out records
           const checkIn = dayRecords.find(r => r.status === 'check_in');
+          
+          // Get all check-outs for this date
           const checkOuts = dayRecords.filter(r => r.status === 'check_out');
+          
           // Get the latest check-out time (most important for night shifts)
           const checkOut = checkOuts.length > 0 ? 
             checkOuts.reduce((latest, current) => {
@@ -265,7 +247,7 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records }) =
                       {checkIn ? (
                         <>
                           {checkIn.is_late && <AlertTriangle className="inline w-3 h-3 mr-1 text-amber-500" />}
-                          {getStandardizedTimeDisplay(checkIn)}
+                          {formatTimeDisplay(checkIn.timestamp)}
                         </>
                       ) : (
                         <span className="text-gray-400">Missing</span>
@@ -279,7 +261,7 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records }) =
                       {checkOut ? (
                         <>
                           {checkOut.early_leave && <AlertTriangle className="inline w-3 h-3 mr-1 text-amber-500" />}
-                          {getStandardizedTimeDisplay(checkOut)}
+                          {formatTimeDisplay(checkOut.timestamp)}
                         </>
                       ) : (
                         <span className="text-gray-400">Missing</span>
@@ -338,7 +320,7 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records }) =
                 {checkIn ? (
                   <div className={`flex items-center ${checkIn.is_late ? 'text-amber-600' : 'text-gray-700'}`}>
                     {checkIn.is_late && <AlertTriangle className="w-3 h-3 mr-1 text-amber-500" />}
-                    {getStandardizedTimeDisplay(checkIn)}
+                    {formatTimeDisplay(checkIn.timestamp)}
                   </div>
                 ) : (
                   <span className="text-gray-400">Missing</span>
@@ -348,7 +330,7 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records }) =
                 {checkOut ? (
                   <div className={`flex items-center ${checkOut.early_leave ? 'text-amber-600' : 'text-gray-700'}`}>
                     {checkOut.early_leave && <AlertTriangle className="w-3 h-3 mr-1 text-amber-500" />}
-                    {getStandardizedTimeDisplay(checkOut)}
+                    {formatTimeDisplay(checkOut.timestamp)}
                   </div>
                 ) : (
                   <span className="text-gray-400">Missing</span>
