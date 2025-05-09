@@ -364,7 +364,21 @@ export const fetchManualTimeRecords = async (limit: number = 50): Promise<any[]>
     
     if (error) throw error;
     
-    return data || [];
+    // Process evening shift display times to ensure they show correctly
+    const processedData = data?.map(record => {
+      // If this is an evening shift, ensure display times are correct
+      if (record.shift_type === 'evening') {
+        // Standard evening shift times
+        return {
+          ...record,
+          display_check_in: record.status === 'check_in' ? '13:00' : record.display_check_in,
+          display_check_out: record.status === 'check_out' ? '22:00' : record.display_check_out
+        };
+      }
+      return record;
+    }) || [];
+    
+    return processedData;
   } catch (error) {
     console.error('Error fetching manual time records:', error);
     return [];

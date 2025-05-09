@@ -81,10 +81,10 @@ const TimeRecordsTable: React.FC<TimeRecordsTableProps> = ({
       }
       
       // For normal records, handle date grouping
-      // For evening shifts with early morning checkout, group with the check-in date
+      // Handle night shift and evening shift checkouts in early morning hours
       let date = format(new Date(record.timestamp), 'yyyy-MM-dd');
       
-      // Handle night shift and evening shift checkouts in early morning hours
+      // Check for night shift or evening shift checkouts in early morning hours
       if (record.status === 'check_out') {
         const recordHour = new Date(record.timestamp).getHours();
         
@@ -333,7 +333,22 @@ const TimeRecordsTable: React.FC<TimeRecordsTableProps> = ({
   const getActualTime = (record: any) => {
     if (!record) return '—';
     
-    // Use the actual timestamp from the database
+    // First check if this is a standard shift type with predefined display times
+    if (record.shift_type) {
+      const shiftType = record.shift_type;
+      if (DISPLAY_SHIFT_TIMES[shiftType as keyof typeof DISPLAY_SHIFT_TIMES]) {
+        const displayTimes = DISPLAY_SHIFT_TIMES[shiftType as keyof typeof DISPLAY_SHIFT_TIMES];
+        
+        // Use standard times for check-in and check-out based on shift type
+        if (record.status === 'check_in') {
+          return displayTimes.startTime;
+        } else if (record.status === 'check_out') {
+          return displayTimes.endTime;
+        }
+      }
+    }
+    
+    // If no predefined display time, use the actual timestamp from the database
     const timestamp = new Date(record.timestamp);
     
     // Format with 24-hour format
