@@ -2,6 +2,7 @@ import { supabase } from '../lib/supabase';
 import { format, parseISO, startOfMonth, endOfMonth, addDays, isValid } from 'date-fns';
 import { EmployeeRecord, DailyRecord } from '../types';
 import toast from 'react-hot-toast';
+import { parseShiftTimes } from '../utils/dateTimeHelper';
 
 // Fetch approved hours summary
 export const fetchApprovedHours = async (monthFilter: string = ''): Promise<{

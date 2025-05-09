@@ -4,6 +4,7 @@ import { Clock, AlertCircle, CheckCircle, XCircle, Info } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import toast from 'react-hot-toast';
 import { DISPLAY_SHIFT_TIMES } from '../types';
+import { parseShiftTimes } from '../utils/dateTimeHelper';
 
 interface EmployeeShiftRequestProps {
   onShiftApproved?: (employeeData: any, shiftData: any) => void;
@@ -82,13 +83,17 @@ const EmployeeShiftRequest: React.FC<EmployeeShiftRequestProps> = ({ onShiftAppr
       const startTime = shift.start_time;
       const endTime = shift.end_time;
       
-      // Handle night shift that crosses to next day
-      let checkOutDate = shift.date;
-      if (shift.shift_type === 'night') {
-        const nextDay = new Date(shift.date);
-        nextDay.setDate(nextDay.getDate() + 1);
-        checkOutDate = format(nextDay, 'yyyy-MM-dd');
-      }
+      // Handle night shift that crosses to next day using our helper function
+      const { checkIn: checkInDate, checkOut: checkOutDate } = parseShiftTimes(
+        shift.date,
+        startTime,
+        endTime,
+        shift.shift_type
+      );
+      
+      // Format timestamps correctly for database insertion
+      const checkInTimestamp = checkInDate.toISOString();
+      const checkOutTimestamp = checkOutDate.toISOString();
       
       // Calculate hours worked for consistency
       const hoursWorked = 9.0; // Standard hours for all shift types
@@ -98,7 +103,7 @@ const EmployeeShiftRequest: React.FC<EmployeeShiftRequestProps> = ({ onShiftAppr
       const records = [
         {
           employee_id: shift.employee_id,
-          timestamp: `${shift.date}T${startTime}`, // Fixed: removed the extra :00
+          timestamp: checkInTimestamp,
           status: 'check_in',
           shift_type: shift.shift_type,
           notes: `Employee submitted shift - HR approved; ${hoursNote}`,
@@ -112,7 +117,7 @@ const EmployeeShiftRequest: React.FC<EmployeeShiftRequestProps> = ({ onShiftAppr
         },
         {
           employee_id: shift.employee_id,
-          timestamp: `${checkOutDate}T${endTime}`, // Fixed: removed the extra :00
+          timestamp: checkOutTimestamp,
           status: 'check_out',
           shift_type: shift.shift_type,
           notes: `Employee submitted shift - HR approved; ${hoursNote}`,
@@ -141,17 +146,13 @@ const EmployeeShiftRequest: React.FC<EmployeeShiftRequestProps> = ({ onShiftAppr
           employee_number: shift.employees.employee_number
         };
         
-        // Parse timestamps - Use different variable names to avoid confusion
-        const checkInDate = new Date(`${shift.date}T${startTime}`);
-        const checkOutDateTime = new Date(`${checkOutDate}T${endTime}`);
-        
         onShiftApproved(employeeData, {
           ...shift,
           date: shift.date,
           start_time: startTime,
           end_time: endTime,
           checkInDate,
-          checkOutDate: checkOutDateTime,
+          checkOutDate,
           hoursWorked
         });
       }
@@ -172,8 +173,8 @@ const EmployeeShiftRequest: React.FC<EmployeeShiftRequestProps> = ({ onShiftAppr
       startTime = '05:00';
       endTime = '14:00';
     } else if (shiftType === 'evening') {
-      startTime = '13:00';  // Fixed from previous incorrect time
-      endTime = '22:00';    // Fixed from previous incorrect time
+      startTime = '13:00';
+      endTime = '22:00';
     } else if (shiftType === 'night') {
       startTime = '21:00';
       const nextDay = new Date(dateStr);

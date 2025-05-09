@@ -1,7 +1,7 @@
 /**
  * Standardized date and time utilities with consistent 24-hour format
  */
-import { parse, format, isValid } from 'date-fns';
+import { parse, format, isValid, addDays, isSameOrBefore, isBefore } from 'date-fns';
 
 /**
  * Format a Date object to 24-hour time format
@@ -46,6 +46,34 @@ export function formatTimeString(timeStr: string): string {
   } catch (e) {
     return timeStr;
   }
+}
+
+/**
+ * Parse shift times with proper day rollover for night shifts
+ * Used for both manual entries and employee-submitted shifts
+ * @param dateStr The base date in YYYY-MM-DD format
+ * @param timeIn The check-in time in HH:MM format
+ * @param timeOut The check-out time in HH:MM format
+ * @param shiftType Optional shift type to determine if day rollover should be forced
+ * @returns Object containing parsed check-in and check-out dates
+ */
+export function parseShiftTimes(dateStr: string, timeIn: string, timeOut: string, shiftType?: string): { 
+  checkIn: Date; 
+  checkOut: Date;
+} {
+  const checkIn = parse(`${dateStr} ${timeIn}`, 'yyyy-MM-dd HH:mm', new Date());
+  let checkOut = parse(`${dateStr} ${timeOut}`, 'yyyy-MM-dd HH:mm', new Date());
+  
+  // For night shifts, always roll over to next day if checkout is in early morning hours
+  if (shiftType === 'night' && checkOut.getHours() < 12) {
+    checkOut = addDays(checkOut, 1);
+  } 
+  // If check-out time is same or earlier than check-in, assume it's next day
+  else if (isBefore(checkOut, checkIn) || checkOut.getTime() === checkIn.getTime()) {
+    checkOut = addDays(checkOut, 1);
+  }
+  
+  return { checkIn, checkOut };
 }
 
 /**

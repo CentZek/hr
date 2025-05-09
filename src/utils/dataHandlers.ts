@@ -1,6 +1,7 @@
 import { EmployeeRecord, DailyRecord } from '../types';
 import { calculatePayableHours, determineShiftType } from './shiftCalculations';
 import { parse, format, eachDayOfInterval } from 'date-fns';
+import { parseShiftTimes } from './dateTimeHelper';
 
 // Handle adding a manual entry to the employee records
 export const addManualEntryToRecords = (
@@ -17,55 +18,26 @@ export const addManualEntryToRecords = (
     throw new Error("Missing required data for manual entry");
   }
   
-  // Process dates
-  let firstCheckIn: Date | null = checkInDate || null;
-  let lastCheckOut: Date | null = checkOutDate || null;
+  // Use provided date objects if available, otherwise parse from strings
+  let firstCheckIn: Date | null;
+  let lastCheckOut: Date | null;
   
-  // If date objects were not provided directly, parse them from strings
-  if (!firstCheckIn && checkIn) {
-    try {
-      // For evening shifts, ensure checkout is on the same day
-      if (shiftType === 'evening') {
-        firstCheckIn = parse(`${date} ${checkIn}`, 'yyyy-MM-dd HH:mm', new Date());
-      }
-      // For night shifts, checkout is on next day
-      else if (shiftType === 'night') {
-        // Create a date object for the next day
-        const nextDate = new Date(date);
-        nextDate.setDate(nextDate.getDate() + 1);
-        const nextDateStr = nextDate.toISOString().split('T')[0];
-        firstCheckIn = parse(`${date} ${checkIn}`, 'yyyy-MM-dd HH:mm', new Date());
-      } 
-      // For morning shifts or default
-      else {
-        firstCheckIn = parse(`${date} ${checkIn}`, 'yyyy-MM-dd HH:mm', new Date());
-      }
-    } catch (error) {
-      console.error("Error parsing check-in date:", error);
-    }
+  if (checkInDate) {
+    firstCheckIn = checkInDate;
+  } else if (checkIn) {
+    const { checkIn: parsedCheckIn } = parseShiftTimes(date, checkIn, checkOut || '00:00', shiftType);
+    firstCheckIn = parsedCheckIn;
+  } else {
+    firstCheckIn = null;
   }
   
-  if (!lastCheckOut && checkOut) {
-    try {
-      // For evening shifts, ensure checkout is on the same day
-      if (shiftType === 'evening') {
-        lastCheckOut = parse(`${date} ${checkOut}`, 'yyyy-MM-dd HH:mm', new Date());
-      }
-      // For night shifts, checkout is on next day
-      else if (shiftType === 'night') {
-        // Create a date object for the next day
-        const nextDate = new Date(date);
-        nextDate.setDate(nextDate.getDate() + 1);
-        const nextDateStr = nextDate.toISOString().split('T')[0];
-        lastCheckOut = parse(`${nextDateStr} ${checkOut}`, 'yyyy-MM-dd HH:mm', new Date());
-      } 
-      // For morning shifts or default
-      else {
-        lastCheckOut = parse(`${date} ${checkOut}`, 'yyyy-MM-dd HH:mm', new Date());
-      }
-    } catch (error) {
-      console.error("Error parsing check-out date:", error);
-    }
+  if (checkOutDate) {
+    lastCheckOut = checkOutDate;
+  } else if (checkOut) {
+    const { checkOut: parsedCheckOut } = parseShiftTimes(date, checkIn || '00:00', checkOut, shiftType);
+    lastCheckOut = parsedCheckOut;
+  } else {
+    lastCheckOut = null;
   }
   
   // Calculate hours - always use standard 9 hours for manual entries
@@ -289,20 +261,13 @@ export const convertShiftRequestsToRecords = async () => {
       
       const emp = employeeMap.get(shift.employee_id);
       
-      // Convert shift to daily record
-      const checkIn = parse(`${shift.date} ${shift.start_time}`, 'yyyy-MM-dd HH:mm', new Date());
-      let checkOut = parse(`${shift.date} ${shift.end_time}`, 'yyyy-MM-dd HH:mm', new Date());
-      
-      // Handle night shifts crossing to the next day
-      if (shift.shift_type === 'night') {
-        const startHour = parseInt(shift.start_time.split(':')[0], 10);
-        const endHour = parseInt(shift.end_time.split(':')[0], 10);
-        
-        if (endHour < startHour) {
-          // Add a day to checkout time
-          checkOut = new Date(checkOut.getTime() + 24 * 60 * 60 * 1000);
-        }
-      }
+      // Use our helper function to properly handle night shifts
+      const { checkIn, checkOut } = parseShiftTimes(
+        shift.date,
+        shift.start_time,
+        shift.end_time,
+        shift.shift_type
+      );
       
       const hoursWorked = calculatePayableHours(checkIn, checkOut, shift.shift_type);
       

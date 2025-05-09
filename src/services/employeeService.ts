@@ -1,6 +1,7 @@
 import { supabase } from '../lib/supabase';
 import { format, parseISO, isValid } from 'date-fns';
 import { DISPLAY_SHIFT_TIMES } from '../types';
+import { parseShiftTimes } from '../utils/dateTimeHelper';
 
 // Helper to get standardized shift times
 const getStandardShiftTimes = (shiftType: string, date: string) => {
@@ -242,16 +243,18 @@ export const updateEmployeeShift = async (shiftId: string, updateData: any) => {
 // Add employee shift directly to the time_records table for HR approval
 export const submitShiftForApproval = async (shiftData: any) => {
   try {
-    // Get standardized times based on shift type
-    const { startTime, endTime, endDate } = getStandardShiftTimes(
-      shiftData.shift_type, 
-      shiftData.date
+    // Use our helper function to properly handle day rollover for night shifts
+    const { checkIn, checkOut } = parseShiftTimes(
+      shiftData.date,
+      shiftData.start_time,
+      shiftData.end_time,
+      shiftData.shift_type
     );
     
     // Create check-in record
     const checkInData = {
       employee_id: shiftData.employee_id,
-      timestamp: `${shiftData.date}T${startTime}:00`,
+      timestamp: checkIn.toISOString(),
       status: 'check_in',
       shift_type: shiftData.shift_type,
       notes: 'Employee submitted; hours:9.00',
@@ -267,7 +270,7 @@ export const submitShiftForApproval = async (shiftData: any) => {
     // Create check-out record
     const checkOutData = {
       employee_id: shiftData.employee_id,
-      timestamp: `${endDate}T${endTime}:00`,
+      timestamp: checkOut.toISOString(),
       status: 'check_out',
       shift_type: shiftData.shift_type,
       notes: 'Employee submitted; hours:9.00',

@@ -3,6 +3,7 @@ import { format } from 'date-fns';
 import { X, Clock, User, Calendar, Check, AlertCircle, Info } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { SHIFT_TIMES, DISPLAY_SHIFT_TIMES } from '../types';
+import { parseShiftTimes } from '../utils/dateTimeHelper';
 
 interface ManualEntryModalProps {
   isOpen: boolean;
@@ -117,15 +118,13 @@ const ManualEntryModal: React.FC<ManualEntryModalProps> = ({ isOpen, onClose, on
       const startTime = shift.shift_type === 'morning' ? '05:00' : shift.shift_type === 'evening' ? '13:00' : '21:00';
       const endTime = shift.shift_type === 'morning' ? '14:00' : shift.shift_type === 'evening' ? '22:00' : '06:00';
       
-      // Create next day date for night shift checkout
-      let checkOutDate = shift.shift_type === 'night' 
-        ? format(new Date(new Date(shift.date).getTime() + 86400000), 'yyyy-MM-dd')
-        : shift.date;
+      // Use our helper function to properly handle day rollover
+      const { checkIn, checkOut } = parseShiftTimes(shift.date, startTime, endTime, shift.shift_type);
       
       const timeRecords = [
         {
           employee_id: shift.employee_id,
-          timestamp: `${shift.date}T${startTime}`, // Fixed: removed the extra :00
+          timestamp: checkIn.toISOString(),
           status: 'check_in',
           shift_type: shift.shift_type,
           notes: 'Employee submitted shift - HR approved; hours:9.00',
@@ -133,7 +132,7 @@ const ManualEntryModal: React.FC<ManualEntryModalProps> = ({ isOpen, onClose, on
         },
         {
           employee_id: shift.employee_id,
-          timestamp: `${checkOutDate}T${endTime}`, // Fixed: removed the extra :00
+          timestamp: checkOut.toISOString(),
           status: 'check_out',
           shift_type: shift.shift_type,
           notes: 'Employee submitted shift - HR approved; hours:9.00',
@@ -225,15 +224,13 @@ const ManualEntryModal: React.FC<ManualEntryModalProps> = ({ isOpen, onClose, on
           notes: notes || 'Manual entry by HR'
         });
 
-      // Prepare time records
-      const checkInTime = `${selectedDate}T${times.start}`; // Fixed: removed the extra :00
-      
-      // For night shift, checkout is next day
-      let checkOutDate = shiftType === 'night' 
-        ? format(new Date(new Date(selectedDate).getTime() + 86400000), 'yyyy-MM-dd')
-        : selectedDate;
-      
-      const checkOutTime = `${checkOutDate}T${times.end}`; // Fixed: removed the extra :00
+      // Parse dates properly with the helper function to handle day rollover
+      const { checkIn, checkOut } = parseShiftTimes(
+        selectedDate, 
+        times.start, 
+        times.end, 
+        shiftType
+      );
 
       // Add records to time_records table
       await supabase
@@ -241,7 +238,7 @@ const ManualEntryModal: React.FC<ManualEntryModalProps> = ({ isOpen, onClose, on
         .insert([
           {
             employee_id: employeeId,
-            timestamp: checkInTime,
+            timestamp: checkIn.toISOString(),
             status: 'check_in',
             shift_type: shiftType,
             notes: notes || 'Manual entry; hours:9.00',
@@ -249,18 +246,13 @@ const ManualEntryModal: React.FC<ManualEntryModalProps> = ({ isOpen, onClose, on
           },
           {
             employee_id: employeeId,
-            timestamp: checkOutTime,
+            timestamp: checkOut.toISOString(),
             status: 'check_out',
             shift_type: shiftType,
             notes: notes || 'Manual entry; hours:9.00',
             is_manual_entry: true
           }
         ]);
-
-      // Parse dates for callback
-      const checkInDate = new Date(checkInTime);
-      // Using the already declared checkOutDate variable instead of redeclaring it
-      const checkOutDateObj = new Date(checkOutTime);
 
       // Call the save callback
       onSave({
@@ -269,8 +261,8 @@ const ManualEntryModal: React.FC<ManualEntryModalProps> = ({ isOpen, onClose, on
         checkIn: times.start,
         checkOut: times.end,
         shiftType,
-        checkInDate,
-        checkOutDate: checkOutDateObj
+        checkInDate: checkIn,
+        checkOutDate: checkOut
       });
 
     } catch (error) {
