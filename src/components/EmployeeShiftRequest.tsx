@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { format, parseISO } from 'date-fns';
+import { format, parseISO, isValid } from 'date-fns';
 import { Clock, AlertCircle, CheckCircle, XCircle, Info } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import toast from 'react-hot-toast';
@@ -80,23 +80,46 @@ const EmployeeShiftRequest: React.FC<EmployeeShiftRequestProps> = ({ onShiftAppr
       if (updateError) throw updateError;
       
       // Ensure date is a valid string format
-      let dateStr;
+      let dateStr = format(new Date(), 'yyyy-MM-dd'); // Default to today if all else fails
+      
       try {
-        // If shift.date is already a Date object, format it
-        if (shift.date instanceof Date) {
+        // If shift.date is a Date object
+        if (shift.date instanceof Date && isValid(shift.date)) {
           dateStr = format(shift.date, 'yyyy-MM-dd');
-        } else {
-          // If it's a string, ensure it's a valid date string
-          dateStr = typeof shift.date === 'string' ? shift.date : format(new Date(), 'yyyy-MM-dd');
+        } 
+        // If shift.date is a string, parse it properly
+        else if (typeof shift.date === 'string') {
+          // Try parsing with parseISO first
+          const parsedDate = parseISO(shift.date);
+          if (isValid(parsedDate)) {
+            dateStr = format(parsedDate, 'yyyy-MM-dd');
+          } else {
+            // If parseISO fails, it might be in a different format
+            console.warn('Could not parse date string with parseISO:', shift.date);
+            dateStr = shift.date; // Keep original if it's already in yyyy-MM-dd format
+          }
         }
       } catch (e) {
         console.error('Invalid date format:', e);
-        dateStr = format(new Date(), 'yyyy-MM-dd');
+        // Keep the default dateStr value
       }
       
-      // Ensure startTime and endTime are valid time strings
-      const startTime = shift.start_time || '00:00';
-      const endTime = shift.end_time || '00:00';
+      // Validate startTime and endTime are properly formatted time strings
+      const validateTimeFormat = (time: string): string => {
+        // Simple regex to check if time is in format HH:MM
+        const timeRegex = /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/;
+        if (timeRegex.test(time)) {
+          return time;
+        }
+        // Default times based on shift type
+        if (shift.shift_type === 'morning') return '05:00';
+        if (shift.shift_type === 'evening') return shift.start_time ? '13:00' : '22:00';
+        if (shift.shift_type === 'night') return shift.start_time ? '21:00' : '06:00';
+        return '00:00'; // Fallback
+      };
+      
+      const startTime = validateTimeFormat(shift.start_time || '');
+      const endTime = validateTimeFormat(shift.end_time || '');
       
       console.log('Processing shift with:', { dateStr, startTime, endTime, shiftType: shift.shift_type });
       
@@ -108,6 +131,11 @@ const EmployeeShiftRequest: React.FC<EmployeeShiftRequestProps> = ({ onShiftAppr
           endTime,
           shift.shift_type
         );
+        
+        // Validate the parsed dates
+        if (!isValid(checkInDate) || !isValid(checkOutDate)) {
+          throw new Error('Invalid date after parsing shift times');
+        }
         
         // Format timestamps correctly for database insertion
         const checkInTimestamp = checkInDate.toISOString();
