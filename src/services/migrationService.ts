@@ -82,7 +82,6 @@ export const initializeUserCredentials = async () => {
       }
       
       // Check one more time with the database to ensure uniqueness
-      // This double-check helps prevent race conditions and ensures the username is truly unique
       try {
         const { data: usernameCheck, error: checkError } = await supabase
           .from('user_credentials')
@@ -220,7 +219,7 @@ export const runAllMigrations = async () => {
 };
 
 // Helper function to check Supabase connection
-const checkSupabaseConnection = async () => {
+export const checkSupabaseConnection = async () => {
   try {
     // Try a simple query to check connection
     const { error } = await supabase.from('employees').select('count', { count: 'exact', head: true });

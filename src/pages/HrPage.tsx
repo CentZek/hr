@@ -13,8 +13,8 @@ import { addManualEntryToRecords, calculateStats, processRecordsAfterSave } from
 
 // Import services
 import { saveRecordsToDatabase, fetchManualTimeRecords, fetchPendingEmployeeShifts } from '../services/database';
-import { runAllMigrations } from '../services/migrationService';
-import { supabase, checkSupabaseConnection } from '../lib/supabase';
+import { runAllMigrations, checkSupabaseConnection } from '../services/migrationService';
+import { supabase } from '../lib/supabase';
 
 // Import components
 import NavigationTabs from '../components/NavigationTabs';
@@ -414,6 +414,11 @@ function HrPage() {
       return;
     }
     
+    // Prevent multiple clicks
+    if (isMigrating) {
+      return;
+    }
+    
     setIsMigrating(true);
     const loadingToast = toast.loading('Running database migrations...');
     
@@ -597,7 +602,7 @@ function HrPage() {
                 <button
                   onClick={handleRunMigrations}
                   disabled={isMigrating}
-                  className="text-blue-600 hover:text-blue-800 font-medium flex items-center"
+                  className="text-blue-600 hover:text-blue-800 font-medium flex items-center disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Database className="w-4 h-4 mr-1" />
                   {isMigrating ? 
