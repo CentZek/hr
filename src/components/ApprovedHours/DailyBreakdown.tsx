@@ -57,15 +57,52 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records }) =
     return acc;
   }, {});
 
-  // Format time in 24-hour format
-  const formatTimeDisplay = (timestamp: string | null): string => {
+  // FIXED: Get standardized display time based on shift type
+  const getStandardDisplayTime = (shiftType: string, timeType: 'start' | 'end'): string => {
+    if (!shiftType || !['morning', 'evening', 'night', 'canteen'].includes(shiftType)) {
+      return '—';
+    }
+    
+    if (shiftType === 'morning') {
+      return timeType === 'start' ? '05:00' : '14:00';
+    }
+    if (shiftType === 'evening') {
+      return timeType === 'start' ? '13:00' : '22:00';
+    }
+    if (shiftType === 'night') {
+      return timeType === 'start' ? '21:00' : '06:00';
+    }
+    if (shiftType === 'canteen') {
+      return timeType === 'start' ? '07:00' : '16:00';
+    }
+    
+    return '—';
+  };
+
+  // Format time in 24-hour format with preference for display values
+  const formatTimeDisplay = (timestamp: string | null, record: any, timeType: 'in' | 'out'): string => {
     if (!timestamp) return '–';
     
     try {
-      // Get the timestamp and ensure it's treated consistently
-      const date = parseISO(timestamp);
+      // FIXED: First check if this record has a display value we can use
+      if (timeType === 'in' && record.display_check_in && record.display_check_in !== 'Missing') {
+        return record.display_check_in;
+      }
       
-      // IMPORTANT: Format as local time, not UTC - this fixes the time differences
+      if (timeType === 'out' && record.display_check_out && record.display_check_out !== 'Missing') {
+        return record.display_check_out;
+      }
+      
+      // FIXED: If we don't have a display value, try to get standard time based on shift type
+      if (record.shift_type) {
+        return getStandardDisplayTime(
+          record.shift_type, 
+          timeType === 'in' ? 'start' : 'end'
+        );
+      }
+      
+      // Last resort: Format the timestamp
+      const date = parseISO(timestamp);
       return format(date, 'HH:mm');
     } catch (err) {
       console.error("Error formatting time:", err);
@@ -254,6 +291,16 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records }) =
           // Determine if this is significant overtime
           const isSignificantOvertime = hours > 9.5;
 
+          // FIXED: Get standardized display times for this shift type
+          const shiftType = (checkIn || checkOut)?.shift_type || 'unknown';
+          let checkInDisplay = checkIn ? 
+            formatTimeDisplay(checkIn.timestamp, checkIn, 'in') :
+            (isOffDay ? 'OFF-DAY' : 'Missing');
+          
+          let checkOutDisplay = checkOut ? 
+            formatTimeDisplay(checkOut.timestamp, checkOut, 'out') : 
+            (isOffDay ? 'OFF-DAY' : 'Missing');
+          
           // Mobile view
           if (typeof window !== 'undefined' && window.innerWidth < 640) {
             return (
@@ -269,7 +316,7 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records }) =
                       {checkIn ? (
                         <>
                           {checkIn.is_late && <AlertTriangle className="inline w-3 h-3 mr-1 text-amber-500" />}
-                          {formatTimeDisplay(checkIn.timestamp)}
+                          {checkInDisplay}
                         </>
                       ) : (
                         <span className="text-gray-400">Missing</span>
@@ -283,7 +330,7 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records }) =
                       {checkOut ? (
                         <>
                           {checkOut.early_leave && <AlertTriangle className="inline w-3 h-3 mr-1 text-amber-500" />}
-                          {formatTimeDisplay(checkOut.timestamp)}
+                          {checkOutDisplay}
                         </>
                       ) : (
                         <span className="text-gray-400">Missing</span>
@@ -342,7 +389,7 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records }) =
                 {checkIn ? (
                   <div className={`flex items-center ${checkIn.is_late ? 'text-amber-600' : 'text-gray-700'}`}>
                     {checkIn.is_late && <AlertTriangle className="w-3 h-3 mr-1 text-amber-500" />}
-                    {formatTimeDisplay(checkIn.timestamp)}
+                    {checkInDisplay}
                   </div>
                 ) : (
                   <span className="text-gray-400">Missing</span>
@@ -352,7 +399,7 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records }) =
                 {checkOut ? (
                   <div className={`flex items-center ${checkOut.early_leave ? 'text-amber-600' : 'text-gray-700'}`}>
                     {checkOut.early_leave && <AlertTriangle className="w-3 h-3 mr-1 text-amber-500" />}
-                    {formatTimeDisplay(checkOut.timestamp)}
+                    {checkOutDisplay}
                   </div>
                 ) : (
                   <span className="text-gray-400">Missing</span>

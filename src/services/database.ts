@@ -386,18 +386,41 @@ export const fetchManualTimeRecords = async (limit: number = 50): Promise<any[]>
     
     if (error) throw error;
     
-    // Process evening shift display times to ensure they show correctly
+    // FIXED: Ensure display values are set correctly for all shift types
     const processedData = data?.map(record => {
-      // If this is an evening shift, ensure display times are correct
-      if (record.shift_type === 'evening') {
-        // Standard evening shift times
-        return {
-          ...record,
-          display_check_in: record.status === 'check_in' ? '13:00' : record.display_check_in,
-          display_check_out: record.status === 'check_out' ? '22:00' : record.display_check_out
-        };
+      // Make sure all records have properly set display values
+      let updatedRecord = { ...record };
+      
+      if (record.shift_type) {
+        const shiftType = record.shift_type;
+        
+        // Set standard display times based on shift type if missing
+        if (!record.display_check_in || record.display_check_in === 'Missing') {
+          if (shiftType === 'morning') {
+            updatedRecord.display_check_in = '05:00';
+          } else if (shiftType === 'evening') {
+            updatedRecord.display_check_in = '13:00';
+          } else if (shiftType === 'night') {
+            updatedRecord.display_check_in = '21:00';
+          } else if (shiftType === 'canteen') {
+            updatedRecord.display_check_in = record.timestamp && new Date(record.timestamp).getHours() === 7 ? '07:00' : '08:00';
+          }
+        }
+        
+        if (!record.display_check_out || record.display_check_out === 'Missing') {
+          if (shiftType === 'morning') {
+            updatedRecord.display_check_out = '14:00';
+          } else if (shiftType === 'evening') {
+            updatedRecord.display_check_out = '22:00';
+          } else if (shiftType === 'night') {
+            updatedRecord.display_check_out = '06:00';
+          } else if (shiftType === 'canteen') {
+            updatedRecord.display_check_out = record.timestamp && new Date(record.timestamp).getHours() === 7 ? '16:00' : '17:00';
+          }
+        }
       }
-      return record;
+      
+      return updatedRecord;
     }) || [];
     
     return processedData;
