@@ -160,7 +160,7 @@ const EmployeeShiftRequest: React.FC<EmployeeShiftRequestProps> = ({ onShiftAppr
             deduction_minutes: 0,
             display_check_in: startTime,
             display_check_out: endTime,
-            working_week_start: dateStr // Set working_week_start for proper grouping
+            working_week_start: dateStr // Add working_week_start for proper grouping
           },
           {
             employee_id: shift.employee_id,
