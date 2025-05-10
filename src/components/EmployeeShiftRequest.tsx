@@ -137,7 +137,7 @@ const EmployeeShiftRequest: React.FC<EmployeeShiftRequestProps> = ({ onShiftAppr
           throw new Error('Invalid date after parsing shift times');
         }
         
-        // Format timestamps correctly for database insertion
+        // Format timestamps correctly for database insertion with full ISO string
         const checkInTimestamp = checkInDate.toISOString();
         const checkOutTimestamp = checkOutDate.toISOString();
         
@@ -145,39 +145,67 @@ const EmployeeShiftRequest: React.FC<EmployeeShiftRequestProps> = ({ onShiftAppr
         const hoursWorked = 9.0; // Standard hours for all shift types
         const hoursNote = `hours:${hoursWorked.toFixed(2)}`;
 
-        // Create time records
-        const records = [
-          {
-            employee_id: shift.employee_id,
-            timestamp: checkInTimestamp,
-            status: 'check_in',
-            shift_type: shift.shift_type,
-            notes: `Employee submitted shift - HR approved; ${hoursNote}`,
-            is_manual_entry: true,
-            exact_hours: hoursWorked,
-            is_late: false,
-            early_leave: false,
-            deduction_minutes: 0,
-            display_check_in: startTime,
-            display_check_out: endTime
-          },
-          {
-            employee_id: shift.employee_id,
-            timestamp: checkOutTimestamp,
-            status: 'check_out',
-            shift_type: shift.shift_type,
-            notes: `Employee submitted shift - HR approved; ${hoursNote}`,
-            is_manual_entry: true,
-            exact_hours: hoursWorked,
-            is_late: false,
-            early_leave: false,
-            deduction_minutes: 0,
-            display_check_in: startTime,
-            display_check_out: endTime
-          }
-        ];
+        // First, check for any manual records with this shift type to ensure we're not violating the unique constraint
+        const { data: existingManualRecords, error: manualError } = await supabase
+          .from('time_records')
+          .select('id, status')
+          .eq('employee_id', shift.employee_id)
+          .eq('shift_type', shift.shift_type)
+          .eq('working_week_start', dateStr)
+          .eq('is_manual_entry', true);
         
-        const { error: insertError } = await supabase.from('time_records').insert(records);
+        if (manualError) throw manualError;
+        
+        // If we found manual entries with the same key fields, delete them to avoid unique constraint violation
+        if (existingManualRecords && existingManualRecords.length > 0) {
+          const recordIds = existingManualRecords.map(record => record.id);
+          console.log(`Deleting ${existingManualRecords.length} existing manual records to avoid constraint violation`);
+          const { error: deleteError } = await supabase
+            .from('time_records')
+            .delete()
+            .in('id', recordIds);
+            
+          if (deleteError) throw deleteError;
+        }
+        
+        // Create time records
+        const checkInRecord = {
+          employee_id: shift.employee_id,
+          timestamp: checkInTimestamp,
+          status: 'check_in',
+          shift_type: shift.shift_type,
+          notes: `Employee submitted shift - HR approved; ${hoursNote}`,
+          is_manual_entry: true,
+          exact_hours: hoursWorked,
+          is_late: false,
+          early_leave: false,
+          deduction_minutes: 0,
+          display_check_in: startTime,
+          display_check_out: endTime,
+          working_week_start: dateStr
+        };
+        
+        const checkOutRecord = {
+          employee_id: shift.employee_id,
+          timestamp: checkOutTimestamp,
+          status: 'check_out',
+          shift_type: shift.shift_type,
+          notes: `Employee submitted shift - HR approved; ${hoursNote}`,
+          is_manual_entry: true,
+          exact_hours: hoursWorked,
+          is_late: false,
+          early_leave: false,
+          deduction_minutes: 0,
+          display_check_in: startTime,
+          display_check_out: endTime,
+          working_week_start: dateStr
+        };
+        
+        // Insert both records in a single insert to ensure atomicity
+        const { error: insertError } = await supabase
+          .from('time_records')
+          .insert([checkInRecord, checkOutRecord]);
+        
         if (insertError) throw insertError;
         
         // Remove the shift from the list

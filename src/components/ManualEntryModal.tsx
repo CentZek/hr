@@ -121,26 +121,57 @@ const ManualEntryModal: React.FC<ManualEntryModalProps> = ({ isOpen, onClose, on
       // Use our helper function to properly handle day rollover
       const { checkIn, checkOut } = parseShiftTimes(shift.date, startTime, endTime, shift.shift_type);
       
-      const timeRecords = [
-        {
-          employee_id: shift.employee_id,
-          timestamp: checkIn.toISOString(),
-          status: 'check_in',
-          shift_type: shift.shift_type,
-          notes: 'Employee submitted shift - HR approved; hours:9.00',
-          is_manual_entry: true
-        },
-        {
-          employee_id: shift.employee_id,
-          timestamp: checkOut.toISOString(),
-          status: 'check_out',
-          shift_type: shift.shift_type,
-          notes: 'Employee submitted shift - HR approved; hours:9.00',
-          is_manual_entry: true
-        }
-      ];
+      // First, check for any manual records with this shift type to ensure we're not violating the unique constraint
+      const { data: existingManualRecords, error: manualError } = await supabase
+        .from('time_records')
+        .select('id, status')
+        .eq('employee_id', shift.employee_id)
+        .eq('shift_type', shift.shift_type)
+        .eq('working_week_start', shift.date)
+        .eq('is_manual_entry', true);
       
-      const { error: insertError } = await supabase.from('time_records').insert(timeRecords);
+      if (manualError) throw manualError;
+      
+      // If we found manual entries with the same key fields, delete them to avoid unique constraint violation
+      if (existingManualRecords && existingManualRecords.length > 0) {
+        const recordIds = existingManualRecords.map(record => record.id);
+        console.log(`Deleting ${existingManualRecords.length} existing manual records to avoid constraint violation`);
+        const { error: deleteError } = await supabase
+          .from('time_records')
+          .delete()
+          .in('id', recordIds);
+          
+        if (deleteError) throw deleteError;
+      }
+      
+      // Prepare time records
+      const checkInRecord = {
+        employee_id: shift.employee_id,
+        timestamp: checkIn.toISOString(),
+        status: 'check_in',
+        shift_type: shift.shift_type,
+        notes: 'Employee submitted shift - HR approved; hours:9.00',
+        is_manual_entry: true,
+        working_week_start: shift.date,
+        exact_hours: 9.0
+      };
+      
+      const checkOutRecord = {
+        employee_id: shift.employee_id,
+        timestamp: checkOut.toISOString(),
+        status: 'check_out',
+        shift_type: shift.shift_type,
+        notes: 'Employee submitted shift - HR approved; hours:9.00',
+        is_manual_entry: true,
+        working_week_start: shift.date,
+        exact_hours: 9.0
+      };
+      
+      // Insert both records in a single insert to ensure atomicity
+      const { error: insertError } = await supabase
+        .from('time_records')
+        .insert([checkInRecord, checkOutRecord]);
+      
       if (insertError) throw insertError;
       
       // Refresh the list
@@ -231,28 +262,63 @@ const ManualEntryModal: React.FC<ManualEntryModalProps> = ({ isOpen, onClose, on
         times.end, 
         shiftType
       );
-
-      // Add records to time_records table
-      await supabase
+      
+      // First check for existing manual records that would violate the constraint
+      const { data: existingManualRecords, error: manualError } = await supabase
         .from('time_records')
-        .insert([
-          {
-            employee_id: employeeId,
-            timestamp: checkIn.toISOString(),
-            status: 'check_in',
-            shift_type: shiftType,
-            notes: notes || 'Manual entry; hours:9.00',
-            is_manual_entry: true
-          },
-          {
-            employee_id: employeeId,
-            timestamp: checkOut.toISOString(),
-            status: 'check_out',
-            shift_type: shiftType,
-            notes: notes || 'Manual entry; hours:9.00',
-            is_manual_entry: true
-          }
-        ]);
+        .select('id, status')
+        .eq('employee_id', employeeId)
+        .eq('shift_type', shiftType)
+        .eq('working_week_start', selectedDate)
+        .eq('is_manual_entry', true);
+      
+      if (manualError) throw manualError;
+      
+      // If we found manual entries, delete them to avoid constraint violation
+      if (existingManualRecords && existingManualRecords.length > 0) {
+        const recordIds = existingManualRecords.map(record => record.id);
+        console.log(`Deleting ${existingManualRecords.length} existing manual records to avoid constraint violation`);
+        const { error: deleteError } = await supabase
+          .from('time_records')
+          .delete()
+          .in('id', recordIds);
+          
+        if (deleteError) throw deleteError;
+      }
+
+      // Prepare time records
+      const checkInRecord = {
+        employee_id: employeeId,
+        timestamp: checkIn.toISOString(),
+        status: 'check_in',
+        shift_type: shiftType,
+        notes: notes || 'Manual entry; hours:9.00',
+        is_manual_entry: true,
+        working_week_start: selectedDate,
+        display_check_in: times.start,
+        display_check_out: times.end,
+        exact_hours: 9.0
+      };
+      
+      const checkOutRecord = {
+        employee_id: employeeId,
+        timestamp: checkOut.toISOString(),
+        status: 'check_out',
+        shift_type: shiftType,
+        notes: notes || 'Manual entry; hours:9.00',
+        is_manual_entry: true,
+        working_week_start: selectedDate,
+        display_check_in: times.start,
+        display_check_out: times.end,
+        exact_hours: 9.0
+      };
+      
+      // Insert both records in a single insert to ensure atomicity
+      const { error: insertError } = await supabase
+        .from('time_records')
+        .insert([checkInRecord, checkOutRecord]);
+      
+      if (insertError) throw insertError;
 
       // Call the save callback
       onSave({

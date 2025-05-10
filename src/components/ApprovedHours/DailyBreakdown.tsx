@@ -1,5 +1,5 @@
 import React from 'react';
-import { format, differenceInMinutes } from 'date-fns';
+import { format, differenceInMinutes, parseISO, isValid } from 'date-fns';
 import { AlertTriangle, CheckCircle, Clock } from 'lucide-react';
 import { DISPLAY_SHIFT_TIMES } from '../../types';
 import { formatTime24H } from '../../utils/dateTimeHelper';
@@ -13,33 +13,65 @@ interface DailyBreakdownProps {
 const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records }) => {
   // Group records by date for better display
   const recordsByDate = records.reduce((acc: any, record: any) => {
-    // For evening shifts with early morning checkout, associate with previous day
-    let date = format(new Date(record.timestamp), 'yyyy-MM-dd');
-    
-    // Check for night shift or evening shift checkouts in early morning hours
-    if (record.status === 'check_out') {
-      const recordHour = new Date(record.timestamp).getHours();
+    try {
+      // Skip invalid records
+      if (!record.timestamp) return acc;
       
-      // For night shifts with early morning checkout, associate with previous day
-      if (record.shift_type === 'night' && recordHour < 12) {
-        // This is a night shift checkout on the next day
-        const prevDate = new Date(record.timestamp);
-        prevDate.setDate(prevDate.getDate() - 1);
-        date = format(prevDate, 'yyyy-MM-dd');
+      // For night shifts, use working_week_start as the key for grouping if available
+      if (record.shift_type === 'night' && record.working_week_start) {
+        const workWeekDate = record.working_week_start;
+        if (!acc[workWeekDate]) {
+          acc[workWeekDate] = [];
+        }
+        acc[workWeekDate].push(record);
+        return acc;
       }
-      // For evening shifts with early morning checkout, associate with previous day
-      else if (record.shift_type === 'evening' && recordHour < 12) {
-        // This is likely an evening shift checkout on the next day
-        const prevDate = new Date(record.timestamp);
-        prevDate.setDate(prevDate.getDate() - 1);
-        date = format(prevDate, 'yyyy-MM-dd');
-      }
-    }
 
-    if (!acc[date]) {
-      acc[date] = [];
+      // Use the UTC date portion so nothing shifts under local timezones
+      const utc = parseISO(record.timestamp);
+      if (!isValid(utc)) return acc;
+      
+      const date = utc.toISOString().slice(0,10);  // "YYYY-MM-DD"
+      
+      // Check for night shift or evening shift checkouts in early morning hours
+      if (record.status === 'check_out') {
+        const recordHourUTC = utc.getUTCHours();
+        
+        // For night shifts with early morning checkout, associate with previous day
+        if (record.shift_type === 'night' && recordHourUTC < 12) {
+          // This is a night shift checkout on the next day
+          const prevDate = new Date(record.timestamp);
+          prevDate.setDate(prevDate.getDate() - 1);
+          const prevDateStr = prevDate.toISOString().slice(0,10);  // "YYYY-MM-DD"
+          
+          if (!acc[prevDateStr]) {
+            acc[prevDateStr] = [];
+          }
+          acc[prevDateStr].push(record);
+          return acc;
+        }
+        // For evening shifts with early morning checkout, associate with previous day
+        else if (record.shift_type === 'evening' && recordHourUTC < 12) {
+          // This is likely an evening shift checkout on the next day
+          const prevDate = new Date(record.timestamp);
+          prevDate.setDate(prevDate.getDate() - 1);
+          const prevDateStr = prevDate.toISOString().slice(0,10);  // "YYYY-MM-DD"
+          
+          if (!acc[prevDateStr]) {
+            acc[prevDateStr] = [];
+          }
+          acc[prevDateStr].push(record);
+          return acc;
+        }
+      }
+      
+      if (!acc[date]) {
+        acc[date] = [];
+      }
+      acc[date].push(record);
+    } catch (error) {
+      console.error('Error grouping record by date:', error, record);
     }
-    acc[date].push(record);
     return acc;
   }, {});
 
@@ -47,8 +79,14 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records }) =
   const formatTimeDisplay = (timestamp: string | null): string => {
     if (!timestamp) return '–';
     
-    const date = new Date(timestamp);
-    return formatTime24H(date);
+    try {
+      const date = parseISO(timestamp);
+      if (!isValid(date)) return '–';
+      return formatTime24H(date);
+    } catch (error) {
+      console.error('Error formatting timestamp:', error);
+      return '–';
+    }
   };
 
   if (isLoading) {
@@ -163,7 +201,12 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records }) =
           // Get the latest check-out time (most important for night shifts)
           const checkOut = checkOuts.length > 0 ? 
             checkOuts.reduce((latest, current) => {
-              return new Date(current.timestamp) > new Date(latest.timestamp) ? current : latest;
+              try {
+                return new Date(current.timestamp) > new Date(latest.timestamp) ? current : latest;
+              } catch (error) {
+                console.error('Error comparing timestamps:', error);
+                return latest;
+              }
             }, checkOuts[0]) : null;
           
           // Get hours - prioritize exact_hours field first
@@ -203,27 +246,33 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records }) =
           
           // If no stored hours, calculate using the timestamps
           if (hours === 0 && checkIn && checkOut) {
-            const checkInTime = new Date(checkIn.timestamp);
-            const checkOutTime = new Date(checkOut.timestamp);
-            
-            // Calculate total minutes
-            let diffMinutes = differenceInMinutes(checkOutTime, checkInTime);
-            
-            // If time difference is negative, it means checkout is on the next day
-            if (diffMinutes < 0) {
-              diffMinutes += 24 * 60; // Add 24 hours
+            try {
+              const checkInTime = parseISO(checkIn.timestamp);
+              const checkOutTime = parseISO(checkOut.timestamp);
+              
+              if (isValid(checkInTime) && isValid(checkOutTime)) {
+                // Calculate total minutes
+                let diffMinutes = differenceInMinutes(checkOutTime, checkInTime);
+                
+                // If time difference is negative, it means checkout is on the next day
+                if (diffMinutes < 0) {
+                  diffMinutes += 24 * 60; // Add 24 hours
+                }
+                
+                // Convert to hours
+                hours = diffMinutes / 60;
+                
+                // Apply deduction minutes if any
+                if (checkIn.deduction_minutes) {
+                  hours = Math.max(0, hours - (checkIn.deduction_minutes / 60));
+                }
+                
+                // Round to exactly a 2 decimal number
+                hours = parseFloat(hours.toFixed(2));
+              }
+            } catch (error) {
+              console.error('Error calculating hours:', error);
             }
-            
-            // Convert to hours
-            hours = diffMinutes / 60;
-            
-            // Apply deduction minutes if any
-            if (checkIn.deduction_minutes) {
-              hours = Math.max(0, hours - (checkIn.deduction_minutes / 60));
-            }
-            
-            // Round to exactly a 2 decimal number
-            hours = parseFloat(hours.toFixed(2));
           }
           
           // Determine if there's a penalty
@@ -232,6 +281,10 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records }) =
           // Determine if this is significant overtime
           const isSignificantOvertime = hours > 9.5;
 
+          // Get check-in and check-out display values
+          const checkInDisplay = checkIn?.display_check_in || (checkIn ? formatTimeDisplay(checkIn.timestamp) : 'Missing');
+          const checkOutDisplay = checkOut?.display_check_out || (checkOut ? formatTimeDisplay(checkOut.timestamp) : 'Missing');
+          
           // Mobile view
           if (typeof window !== 'undefined' && window.innerWidth < 640) {
             return (
@@ -247,7 +300,7 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records }) =
                       {checkIn ? (
                         <>
                           {checkIn.is_late && <AlertTriangle className="inline w-3 h-3 mr-1 text-amber-500" />}
-                          {formatTimeDisplay(checkIn.timestamp)}
+                          {checkInDisplay}
                         </>
                       ) : (
                         <span className="text-gray-400">Missing</span>
@@ -261,7 +314,7 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records }) =
                       {checkOut ? (
                         <>
                           {checkOut.early_leave && <AlertTriangle className="inline w-3 h-3 mr-1 text-amber-500" />}
-                          {formatTimeDisplay(checkOut.timestamp)}
+                          {checkOutDisplay}
                         </>
                       ) : (
                         <span className="text-gray-400">Missing</span>
@@ -320,7 +373,7 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records }) =
                 {checkIn ? (
                   <div className={`flex items-center ${checkIn.is_late ? 'text-amber-600' : 'text-gray-700'}`}>
                     {checkIn.is_late && <AlertTriangle className="w-3 h-3 mr-1 text-amber-500" />}
-                    {formatTimeDisplay(checkIn.timestamp)}
+                    {checkInDisplay}
                   </div>
                 ) : (
                   <span className="text-gray-400">Missing</span>
@@ -330,7 +383,7 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records }) =
                 {checkOut ? (
                   <div className={`flex items-center ${checkOut.early_leave ? 'text-amber-600' : 'text-gray-700'}`}>
                     {checkOut.early_leave && <AlertTriangle className="w-3 h-3 mr-1 text-amber-500" />}
-                    {formatTimeDisplay(checkOut.timestamp)}
+                    {checkOutDisplay}
                   </div>
                 ) : (
                   <span className="text-gray-400">Missing</span>

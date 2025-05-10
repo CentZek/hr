@@ -69,6 +69,21 @@ const EmployeeList: React.FC<EmployeeListProps> = ({
     return { color: colors[shiftType] || 'bg-gray-100 text-gray-800', name };
   };
 
+  // Get standard display time based on shift type
+  const getStandardDisplayTime = (shiftType: string | null, timeType: 'start' | 'end') => {
+    if (!shiftType || !['morning', 'evening', 'night', 'canteen'].includes(shiftType)) return '';
+    
+    const displayTimes = {
+      morning: { startTime: '05:00', endTime: '14:00' },
+      evening: { startTime: '13:00', endTime: '22:00' },
+      night: { startTime: '21:00', endTime: '06:00' },
+      canteen: { startTime: '07:00', endTime: '16:00' } // Default to early canteen
+    };
+    
+    return timeType === 'start' ? displayTimes[shiftType as keyof typeof displayTimes].startTime : 
+                                 displayTimes[shiftType as keyof typeof displayTimes].endTime;
+  };
+
   const isLateNightShiftCheckIn = (checkIn: Date | null, shiftType: string | null): boolean => {
     if (!checkIn || shiftType !== 'night') return false;
     const hour = checkIn.getHours();
@@ -128,6 +143,16 @@ const EmployeeList: React.FC<EmployeeListProps> = ({
     const isLateNightCheckIn = day.shiftType === 'night' && day.firstCheckIn && isLateNightShiftCheckIn(day.firstCheckIn, day.shiftType);
     const hasRawData = day.allTimeRecords && day.allTimeRecords.length > 0;
     const isRawDataExpanded = expandedRawData?.empIndex === empIndex && expandedRawData?.dayIndex === dayIndex;
+    
+    // Display times - use standardized times for shift types when appropriate
+    let checkInDisplay = day.firstCheckIn ? formatTime24H(day.firstCheckIn) : (isOffDay ? 'OFF-DAY' : 'Missing');
+    let checkOutDisplay = day.lastCheckOut ? formatTime24H(day.lastCheckOut) : (isOffDay ? 'OFF-DAY' : 'Missing');
+    
+    // For manual entries and employee-submitted shifts, use the standard display times
+    if ((isManualEntry || day.notes?.includes('Employee submitted')) && day.shiftType) {
+      checkInDisplay = getStandardDisplayTime(day.shiftType, 'start');
+      checkOutDisplay = getStandardDisplayTime(day.shiftType, 'end');
+    }
 
     return (
       <div key={day.date} className={`mobile-card ${day.approved ? 'bg-green-50' : ''} 
@@ -173,7 +198,7 @@ const EmployeeList: React.FC<EmployeeListProps> = ({
             <div className={`text-sm mt-1 ${day.missingCheckIn ? 'text-red-500' : (day.isLate || isLateNightCheckIn) ? 'text-amber-600' : 'text-gray-700'}`}>
               {day.firstCheckIn ? 
                 <>{(day.isLate || isLateNightCheckIn) && <AlertTriangle className="inline w-3 h-3 mr-1 text-amber-500" />}
-                {formatTime24H(day.firstCheckIn)}
+                {checkInDisplay}
                 {day.shiftType === 'canteen' && <span className="ml-1 text-xs bg-yellow-100 text-yellow-800 px-1 rounded">{day.firstCheckIn.getHours() === 7 ? '07:00' : '08:00'}</span>}</> : 
                 isOffDay ? 'OFF-DAY' : 'Missing'}
             </div>
@@ -184,7 +209,7 @@ const EmployeeList: React.FC<EmployeeListProps> = ({
               {day.lastCheckOut ? 
                 <>{day.earlyLeave && <AlertTriangle className="inline w-3 h-3 mr-1 text-amber-500" />}
                 {day.excessiveOvertime && <Clock className="inline w-3 h-3 mr-1 text-blue-500" />}
-                {formatTime24H(day.lastCheckOut)}</> : 
+                {checkOutDisplay}</> : 
                 isOffDay ? 'OFF-DAY' : 'Missing'}
             </div>
           </div>
@@ -253,14 +278,24 @@ const EmployeeList: React.FC<EmployeeListProps> = ({
                     if (showApproved && !day.approved) return null;
                     
                     const hasMissingRecords = day.missingCheckIn || day.missingCheckOut;
-                    const isManualEntry = day.notes === 'Manual entry';
+                    const isManualEntry = day.notes === 'Manual entry' || day.notes?.includes('Employee submitted');
                     const isOffDay = day.notes === 'OFF-DAY';
                     const checkInHour = day.firstCheckIn?.getHours();
                     const shiftDisplay = getShiftTypeDisplay(isOffDay ? 'OFF-DAY' : day.shiftType, checkInHour);
-                    const wasCorrected = day.correctedRecords || day.notes.includes('Fixed mislabeled');
+                    const wasCorrected = day.correctedRecords || day.notes?.includes('Fixed mislabeled');
                     const isLateNightCheckIn = day.shiftType === 'night' && day.firstCheckIn && isLateNightShiftCheckIn(day.firstCheckIn, day.shiftType);
                     const hasRawData = day.allTimeRecords && day.allTimeRecords.length > 0;
                     const isRawDataExpanded = expandedRawData?.empIndex === empIndex && expandedRawData?.dayIndex === dayIndex;
+                    
+                    // Display times - use standardized times for shift types when appropriate
+                    let checkInDisplay = day.firstCheckIn ? formatTime24H(day.firstCheckIn) : (isOffDay ? 'OFF-DAY' : 'Missing');
+                    let checkOutDisplay = day.lastCheckOut ? formatTime24H(day.lastCheckOut) : (isOffDay ? 'OFF-DAY' : 'Missing');
+                    
+                    // For manual entries and employee-submitted shifts, use the standard display times
+                    if (isManualEntry && day.shiftType) {
+                      checkInDisplay = getStandardDisplayTime(day.shiftType, 'start');
+                      checkOutDisplay = getStandardDisplayTime(day.shiftType, 'end');
+                    }
                     
                     if (typeof window !== 'undefined' && window.innerWidth < 640) {
                       return renderMobileDay(day, dayIndex, empIndex, employee);
@@ -286,7 +321,7 @@ const EmployeeList: React.FC<EmployeeListProps> = ({
                           <div className={`flex items-center ${day.missingCheckIn ? 'text-red-500' : (day.isLate || isLateNightCheckIn) ? 'text-amber-600' : 'text-gray-700'}`}>
                             {day.firstCheckIn ? 
                               <>{(day.isLate || isLateNightCheckIn) && <AlertTriangle className="w-4 h-4 mr-1 text-amber-500" title="Late check-in" />}
-                              {formatTime24H(day.firstCheckIn)}
+                              {checkInDisplay}
                               {day.shiftType === 'canteen' && 
                                 <span className="ml-1 text-xs bg-yellow-100 text-yellow-800 px-1 rounded">
                                   {day.firstCheckIn.getHours() === 7 ? '07:00' : '08:00'}
@@ -297,7 +332,7 @@ const EmployeeList: React.FC<EmployeeListProps> = ({
                             {day.lastCheckOut ? 
                               <>{day.earlyLeave && <AlertTriangle className="w-4 h-4 mr-1 text-amber-500" />}
                               {day.excessiveOvertime && <Clock className="w-4 h-4 mr-1 text-blue-500" />}
-                              {formatTime24H(day.lastCheckOut)}</> : 
+                              {checkOutDisplay}</> : 
                               (isOffDay ? 'OFF-DAY' : 'Missing')}
                           </div>
                           <div className="font-medium text-gray-900">{isOffDay ? '0.00' : day.hoursWorked.toFixed(2)}</div>
