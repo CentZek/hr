@@ -24,7 +24,7 @@ export const fetchApprovedHours = async (monthFilter: string = ''): Promise<{
           employee_number
         )
       `)
-      .eq('status', 'check_in')  // Only count check-in records
+      .in('status', ['check_in', 'off_day'])  // Include both check-in and off-day records
       .not('exact_hours', 'is', null);
     
     // Apply month filter if provided
@@ -50,74 +50,53 @@ export const fetchApprovedHours = async (monthFilter: string = ''): Promise<{
       if (!record.employees) return;
       
       const employeeId = record.employee_id;
-      const hours = parseFloat(record.exact_hours || 0);
-      
-      if (isNaN(hours)) return;
-      
-      totalHoursSum += hours;
-      
-      if (!employeeSummary.has(employeeId)) {
-        employeeSummary.set(employeeId, {
-          id: employeeId,
-          name: record.employees.name,
-          employee_number: record.employees.employee_number,
-          total_days: new Set(),
-          total_hours: 0
-        });
+      // For check_in records with exact_hours, add to total
+      if (record.status === 'check_in') {
+        const hours = parseFloat(record.exact_hours || 0);
+        
+        if (isNaN(hours)) return;
+        
+        totalHoursSum += hours;
+        
+        if (!employeeSummary.has(employeeId)) {
+          employeeSummary.set(employeeId, {
+            id: employeeId,
+            name: record.employees.name,
+            employee_number: record.employees.employee_number,
+            total_days: new Set(),
+            total_hours: 0
+          });
+        }
+        
+        const employee = employeeSummary.get(employeeId);
+        employee.total_hours += hours;
       }
-      
-      const employee = employeeSummary.get(employeeId);
-      employee.total_hours += hours;
       
       // Add date to set of days - Only if timestamp is valid
       if (record.timestamp && isValid(new Date(record.timestamp))) {
         // Use the UTC date portion so nothing shifts under local timezones
         const utc = parseISO(record.timestamp);
-        const date = utc.toISOString().slice(0,10); // "YYYY-MM-DD"
-        employee.total_days.add(date);
-      }
-    });
-    
-    // Handle OFF-DAY records separately (they don't have check-in status)
-    const { data: offDayData, error: offDayError } = await supabase
-      .from('time_records')
-      .select(`
-        employee_id,
-        timestamp,
-        status,
-        employees (
-          id,
-          name,
-          employee_number
-        )
-      `)
-      .eq('status', 'off_day');
-    
-    if (offDayError) throw offDayError;
-    
-    // Add OFF-DAY records to the employee totals
-    offDayData?.forEach(record => {
-      if (!record.employees) return;
-      
-      const employeeId = record.employee_id;
-      
-      if (!employeeSummary.has(employeeId)) {
-        employeeSummary.set(employeeId, {
-          id: employeeId,
-          name: record.employees.name,
-          employee_number: record.employees.employee_number,
-          total_days: new Set(),
-          total_hours: 0
-        });
-      }
-      
-      const employee = employeeSummary.get(employeeId);
-      
-      // Add date to set of days for OFF-DAY
-      if (record.timestamp && isValid(new Date(record.timestamp))) {
-        // Use the UTC date portion so nothing shifts under local timezones
-        const utc = parseISO(record.timestamp);
-        const date = utc.toISOString().slice(0,10); // "YYYY-MM-DD"
+        let date;
+        
+        if (record.working_week_start) {
+          // Use working_week_start for grouping if available
+          date = record.working_week_start;
+        } else {
+          // Otherwise extract from timestamp
+          date = utc.toISOString().slice(0,10); // "YYYY-MM-DD"
+        }
+        
+        if (!employeeSummary.has(employeeId)) {
+          employeeSummary.set(employeeId, {
+            id: employeeId,
+            name: record.employees.name,
+            employee_number: record.employees.employee_number,
+            total_days: new Set(),
+            total_hours: 0
+          });
+        }
+        
+        const employee = employeeSummary.get(employeeId);
         employee.total_days.add(date);
       }
     });
@@ -271,7 +250,7 @@ export const saveRecordsToDatabase = async (employeeRecords: EmployeeRecord[]): 
             is_fixed: day.correctedRecords || false,
             corrected_records: day.correctedRecords || false,
             mislabeled: false,
-            // For night shifts, set working_week_start to help with grouping
+            // Always use original date for working_week_start
             working_week_start: day.date
           });
         }
@@ -298,8 +277,8 @@ export const saveRecordsToDatabase = async (employeeRecords: EmployeeRecord[]): 
             is_fixed: day.correctedRecords || false,
             corrected_records: day.correctedRecords || false,
             mislabeled: false,
-            // For night shifts with early morning checkout, set working_week_start to the check-in date
-            working_week_start: day.shiftType === 'night' && day.lastCheckOut.getHours() < 12 ? day.date : day.date
+            // FIXED: For night shifts, always use check-in date for working_week_start
+            working_week_start: day.date
           });
         }
         
