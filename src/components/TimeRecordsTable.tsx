@@ -203,46 +203,49 @@ const TimeRecordsTable: React.FC<TimeRecordsTableProps> = ({
           return;
         }
         
-        // Get all check-ins and check-outs for this day
-        const checkIns = records.filter((r) => r.status === 'check_in');
-        const checkOuts = records.filter((r) => r.status === 'check_out');
-        
         // Check for night shift pattern - check-in on this day, check-out on next day
-        if (checkIns.length > 0 && checkIns[0].shift_type === 'night') {
-          // This could be the start of a night shift - try to find the matching checkout
-          const nextDay = new Date(date);
-          nextDay.setDate(nextDay.getDate() + 1);
-          const nextDayDate = nextDay.toISOString().slice(0,10);  // "YYYY-MM-DD"
+        if (records.some(r => r.shift_type === 'night')) {
+          // Get all check-ins and check-outs for this day
+          const checkIns = records.filter((r) => r.status === 'check_in' && r.shift_type === 'night');
+          const checkOuts = records.filter((r) => r.status === 'check_out' && r.shift_type === 'night');
           
-          // Check if next day has check-out records
-          if (groupedRecords[nextDayDate] && groupedRecords[nextDayDate][employeeId]) {
-            const nextDayCheckOuts = groupedRecords[nextDayDate][employeeId]
-              .filter((r: any) => r.status === 'check_out' && r.shift_type === 'night');
+          // If we have a check-in but no check-out for night shift, check next day
+          if (checkIns.length > 0 && checkOuts.length === 0) {
+            // This could be the start of a night shift - try to find the matching checkout
+            const nextDay = new Date(date);
+            nextDay.setDate(nextDay.getDate() + 1);
+            const nextDayDate = nextDay.toISOString().slice(0,10);  // "YYYY-MM-DD"
             
-            if (nextDayCheckOuts.length > 0) {
-              // We have a night shift spanning days
-              const checkIn = checkIns[0];
-              const checkOut = nextDayCheckOuts[0];
+            // Check if next day has check-out records
+            if (groupedRecords[nextDayDate] && groupedRecords[nextDayDate][employeeId]) {
+              const nextDayCheckOuts = groupedRecords[nextDayDate][employeeId]
+                .filter((r: any) => r.status === 'check_out' && r.shift_type === 'night');
               
-              result.push({
-                date,
-                employeeId,
-                employeeName: checkIn.employees?.name || 'Unknown',
-                employeeNumber: checkIn.employees?.employee_number || 'Unknown',
-                checkIn,
-                checkOut,
-                shiftType: 'night'
-              });
-              
-              processedDates.add(date);
-              // Don't fully process the next day - we'll handle any other records separately
-              return; // Changed from continue to return to fix the syntax error
+              if (nextDayCheckOuts.length > 0) {
+                // We have a night shift spanning days
+                const checkIn = checkIns[0];
+                const checkOut = nextDayCheckOuts[0];
+                
+                result.push({
+                  date,
+                  employeeId,
+                  employeeName: checkIn.employees?.name || 'Unknown',
+                  employeeNumber: checkIn.employees?.employee_number || 'Unknown',
+                  checkIn,
+                  checkOut,
+                  shiftType: 'night'
+                });
+                
+                processedDates.add(date);
+                // Don't fully process the next day - we'll handle any other records separately
+                return;
+              }
             }
           }
         }
         
         // Sort by timestamp to get earliest check-in and latest check-out
-        const sortedCheckIns = [...checkIns].sort((a, b) => {
+        const sortedCheckIns = records.filter(r => r.status === 'check_in').sort((a, b) => {
           try {
             return new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime();
           } catch (error) {
@@ -251,7 +254,7 @@ const TimeRecordsTable: React.FC<TimeRecordsTableProps> = ({
           }
         });
         
-        const sortedCheckOuts = [...checkOuts].sort((a, b) => {
+        const sortedCheckOuts = records.filter(r => r.status === 'check_out').sort((a, b) => {
           try {
             return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
           } catch (error) {
@@ -265,7 +268,6 @@ const TimeRecordsTable: React.FC<TimeRecordsTableProps> = ({
         const latestCheckOut = sortedCheckOuts.length > 0 ? sortedCheckOuts[0] : null;
         
         // Improved handling for single-record days (either just check-in or just check-out)
-        // Special handling for April 12 and similar cases
         if ((earliestCheckIn && !latestCheckOut) || (!earliestCheckIn && latestCheckOut)) {
           // For days with only check-ins, ensure they're properly displayed
           if (earliestCheckIn && !latestCheckOut) {
@@ -385,11 +387,11 @@ const TimeRecordsTable: React.FC<TimeRecordsTableProps> = ({
         result.push({
           date,
           employeeId,
-          employeeName: (checkIns[0] || checkOuts[0])?.employees?.name || 'Unknown',
-          employeeNumber: (checkIns[0] || checkOuts[0])?.employees?.employee_number || 'Unknown',
-          checkIn: checkIns.length > 0 ? checkIns[0] : null,
-          checkOut: checkOuts.length > 0 ? checkOuts[0] : null,
-          shiftType: (checkIns[0] || checkOuts[0])?.shift_type || 'unknown'
+          employeeName: (records[0]?.employees?.name) || 'Unknown',
+          employeeNumber: (records[0]?.employees?.employee_number) || 'Unknown',
+          checkIn: earliestCheckIn,
+          checkOut: latestCheckOut,
+          shiftType: (earliestCheckIn || latestCheckOut)?.shift_type || 'unknown'
         });
         processedDates.add(date);
       });
