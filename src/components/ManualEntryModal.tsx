@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { format } from 'date-fns';
 import { X, Clock, User, Calendar, Check, AlertCircle, Info } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import toast from 'react-hot-toast';
 import { SHIFT_TIMES, DISPLAY_SHIFT_TIMES } from '../types';
 import { parseShiftTimes } from '../utils/dateTimeHelper';
 import { fetchManualTimeRecords } from '../services/database';
@@ -131,10 +132,28 @@ const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
       // Use our helper function to properly handle day rollover
       const { checkIn, checkOut } = parseShiftTimes(shift.date, startTime, endTime, shift.shift_type);
       
+      // FIXED: Use local date-time strings instead of UTC timestamps
+      let checkInTimestamp, checkOutTimestamp;
+      
+      // For night shifts, handle the day boundary properly
+      if (shift.shift_type === 'night') {
+        // The check-in day
+        const checkInDateStr = format(checkIn, 'yyyy-MM-dd');
+        checkInTimestamp = `${checkInDateStr}T${startTime}:00`;
+        
+        // The check-out is next day for night shifts
+        const checkOutDateStr = format(checkOut, 'yyyy-MM-dd');
+        checkOutTimestamp = `${checkOutDateStr}T${endTime}:00`;
+      } else {
+        // For normal shifts, both are on the same day
+        checkInTimestamp = `${shift.date}T${startTime}:00`;
+        checkOutTimestamp = `${shift.date}T${endTime}:00`;
+      }
+      
       const timeRecords = [
         {
           employee_id: shift.employee_id,
-          timestamp: checkIn.toISOString(), // Use full ISO string with timezone
+          timestamp: checkInTimestamp,
           status: 'check_in',
           shift_type: shift.shift_type,
           notes: 'Employee submitted shift - HR approved; hours:9.00',
@@ -146,7 +165,7 @@ const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
         },
         {
           employee_id: shift.employee_id,
-          timestamp: checkOut.toISOString(), // Use full ISO string with timezone
+          timestamp: checkOutTimestamp,
           status: 'check_out',
           shift_type: shift.shift_type,
           notes: 'Employee submitted shift - HR approved; hours:9.00',
@@ -255,13 +274,31 @@ const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
         shiftType
       );
 
+      // FIXED: Use local date-time strings instead of UTC timestamps
+      let checkInTimestamp, checkOutTimestamp;
+      
+      // For night shifts, handle the day boundary properly
+      if (shiftType === 'night') {
+        // The check-in day
+        const checkInDateStr = format(checkIn, 'yyyy-MM-dd');
+        checkInTimestamp = `${checkInDateStr}T${times.start}:00`;
+        
+        // The check-out is next day for night shifts
+        const checkOutDateStr = format(checkOut, 'yyyy-MM-dd');
+        checkOutTimestamp = `${checkOutDateStr}T${times.end}:00`;
+      } else {
+        // For normal shifts, both are on the same day
+        checkInTimestamp = `${selectedDate}T${times.start}:00`;
+        checkOutTimestamp = `${selectedDate}T${times.end}:00`;
+      }
+
       // Add records to time_records table with full ISO timestamps
       await supabase
         .from('time_records')
         .insert([
           {
             employee_id: employeeId,
-            timestamp: checkIn.toISOString(), // Use full ISO string with timezone
+            timestamp: checkInTimestamp,
             status: 'check_in',
             shift_type: shiftType,
             notes: notes || 'Manual entry; hours:9.00',
@@ -273,7 +310,7 @@ const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
           },
           {
             employee_id: employeeId,
-            timestamp: checkOut.toISOString(), // Use full ISO string with timezone
+            timestamp: checkOutTimestamp,
             status: 'check_out',
             shift_type: shiftType,
             notes: notes || 'Manual entry; hours:9.00',
@@ -285,9 +322,9 @@ const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
           }
         ]);
 
-      // FIXED: Fetch fresh records from the database instead of constructing records locally
+      // FIXED: Fetch fresh records from the database
       const freshRecords = await fetchManualTimeRecords(50);
-      
+
       // Call the save callback
       onSave({
         employee: { ...employeeData, employeeNumber: employeeData?.employee_number },

@@ -371,9 +371,9 @@ function HrPage() {
       setTotalEmployees(updatedEmpCount);
       setTotalDays(updatedDaysCount);
 
-      // Refresh manually approved records
+      // FIXED: Refresh manually approved records from database instead of manually updating state
       await refreshData();
-
+      
       toast.dismiss(loadingToast);
       if (successCount > 0) {
         toast.success(`Successfully saved ${successCount} records to database`);
@@ -514,7 +514,7 @@ function HrPage() {
     // Set hasUploadedFile to true to ensure proper display
     setHasUploadedFile(true);
     
-    // Refresh manual records - FIXED: Get fresh data from database instead of manually updating state
+    // FIXED: Refresh manual records - Get fresh data from database instead of manually updating state
     await refreshData();
     
     // Show success message
@@ -544,7 +544,7 @@ function HrPage() {
         date: recordData.date
       });
       
-      // FIXED: Refresh manually approved records from database instead of manually updating state
+      // Refresh manually approved records
       await refreshData();
       
       toast.success('Manual time record added successfully');

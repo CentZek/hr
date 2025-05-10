@@ -217,7 +217,7 @@ export const saveRecordsToDatabase = async (employeeRecords: EmployeeRecord[]): 
           const { error } = await supabase.from('time_records').insert([
             {
               employee_id: await getEmployeeId(employee.employeeNumber),
-              timestamp: new Date(`${day.date}T12:00:00`).toISOString(), // Use full ISO string
+              timestamp: `${day.date}T12:00:00`, // Use local date-time string
               status: 'off_day',
               shift_type: 'off_day',
               notes: 'OFF-DAY',
@@ -251,9 +251,14 @@ export const saveRecordsToDatabase = async (employeeRecords: EmployeeRecord[]): 
         
         // Add check-in record if available
         if (day.firstCheckIn) {
+          // FIXED: Use local date-time string instead of UTC timestamp
+          const checkInDateStr = format(day.firstCheckIn, 'yyyy-MM-dd');
+          const checkInTimeStr = format(day.firstCheckIn, 'HH:mm:ss');
+          const checkInTimestamp = `${checkInDateStr}T${checkInTimeStr}`;
+          
           records.push({
             employee_id: employeeId,
-            timestamp: day.firstCheckIn.toISOString(), // Use full ISO string
+            timestamp: checkInTimestamp,
             status: 'check_in',
             shift_type: day.shiftType,
             is_late: day.isLate,
@@ -261,7 +266,7 @@ export const saveRecordsToDatabase = async (employeeRecords: EmployeeRecord[]): 
             deduction_minutes: day.penaltyMinutes,
             notes: day.notes ? `${day.notes}; hours:${day.hoursWorked.toFixed(2)}` : `hours:${day.hoursWorked.toFixed(2)}`,
             exact_hours: day.hoursWorked,
-            display_check_in: format(day.firstCheckIn, 'HH:mm'),
+            display_check_in: day.firstCheckIn ? format(day.firstCheckIn, 'HH:mm') : 'Missing',
             display_check_out: day.lastCheckOut ? format(day.lastCheckOut, 'HH:mm') : 'Missing',
             is_fixed: day.correctedRecords || false,
             corrected_records: day.correctedRecords || false,
@@ -273,9 +278,14 @@ export const saveRecordsToDatabase = async (employeeRecords: EmployeeRecord[]): 
         
         // Add check-out record if available
         if (day.lastCheckOut) {
+          // FIXED: Use local date-time string instead of UTC timestamp
+          const checkOutDateStr = format(day.lastCheckOut, 'yyyy-MM-dd');
+          const checkOutTimeStr = format(day.lastCheckOut, 'HH:mm:ss');
+          const checkOutTimestamp = `${checkOutDateStr}T${checkOutTimeStr}`;
+          
           records.push({
             employee_id: employeeId,
-            timestamp: day.lastCheckOut.toISOString(), // Use full ISO string
+            timestamp: checkOutTimestamp,
             status: 'check_out',
             shift_type: day.shiftType,
             is_late: false,

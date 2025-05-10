@@ -138,9 +138,23 @@ const EmployeeShiftRequest: React.FC<EmployeeShiftRequestProps> = ({ onShiftAppr
           throw new Error('Invalid date after parsing shift times');
         }
         
-        // Format timestamps correctly for database insertion with full ISO string
-        const checkInTimestamp = checkInDate.toISOString();
-        const checkOutTimestamp = checkOutDate.toISOString();
+        // FIXED: Use local date-time strings instead of UTC timestamps
+        let checkInTimestamp, checkOutTimestamp;
+        
+        // For night shifts, handle the day boundary properly
+        if (shift.shift_type === 'night') {
+          // The check-in day
+          const checkInDateStr = format(checkInDate, 'yyyy-MM-dd');
+          checkInTimestamp = `${checkInDateStr}T${startTime}:00`;
+          
+          // The check-out is next day for night shifts
+          const checkOutDateStr = format(checkOutDate, 'yyyy-MM-dd');
+          checkOutTimestamp = `${checkOutDateStr}T${endTime}:00`;
+        } else {
+          // For normal shifts, both are on the same day
+          checkInTimestamp = `${dateStr}T${startTime}:00`;
+          checkOutTimestamp = `${dateStr}T${endTime}:00`;
+        }
         
         // Calculate hours worked for consistency
         const hoursWorked = 9.0; // Standard hours for all shift types
@@ -191,6 +205,9 @@ const EmployeeShiftRequest: React.FC<EmployeeShiftRequestProps> = ({ onShiftAppr
         // Remove the shift from the list
         setEmployeeShiftRequests(prev => prev.filter(s => s.id !== shift.id));
         
+        // FIXED: Get fresh records from the database instead of creating manually
+        const freshRecords = await fetchManualTimeRecords(50);
+        
         // Call callback if provided
         if (onShiftApproved) {
           const employeeData = {
@@ -200,9 +217,6 @@ const EmployeeShiftRequest: React.FC<EmployeeShiftRequestProps> = ({ onShiftAppr
             employee_number: shift.employees.employee_number
           };
           
-          // FIXED: Fetch the actual records from the database instead of creating objects by hand
-          const freshRecords = await fetchManualTimeRecords(50);
-
           onShiftApproved(employeeData, {
             ...shift,
             date: dateStr,
