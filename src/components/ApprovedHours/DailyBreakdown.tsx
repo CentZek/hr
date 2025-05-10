@@ -17,58 +17,27 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records }) =
       // Skip invalid records
       if (!record.timestamp) return acc;
       
-      // For night shifts, use working_week_start as the key for grouping if available
-      if (record.shift_type === 'night' && record.working_week_start) {
-        const workWeekDate = record.working_week_start;
-        if (!acc[workWeekDate]) {
-          acc[workWeekDate] = [];
-        }
-        acc[workWeekDate].push(record);
-        return acc;
+      // parse the ISO timestamp into a JS Date
+      const ts = parseISO(record.timestamp);
+      // start by assuming it belongs on its own day
+      let key = format(ts, 'yyyy-MM-dd');
+
+      // if this is a night‐shift check-out after midnight, re-group onto the PREVIOUS day
+      if (
+        record.status === 'check_out' &&
+        record.shift_type === 'night' &&
+        ts.getHours() < 12           // local hour: 0–11 = early morning
+      ) {
+        const prev = new Date(ts);
+        prev.setDate(prev.getDate() - 1);
+        key = format(prev, 'yyyy-MM-dd');
       }
 
-      // Use the UTC date portion so nothing shifts under local timezones
-      const utc = parseISO(record.timestamp);
-      if (!isValid(utc)) return acc;
-      
-      const date = utc.toISOString().slice(0,10);  // "YYYY-MM-DD"
-      
-      // Check for night shift or evening shift checkouts in early morning hours
-      if (record.status === 'check_out') {
-        const recordHourUTC = utc.getUTCHours();
-        
-        // For night shifts with early morning checkout, associate with previous day
-        if (record.shift_type === 'night' && recordHourUTC < 12) {
-          // This is a night shift checkout on the next day
-          const prevDate = new Date(record.timestamp);
-          prevDate.setDate(prevDate.getDate() - 1);
-          const prevDateStr = prevDate.toISOString().slice(0,10);  // "YYYY-MM-DD"
-          
-          if (!acc[prevDateStr]) {
-            acc[prevDateStr] = [];
-          }
-          acc[prevDateStr].push(record);
-          return acc;
-        }
-        // For evening shifts with early morning checkout, associate with previous day
-        else if (record.shift_type === 'evening' && recordHourUTC < 12) {
-          // This is likely an evening shift checkout on the next day
-          const prevDate = new Date(record.timestamp);
-          prevDate.setDate(prevDate.getDate() - 1);
-          const prevDateStr = prevDate.toISOString().slice(0,10);  // "YYYY-MM-DD"
-          
-          if (!acc[prevDateStr]) {
-            acc[prevDateStr] = [];
-          }
-          acc[prevDateStr].push(record);
-          return acc;
-        }
-      }
-      
-      if (!acc[date]) {
-        acc[date] = [];
-      }
-      acc[date].push(record);
+      // (leave evening & morning entirely alone—no other shifting)
+
+      // push into the proper bucket
+      (acc[key] = acc[key] || []).push(record);
+      return acc;
     } catch (error) {
       console.error('Error grouping record by date:', error, record);
     }
