@@ -86,37 +86,9 @@ const TimeRecordsTable: React.FC<TimeRecordsTableProps> = ({
         return;
       }
       
-      // FIXED: Use working_week_start if available for consistent date grouping
-      // This ensures manual entries and night shifts are grouped correctly
-      let dateKey = record.working_week_start || '';
-      
-      // If working_week_start is not available, extract from timestamp
-      if (!dateKey) {
-        // Use the UTC date portion so nothing shifts under local timezones
-        const utc = parseISO(record.timestamp);
-        dateKey = utc.toISOString().slice(0,10);  // "YYYY-MM-DD"
-        
-        // Special handling for night shift or evening shift checkouts in early morning hours
-        if (record.status === 'check_out') {
-          // Use UTC hours to ensure consistency across timezones
-          const recordHourUTC = utc.getUTCHours();
-          
-          // For night shifts with early morning checkout, associate with previous day
-          if (record.shift_type === 'night' && recordHourUTC < 12) {
-            // This is a night shift checkout on the next day
-            const prevDate = new Date(record.timestamp);
-            prevDate.setDate(prevDate.getDate() - 1);
-            dateKey = prevDate.toISOString().slice(0,10);  // "YYYY-MM-DD"
-          }
-          // For evening shifts with early morning checkout, associate with previous day
-          else if (record.shift_type === 'evening' && recordHourUTC < 12) {
-            // This is likely an evening shift checkout on the next day
-            const prevDate = new Date(record.timestamp);
-            prevDate.setDate(prevDate.getDate() - 1);
-            dateKey = prevDate.toISOString().slice(0,10);  // "YYYY-MM-DD"
-          }
-        }
-      }
+      // FIXED: Use working_week_start as the primary grouping key
+      // This ensures night shifts group correctly
+      const dateKey = record.working_week_start || format(parseISO(record.timestamp), 'yyyy-MM-dd');
 
       if (!groups[dateKey]) {
         groups[dateKey] = {};
