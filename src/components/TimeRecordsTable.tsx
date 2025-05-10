@@ -70,9 +70,9 @@ const TimeRecordsTable: React.FC<TimeRecordsTableProps> = ({
         let date;
         try {
           if (record.timestamp) {
-            // Use the local date format for consistency
+            // Use the local date for consistency
             const ts = parseISO(record.timestamp);
-            date = format(ts, 'yyyy-MM-dd'); // Local date format
+            date = format(ts, 'yyyy-MM-dd');  // local date
           } else if (record.working_week_start) {
             date = record.working_week_start;
           } else {
@@ -111,19 +111,17 @@ const TimeRecordsTable: React.FC<TimeRecordsTableProps> = ({
       
       // For normal records, handle date grouping safely
       const ts = parseISO(record.timestamp);
-      
-      // 1) Default to the **local** calendar date (so morning/evening stay on the same day)
+      // Use the local date for consistent grouping
       let dayKey = format(ts, 'yyyy-MM-dd');  // local date
       
-      // 2) Only roll back a true night-shift check-out that fell **before noon local** time
+      // Only roll back a true night-shift check-out that fell before noon local time
       if (
         record.status === 'check_out' &&
         record.shift_type === 'night' &&
-        ts.getHours() < 12           // local hour: 0–11 = early morning
+        ts.getHours() < 12           // local hour: 0–11
       ) {
-        const prev = new Date(ts);
-        prev.setDate(prev.getDate() - 1);
-        dayKey = format(prev, 'yyyy-MM-dd');
+        const prevLocal = subDays(ts, 1);
+        dayKey = format(prevLocal, 'yyyy-MM-dd');
       }
       
       if (!groups[dayKey]) {

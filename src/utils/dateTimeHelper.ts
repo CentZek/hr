@@ -61,16 +61,21 @@ export function parseShiftTimes(dateStr: string, timeIn: string, timeOut: string
   checkIn: Date; 
   checkOut: Date;
 } {
+  // Parse check-in time - always on the base date
   const checkIn = parse(`${dateStr}T${timeIn}:00.000Z`, "yyyy-MM-dd'T'HH:mm:ss.SSSX", new Date());
-  let checkOut = parse(`${dateStr}T${timeOut}:00.000Z`, "yyyy-MM-dd'T'HH:mm:ss.SSSX", new Date());
   
-  // For night shifts, always roll over to next day if checkout is in early morning hours
-  if (shiftType === 'night' && checkOut.getHours() < 12) {
-    checkOut = addDays(checkOut, 1);
-  } 
-  // If check-out time is same or earlier than check-in, assume it's next day
-  else if (isBefore(checkOut, checkIn) || checkOut.getTime() === checkIn.getTime()) {
-    checkOut = addDays(checkOut, 1);
+  // Parse check-out time - conditionally roll to next day for night shifts
+  let checkOut;
+  
+  if (shiftType === 'night') {
+    // For night shifts, check-out is on the next day
+    const nextDay = new Date(dateStr);
+    nextDay.setDate(nextDay.getDate() + 1);
+    const nextDateStr = format(nextDay, 'yyyy-MM-dd');
+    checkOut = parse(`${nextDateStr}T${timeOut}:00.000Z`, "yyyy-MM-dd'T'HH:mm:ss.SSSX", new Date());
+  } else {
+    // For morning, evening, and canteen shifts, check-out is on the same day
+    checkOut = parse(`${dateStr}T${timeOut}:00.000Z`, "yyyy-MM-dd'T'HH:mm:ss.SSSX", new Date());
   }
   
   return { checkIn, checkOut };
