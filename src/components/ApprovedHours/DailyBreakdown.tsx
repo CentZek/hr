@@ -388,7 +388,7 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records }) =
                   <span className="text-gray-400">–</span>
                 )}
               </div>
-              <div className="font-medium text-gray-900 flex items-center">
+              <div className="font-medium text-gray-800 flex items-center">
                 {hours.toFixed(2)}
                 {isSignificantOvertime && 
                   <Clock className="w-3 h-3 ml-1 text-blue-500" title="Overtime hours" />
