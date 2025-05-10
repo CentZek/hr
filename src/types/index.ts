@@ -44,6 +44,10 @@ export interface DailyRecord {
   showRawData?: boolean;         // UI state for whether to show expanded raw data
   isCrossDay?: boolean;          // Flag to indicate this date has cross-day shift
   checkOutNextDay?: boolean;     // Flag to indicate checkout is on next day
+  
+  // Display values for check-in/check-out times (for consistent display)
+  displayCheckIn?: string;
+  displayCheckOut?: string;
 }
 
 export interface EmployeeRecord {

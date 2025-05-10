@@ -1,6 +1,6 @@
 import { EmployeeRecord, DailyRecord } from '../types';
 import { calculatePayableHours, determineShiftType } from './shiftCalculations';
-import { parse, format, eachDayOfInterval } from 'date-fns';
+import { parse, format, eachDayOfInterval, parseISO } from 'date-fns';
 import { parseShiftTimes } from './dateTimeHelper';
 
 // Handle adding a manual entry to the employee records
@@ -65,6 +65,22 @@ export const addManualEntryToRecords = (
     });
   }
   
+  // Get standard display times based on shift
+  const getStandardDisplayTime = (type: string, timeType: 'start' | 'end') => {
+    const displayTimes = {
+      morning: { startTime: '05:00', endTime: '14:00' },
+      evening: { startTime: '13:00', endTime: '22:00' },
+      night: { startTime: '21:00', endTime: '06:00' },
+      canteen: { startTime: '07:00', endTime: '16:00' } // Default to early canteen
+    };
+    
+    if (!type || !displayTimes[type as keyof typeof displayTimes]) return '';
+    
+    return timeType === 'start' ? 
+      displayTimes[type as keyof typeof displayTimes].startTime : 
+      displayTimes[type as keyof typeof displayTimes].endTime;
+  };
+  
   // Create daily record
   const newDay: DailyRecord = {
     date,
@@ -83,7 +99,10 @@ export const addManualEntryToRecords = (
     allTimeRecords: allTimeRecords,
     hasMultipleRecords: allTimeRecords.length > 0,
     isCrossDay: shiftType === 'night',
-    checkOutNextDay: shiftType === 'night'
+    checkOutNextDay: shiftType === 'night',
+    // Add display values for consistent viewing
+    displayCheckIn: getStandardDisplayTime(shiftType, 'start'),
+    displayCheckOut: getStandardDisplayTime(shiftType, 'end')
   };
   
   // Get normalized employee info for matching
@@ -232,7 +251,9 @@ export const createOffDayRecord = (dateStr: string): DailyRecord => {
     excessiveOvertime: false,
     penaltyMinutes: 0,
     allTimeRecords: [],
-    hasMultipleRecords: false
+    hasMultipleRecords: false,
+    displayCheckIn: 'OFF-DAY',
+    displayCheckOut: 'OFF-DAY'
   };
 };
 
@@ -271,6 +292,22 @@ export const convertShiftRequestsToRecords = async () => {
       
       const hoursWorked = calculatePayableHours(checkIn, checkOut, shift.shift_type);
       
+      // Get standard display times based on shift type
+      const getStandardDisplayTime = (shiftType: string, timeType: 'start' | 'end') => {
+        const displayTimes = {
+          morning: { startTime: '05:00', endTime: '14:00' },
+          evening: { startTime: '13:00', endTime: '22:00' },
+          night: { startTime: '21:00', endTime: '06:00' },
+          canteen: { startTime: '07:00', endTime: '16:00' }
+        };
+        
+        if (!displayTimes[shiftType as keyof typeof displayTimes]) return '';
+        
+        return timeType === 'start' ? 
+          displayTimes[shiftType as keyof typeof displayTimes].startTime : 
+          displayTimes[shiftType as keyof typeof displayTimes].endTime;
+      };
+      
       emp.days.push({
         date: shift.date,
         firstCheckIn: checkIn,
@@ -284,7 +321,9 @@ export const convertShiftRequestsToRecords = async () => {
         isLate: false,
         earlyLeave: false,
         excessiveOvertime: false,
-        penaltyMinutes: 0
+        penaltyMinutes: 0,
+        displayCheckIn: getStandardDisplayTime(shift.shift_type, 'start'),
+        displayCheckOut: getStandardDisplayTime(shift.shift_type, 'end')
       });
       
       emp.totalDays++;
