@@ -126,8 +126,7 @@ const EmployeeShiftRequest: React.FC<EmployeeShiftRequestProps> = ({ onShiftAppr
       
       // Handle night shift that crosses to next day using our helper function
       try {
-        // FIXED: Use string timestamps for consistent timezone handling
-        const { checkIn, checkOut } = parseShiftTimes(
+        const { checkIn: checkInDate, checkOut: checkOutDate } = parseShiftTimes(
           dateStr,
           startTime,
           endTime,
@@ -135,15 +134,13 @@ const EmployeeShiftRequest: React.FC<EmployeeShiftRequestProps> = ({ onShiftAppr
         );
         
         // Validate the parsed dates
-        if (!isValid(checkIn) || !isValid(checkOut)) {
+        if (!isValid(checkInDate) || !isValid(checkOutDate)) {
           throw new Error('Invalid date after parsing shift times');
         }
         
-        // Get local ISO string dates with the original date preserved
-        const checkInTimestamp = `${dateStr}T${startTime}:00`;
-        const checkOutDate = shift.shift_type === 'night' ? 
-          format(checkOut, 'yyyy-MM-dd') : dateStr;
-        const checkOutTimestamp = `${checkOutDate}T${endTime}:00`;
+        // Format timestamps correctly for database insertion with full ISO string
+        const checkInTimestamp = checkInDate.toISOString();
+        const checkOutTimestamp = checkOutDate.toISOString();
         
         // Calculate hours worked for consistency
         const hoursWorked = 9.0; // Standard hours for all shift types
@@ -194,9 +191,6 @@ const EmployeeShiftRequest: React.FC<EmployeeShiftRequestProps> = ({ onShiftAppr
         // Remove the shift from the list
         setEmployeeShiftRequests(prev => prev.filter(s => s.id !== shift.id));
         
-        // FIXED: Fetch the actual records from the database instead of creating objects by hand
-        const freshRecords = await fetchManualTimeRecords(50);
-
         // Call callback if provided
         if (onShiftApproved) {
           const employeeData = {
@@ -206,13 +200,16 @@ const EmployeeShiftRequest: React.FC<EmployeeShiftRequestProps> = ({ onShiftAppr
             employee_number: shift.employees.employee_number
           };
           
+          // FIXED: Fetch the actual records from the database instead of creating objects by hand
+          const freshRecords = await fetchManualTimeRecords(50);
+
           onShiftApproved(employeeData, {
             ...shift,
             date: dateStr,
             start_time: startTime,
             end_time: endTime,
-            checkInDate: checkIn,
-            checkOutDate: checkOut,
+            checkInDate,
+            checkOutDate,
             hoursWorked
           });
         }
