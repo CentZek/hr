@@ -10,7 +10,14 @@ import { parse, format, isValid, addDays, isSameOrBefore, isBefore, parseISO } f
  */
 export function formatTime24H(date: Date | null): string {
   if (!date) return 'Missing';
-  return format(date, 'HH:mm');
+  
+  // First ensure we're working with a proper Date object
+  const validDate = date instanceof Date ? date : new Date(date);
+  if (!isValid(validDate)) return 'Missing';
+
+  // IMPORTANT: For display purposes, use the local time rather than UTC
+  // This ensures times show correctly in the user's timezone
+  return format(validDate, 'HH:mm');
 }
 
 /**

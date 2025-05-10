@@ -60,8 +60,16 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records }) =
   const formatTimeDisplay = (timestamp: string | null): string => {
     if (!timestamp) return '–';
     
-    const date = new Date(timestamp);
-    return formatTime24H(date);
+    try {
+      // Get the timestamp and ensure it's treated consistently
+      const date = parseISO(timestamp);
+      
+      // IMPORTANT: Format as local time, not UTC - this fixes the time differences
+      return format(date, 'HH:mm');
+    } catch (err) {
+      console.error("Error formatting time:", err);
+      return '–';
+    }
   };
 
   if (isLoading) {
@@ -260,7 +268,7 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records }) =
                       {checkIn ? (
                         <>
                           {checkIn.is_late && <AlertTriangle className="inline w-3 h-3 mr-1 text-amber-500" />}
-                          {checkIn.display_check_in || formatTimeDisplay(checkIn.timestamp)}
+                          {formatTimeDisplay(checkIn.timestamp)}
                         </>
                       ) : (
                         <span className="text-gray-400">Missing</span>
@@ -274,7 +282,7 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records }) =
                       {checkOut ? (
                         <>
                           {checkOut.early_leave && <AlertTriangle className="inline w-3 h-3 mr-1 text-amber-500" />}
-                          {checkOut.display_check_out || formatTimeDisplay(checkOut.timestamp)}
+                          {formatTimeDisplay(checkOut.timestamp)}
                         </>
                       ) : (
                         <span className="text-gray-400">Missing</span>
@@ -333,7 +341,7 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records }) =
                 {checkIn ? (
                   <div className={`flex items-center ${checkIn.is_late ? 'text-amber-600' : 'text-gray-700'}`}>
                     {checkIn.is_late && <AlertTriangle className="w-3 h-3 mr-1 text-amber-500" />}
-                    {checkIn.display_check_in || formatTimeDisplay(checkIn.timestamp)}
+                    {formatTimeDisplay(checkIn.timestamp)}
                   </div>
                 ) : (
                   <span className="text-gray-400">Missing</span>
@@ -343,7 +351,7 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records }) =
                 {checkOut ? (
                   <div className={`flex items-center ${checkOut.early_leave ? 'text-amber-600' : 'text-gray-700'}`}>
                     {checkOut.early_leave && <AlertTriangle className="w-3 h-3 mr-1 text-amber-500" />}
-                    {checkOut.display_check_out || formatTimeDisplay(checkOut.timestamp)}
+                    {formatTimeDisplay(checkOut.timestamp)}
                   </div>
                 ) : (
                   <span className="text-gray-400">Missing</span>
