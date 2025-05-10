@@ -111,17 +111,19 @@ const TimeRecordsTable: React.FC<TimeRecordsTableProps> = ({
       
       // For normal records, handle date grouping safely
       const ts = parseISO(record.timestamp);
-      // use the UTC date portion so local offsets never shift the day
-      let dayKey = ts.toISOString().slice(0,10);  // "YYYY-MM-DD" in UTC
       
+      // 1) Default to the **local** calendar date (so morning/evening stay on the same day)
+      let dayKey = format(ts, 'yyyy-MM-dd');  // local date
+      
+      // 2) Only roll back a true night-shift check-out that fell **before noon local** time
       if (
         record.status === 'check_out' &&
         record.shift_type === 'night' &&
-        // use UTC hour so we don't accidentally catch evening or morning shifts
-        ts.getUTCHours() < 12
+        ts.getHours() < 12           // local hour: 0–11 = early morning
       ) {
-        const prevUtc = subDays(ts, 1);
-        dayKey = prevUtc.toISOString().slice(0,10);
+        const prev = new Date(ts);
+        prev.setDate(prev.getDate() - 1);
+        dayKey = format(prev, 'yyyy-MM-dd');
       }
       
       if (!groups[dayKey]) {
