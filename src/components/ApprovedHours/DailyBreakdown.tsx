@@ -13,12 +13,9 @@ interface DailyBreakdownProps {
 const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records }) => {
   // Group records by date for better display
   const recordsByDate = records.reduce((acc: any, record: any) => {
-    // Parse the ISO timestamp into a JS Date
+    // Use the UTC date portion so nothing shifts under local timezones
     const utc = parseISO(record.timestamp);
-    
-    // ***CRITICAL FIX***: Prefer working_week_start over timestamp for date grouping
-    // This ensures night shifts and manual entries group correctly
-    const date = record.working_week_start || utc.toISOString().slice(0,10);  // "YYYY-MM-DD"
+    const date = utc.toISOString().slice(0,10);  // "YYYY-MM-DD"
     
     // Special handling for night shift or evening shift checkouts in early morning hours
     if (record.status === 'check_out') {
@@ -27,15 +24,6 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records }) =
       
       // For night shifts with early morning checkout, associate with previous day
       if (record.shift_type === 'night' && recordHourUTC < 12) {
-        // If working_week_start is available, use it (preferred method)
-        if (record.working_week_start) {
-          if (!acc[record.working_week_start]) {
-            acc[record.working_week_start] = [];
-          }
-          acc[record.working_week_start].push(record);
-          return acc;
-        }
-        
         // This is a night shift checkout on the next day
         const prevDate = new Date(record.timestamp);
         prevDate.setDate(prevDate.getDate() - 1);
@@ -49,15 +37,6 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records }) =
       }
       // For evening shifts with early morning checkout, associate with previous day
       else if (record.shift_type === 'evening' && recordHourUTC < 12) {
-        // If working_week_start is available, use it (preferred method)
-        if (record.working_week_start) {
-          if (!acc[record.working_week_start]) {
-            acc[record.working_week_start] = [];
-          }
-          acc[record.working_week_start].push(record);
-          return acc;
-        }
-        
         // This is likely an evening shift checkout on the next day
         const prevDate = new Date(record.timestamp);
         prevDate.setDate(prevDate.getDate() - 1);
@@ -290,10 +269,7 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records }) =
                       {checkIn ? (
                         <>
                           {checkIn.is_late && <AlertTriangle className="inline w-3 h-3 mr-1 text-amber-500" />}
-                          {/* ***CRITICAL FIX***: Prioritize display_check_in over timestamp formatting */}
-                          {checkIn.display_check_in && checkIn.display_check_in !== 'Missing' 
-                            ? checkIn.display_check_in 
-                            : formatTimeDisplay(checkIn.timestamp)}
+                          {formatTimeDisplay(checkIn.timestamp)}
                         </>
                       ) : (
                         <span className="text-gray-400">Missing</span>
@@ -307,10 +283,7 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records }) =
                       {checkOut ? (
                         <>
                           {checkOut.early_leave && <AlertTriangle className="inline w-3 h-3 mr-1 text-amber-500" />}
-                          {/* ***CRITICAL FIX***: Prioritize display_check_out over timestamp formatting */}
-                          {checkOut.display_check_out && checkOut.display_check_out !== 'Missing' 
-                            ? checkOut.display_check_out 
-                            : formatTimeDisplay(checkOut.timestamp)}
+                          {formatTimeDisplay(checkOut.timestamp)}
                         </>
                       ) : (
                         <span className="text-gray-400">Missing</span>
@@ -369,10 +342,7 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records }) =
                 {checkIn ? (
                   <div className={`flex items-center ${checkIn.is_late ? 'text-amber-600' : 'text-gray-700'}`}>
                     {checkIn.is_late && <AlertTriangle className="w-3 h-3 mr-1 text-amber-500" />}
-                    {/* ***CRITICAL FIX***: Prioritize display_check_in over timestamp formatting */}
-                    {checkIn.display_check_in && checkIn.display_check_in !== 'Missing' 
-                      ? checkIn.display_check_in 
-                      : formatTimeDisplay(checkIn.timestamp)}
+                    {formatTimeDisplay(checkIn.timestamp)}
                   </div>
                 ) : (
                   <span className="text-gray-400">Missing</span>
@@ -382,10 +352,7 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records }) =
                 {checkOut ? (
                   <div className={`flex items-center ${checkOut.early_leave ? 'text-amber-600' : 'text-gray-700'}`}>
                     {checkOut.early_leave && <AlertTriangle className="w-3 h-3 mr-1 text-amber-500" />}
-                    {/* ***CRITICAL FIX***: Prioritize display_check_out over timestamp formatting */}
-                    {checkOut.display_check_out && checkOut.display_check_out !== 'Missing' 
-                      ? checkOut.display_check_out 
-                      : formatTimeDisplay(checkOut.timestamp)}
+                    {formatTimeDisplay(checkOut.timestamp)}
                   </div>
                 ) : (
                   <span className="text-gray-400">Missing</span>
