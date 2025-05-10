@@ -121,30 +121,28 @@ const ManualEntryModal: React.FC<ManualEntryModalProps> = ({ isOpen, onClose, on
       // Use our helper function to properly handle day rollover
       const { checkIn, checkOut } = parseShiftTimes(shift.date, startTime, endTime, shift.shift_type);
       
-      // Check if records already exist with the same key combination
-      const { data: existingCheckIn, error: checkInError } = await supabase
+      // First, check for any manual records with this shift type to ensure we're not violating the unique constraint
+      const { data: existingManualRecords, error: manualError } = await supabase
         .from('time_records')
-        .select('id')
+        .select('id, status')
         .eq('employee_id', shift.employee_id)
         .eq('shift_type', shift.shift_type)
-        .eq('status', 'check_in')
         .eq('working_week_start', shift.date)
-        .eq('is_manual_entry', true)
-        .maybeSingle();
+        .eq('is_manual_entry', true);
       
-      if (checkInError) throw checkInError;
+      if (manualError) throw manualError;
       
-      const { data: existingCheckOut, error: checkOutError } = await supabase
-        .from('time_records')
-        .select('id')
-        .eq('employee_id', shift.employee_id)
-        .eq('shift_type', shift.shift_type)
-        .eq('status', 'check_out')
-        .eq('working_week_start', shift.date)
-        .eq('is_manual_entry', true)
-        .maybeSingle();
-      
-      if (checkOutError) throw checkOutError;
+      // If we found manual entries with the same key fields, delete them to avoid unique constraint violation
+      if (existingManualRecords && existingManualRecords.length > 0) {
+        const recordIds = existingManualRecords.map(record => record.id);
+        console.log(`Deleting ${existingManualRecords.length} existing manual records to avoid constraint violation`);
+        const { error: deleteError } = await supabase
+          .from('time_records')
+          .delete()
+          .in('id', recordIds);
+          
+        if (deleteError) throw deleteError;
+      }
       
       // Prepare time records
       const checkInRecord = {
@@ -169,39 +167,12 @@ const ManualEntryModal: React.FC<ManualEntryModalProps> = ({ isOpen, onClose, on
         exact_hours: 9.0
       };
       
-      // Handle check-in record (update if exists, insert if not)
-      if (existingCheckIn) {
-        const { error: updateCheckInError } = await supabase
-          .from('time_records')
-          .update(checkInRecord)
-          .eq('id', existingCheckIn.id);
-        
-        if (updateCheckInError) throw updateCheckInError;
-        console.log('Updated existing check-in record');
-      } else {
-        const { error: insertCheckInError } = await supabase
-          .from('time_records')
-          .insert([checkInRecord]);
-        
-        if (insertCheckInError) throw insertCheckInError;
-      }
+      // Insert both records in a single insert to ensure atomicity
+      const { error: insertError } = await supabase
+        .from('time_records')
+        .insert([checkInRecord, checkOutRecord]);
       
-      // Handle check-out record (update if exists, insert if not)
-      if (existingCheckOut) {
-        const { error: updateCheckOutError } = await supabase
-          .from('time_records')
-          .update(checkOutRecord)
-          .eq('id', existingCheckOut.id);
-        
-        if (updateCheckOutError) throw updateCheckOutError;
-        console.log('Updated existing check-out record');
-      } else {
-        const { error: insertCheckOutError } = await supabase
-          .from('time_records')
-          .insert([checkOutRecord]);
-        
-        if (insertCheckOutError) throw insertCheckOutError;
-      }
+      if (insertError) throw insertError;
       
       // Refresh the list
       fetchEmployeeShiftRequests();
@@ -292,30 +263,28 @@ const ManualEntryModal: React.FC<ManualEntryModalProps> = ({ isOpen, onClose, on
         shiftType
       );
       
-      // Check if records already exist
-      const { data: existingCheckIn, error: checkInError } = await supabase
+      // First check for existing manual records that would violate the constraint
+      const { data: existingManualRecords, error: manualError } = await supabase
         .from('time_records')
-        .select('id')
+        .select('id, status')
         .eq('employee_id', employeeId)
         .eq('shift_type', shiftType)
-        .eq('status', 'check_in')
         .eq('working_week_start', selectedDate)
-        .eq('is_manual_entry', true)
-        .maybeSingle();
+        .eq('is_manual_entry', true);
       
-      if (checkInError) throw checkInError;
+      if (manualError) throw manualError;
       
-      const { data: existingCheckOut, error: checkOutError } = await supabase
-        .from('time_records')
-        .select('id')
-        .eq('employee_id', employeeId)
-        .eq('shift_type', shiftType)
-        .eq('status', 'check_out')
-        .eq('working_week_start', selectedDate)
-        .eq('is_manual_entry', true)
-        .maybeSingle();
-      
-      if (checkOutError) throw checkOutError;
+      // If we found manual entries, delete them to avoid constraint violation
+      if (existingManualRecords && existingManualRecords.length > 0) {
+        const recordIds = existingManualRecords.map(record => record.id);
+        console.log(`Deleting ${existingManualRecords.length} existing manual records to avoid constraint violation`);
+        const { error: deleteError } = await supabase
+          .from('time_records')
+          .delete()
+          .in('id', recordIds);
+          
+        if (deleteError) throw deleteError;
+      }
 
       // Prepare time records
       const checkInRecord = {
@@ -344,39 +313,12 @@ const ManualEntryModal: React.FC<ManualEntryModalProps> = ({ isOpen, onClose, on
         exact_hours: 9.0
       };
       
-      // Handle check-in record (update if exists, insert if not)
-      if (existingCheckIn) {
-        const { error: updateCheckInError } = await supabase
-          .from('time_records')
-          .update(checkInRecord)
-          .eq('id', existingCheckIn.id);
-        
-        if (updateCheckInError) throw updateCheckInError;
-        console.log('Updated existing check-in record');
-      } else {
-        const { error: insertCheckInError } = await supabase
-          .from('time_records')
-          .insert([checkInRecord]);
-        
-        if (insertCheckInError) throw insertCheckInError;
-      }
+      // Insert both records in a single insert to ensure atomicity
+      const { error: insertError } = await supabase
+        .from('time_records')
+        .insert([checkInRecord, checkOutRecord]);
       
-      // Handle check-out record (update if exists, insert if not)
-      if (existingCheckOut) {
-        const { error: updateCheckOutError } = await supabase
-          .from('time_records')
-          .update(checkOutRecord)
-          .eq('id', existingCheckOut.id);
-        
-        if (updateCheckOutError) throw updateCheckOutError;
-        console.log('Updated existing check-out record');
-      } else {
-        const { error: insertCheckOutError } = await supabase
-          .from('time_records')
-          .insert([checkOutRecord]);
-        
-        if (insertCheckOutError) throw insertCheckOutError;
-      }
+      if (insertError) throw insertError;
 
       // Call the save callback
       onSave({
