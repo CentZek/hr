@@ -1,5 +1,5 @@
 import React from 'react';
-import { format, differenceInMinutes } from 'date-fns';
+import { format, differenceInMinutes, parseISO } from 'date-fns';
 import { AlertTriangle, CheckCircle, Clock } from 'lucide-react';
 import { DISPLAY_SHIFT_TIMES } from '../../types';
 import { formatTime24H } from '../../utils/dateTimeHelper';
@@ -13,8 +13,9 @@ interface DailyBreakdownProps {
 const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records }) => {
   // Group records by date for better display
   const recordsByDate = records.reduce((acc: any, record: any) => {
-    // For evening shifts with early morning checkout, associate with previous day
-    let date = format(new Date(record.timestamp), 'yyyy-MM-dd');
+    // Use the UTC date portion so nothing shifts under local timezones
+    const utc = parseISO(record.timestamp);
+    const date = utc.toISOString().slice(0,10);  // "YYYY-MM-DD"
     
     // Check for night shift or evening shift checkouts in early morning hours
     if (record.status === 'check_out') {
@@ -25,14 +26,26 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records }) =
         // This is a night shift checkout on the next day
         const prevDate = new Date(record.timestamp);
         prevDate.setDate(prevDate.getDate() - 1);
-        date = format(prevDate, 'yyyy-MM-dd');
+        const prevDateStr = prevDate.toISOString().slice(0,10);  // "YYYY-MM-DD"
+        
+        if (!acc[prevDateStr]) {
+          acc[prevDateStr] = [];
+        }
+        acc[prevDateStr].push(record);
+        return acc;
       }
       // For evening shifts with early morning checkout, associate with previous day
       else if (record.shift_type === 'evening' && recordHour < 12) {
         // This is likely an evening shift checkout on the next day
         const prevDate = new Date(record.timestamp);
         prevDate.setDate(prevDate.getDate() - 1);
-        date = format(prevDate, 'yyyy-MM-dd');
+        const prevDateStr = prevDate.toISOString().slice(0,10);  // "YYYY-MM-DD"
+        
+        if (!acc[prevDateStr]) {
+          acc[prevDateStr] = [];
+        }
+        acc[prevDateStr].push(record);
+        return acc;
       }
     }
 

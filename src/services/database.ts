@@ -71,7 +71,9 @@ export const fetchApprovedHours = async (monthFilter: string = ''): Promise<{
       
       // Add date to set of days - Only if timestamp is valid
       if (record.timestamp && isValid(new Date(record.timestamp))) {
-        const date = format(new Date(record.timestamp), 'yyyy-MM-dd');
+        // Use the UTC date portion so nothing shifts under local timezones
+        const utc = parseISO(record.timestamp);
+        const date = utc.toISOString().slice(0,10); // "YYYY-MM-DD"
         employee.total_days.add(date);
       }
     });
@@ -113,7 +115,9 @@ export const fetchApprovedHours = async (monthFilter: string = ''): Promise<{
       
       // Add date to set of days for OFF-DAY
       if (record.timestamp && isValid(new Date(record.timestamp))) {
-        const date = format(new Date(record.timestamp), 'yyyy-MM-dd');
+        // Use the UTC date portion so nothing shifts under local timezones
+        const utc = parseISO(record.timestamp);
+        const date = utc.toISOString().slice(0,10); // "YYYY-MM-DD"
         employee.total_days.add(date);
       }
     });
@@ -259,7 +263,9 @@ export const saveRecordsToDatabase = async (employeeRecords: EmployeeRecord[]): 
             display_check_out: day.lastCheckOut ? format(day.lastCheckOut, 'HH:mm') : 'Missing',
             is_fixed: day.correctedRecords || false,
             corrected_records: day.correctedRecords || false,
-            mislabeled: false
+            mislabeled: false,
+            // For night shifts, set working_week_start to help with grouping
+            working_week_start: day.date
           });
         }
         
@@ -279,7 +285,9 @@ export const saveRecordsToDatabase = async (employeeRecords: EmployeeRecord[]): 
             display_check_out: day.lastCheckOut ? format(day.lastCheckOut, 'HH:mm') : 'Missing',
             is_fixed: day.correctedRecords || false,
             corrected_records: day.correctedRecords || false,
-            mislabeled: false
+            mislabeled: false,
+            // For night shifts with early morning checkout, set working_week_start to the check-in date
+            working_week_start: day.shiftType === 'night' && day.lastCheckOut.getHours() < 12 ? day.date : day.date
           });
         }
         

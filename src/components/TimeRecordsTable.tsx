@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { format } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import { Clock, AlertTriangle, CheckCircle } from 'lucide-react';
 import { DISPLAY_SHIFT_TIMES } from '../types';
 import { formatTime24H } from '../utils/dateTimeHelper';
@@ -61,7 +61,10 @@ const TimeRecordsTable: React.FC<TimeRecordsTableProps> = ({
     records.forEach(record => {
       // Handle OFF-DAY records specially
       if (record.status === 'off_day' || record.notes?.includes('OFF-DAY')) {
-        const date = format(new Date(record.timestamp), 'yyyy-MM-dd');
+        // Use the UTC date portion so nothing shifts under local timezones
+        const utc = parseISO(record.timestamp);
+        const date = utc.toISOString().slice(0,10);  // "YYYY-MM-DD"
+        
         const employeeId = record.employee_id;
         
         if (!groups[date]) {
@@ -81,10 +84,11 @@ const TimeRecordsTable: React.FC<TimeRecordsTableProps> = ({
       }
       
       // For normal records, handle date grouping
-      // Handle night shift and evening shift checkouts in early morning hours
-      let date = format(new Date(record.timestamp), 'yyyy-MM-dd');
+      // Use the UTC date portion so nothing shifts under local timezones
+      let utc = parseISO(record.timestamp);
+      let date = utc.toISOString().slice(0,10);  // "YYYY-MM-DD"
       
-      // Check for night shift or evening shift checkouts in early morning hours
+      // Special handling for night shift or evening shift checkouts in early morning hours
       if (record.status === 'check_out') {
         const recordHour = new Date(record.timestamp).getHours();
         
@@ -93,14 +97,14 @@ const TimeRecordsTable: React.FC<TimeRecordsTableProps> = ({
           // This is a night shift checkout on the next day
           const prevDate = new Date(record.timestamp);
           prevDate.setDate(prevDate.getDate() - 1);
-          date = format(prevDate, 'yyyy-MM-dd');
+          date = prevDate.toISOString().slice(0,10);  // "YYYY-MM-DD"
         }
         // For evening shifts with early morning checkout, associate with previous day
         else if (record.shift_type === 'evening' && recordHour < 12) {
           // This is likely an evening shift checkout on the next day
           const prevDate = new Date(record.timestamp);
           prevDate.setDate(prevDate.getDate() - 1);
-          date = format(prevDate, 'yyyy-MM-dd');
+          date = prevDate.toISOString().slice(0,10);  // "YYYY-MM-DD"
         }
       }
 
@@ -193,16 +197,16 @@ const TimeRecordsTable: React.FC<TimeRecordsTableProps> = ({
           if (latestCheckOut && !earliestCheckIn) {
             // Check if there's a check-in from the previous day that might match
             // This is common for night shifts where check-out is the next morning
-            const prevDay = new Date(date);
-            prevDay.setDate(prevDay.getDate() - 1);
-            const prevDayStr = format(prevDay, 'yyyy-MM-dd');
+            const prevDate = new Date(date);
+            prevDate.setDate(prevDate.getDate() - 1);
+            const prevDateStr = prevDate.toISOString().slice(0,10);  // "YYYY-MM-DD"
             
-            if (groupedRecords[prevDayStr]) {
-              const prevDayEmployee = groupedRecords[prevDayStr][employeeId];
+            if (groupedRecords[prevDateStr]) {
+              const prevDayEmployee = groupedRecords[prevDateStr][employeeId];
               if (prevDayEmployee) {
                 const prevDayCheckIns = prevDayEmployee.filter((r: any) => r.status === 'check_in');
                 if (prevDayCheckIns.length > 0) {
-                  console.log(`Found check-in from previous day ${prevDayStr} for checkout on ${date}`);
+                  console.log(`Found check-in from previous day ${prevDateStr} for checkout on ${date}`);
                   
                   // Sort to get earliest check-in from previous day
                   const sortedPrevCheckIns = prevDayCheckIns.sort((a: any, b: any) => 
@@ -279,7 +283,7 @@ const TimeRecordsTable: React.FC<TimeRecordsTableProps> = ({
         if (earliestCheckIn && earliestCheckIn.shift_type === 'night' && !latestCheckOut) {
           const nextDay = new Date(date);
           nextDay.setDate(nextDay.getDate() + 1);
-          const nextDayDate = format(nextDay, 'yyyy-MM-dd');
+          const nextDayDate = nextDay.toISOString().slice(0,10);  // "YYYY-MM-DD"
           
           // Check if next day has check-out records
           if (groupedRecords[nextDayDate] && groupedRecords[nextDayDate][employeeId]) {
