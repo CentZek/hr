@@ -86,7 +86,8 @@ export const initializeUserCredentials = async () => {
         const { data: usernameCheck, error: checkError } = await supabase
           .from('user_credentials')
           .select('id')
-          .ilike('username', username);
+          .ilike('username', username)
+          .maybeSingle();
           
         if (checkError) {
           console.error(`Error checking username uniqueness for ${username}:`, checkError);
@@ -94,7 +95,7 @@ export const initializeUserCredentials = async () => {
           continue;
         }
         
-        if (usernameCheck && usernameCheck.length > 0) {
+        if (usernameCheck) {
           console.warn(`Username ${username} already exists despite our checks. Skipping.`);
           skippedCount++;
           continue;

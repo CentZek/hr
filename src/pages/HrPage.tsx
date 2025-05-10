@@ -514,7 +514,7 @@ function HrPage() {
     // Set hasUploadedFile to true to ensure proper display
     setHasUploadedFile(true);
     
-    // Refresh manual records - FIXED: Get fresh data from database instead of manually updating state
+    // FIXED: Refresh manual records from database instead of manually updating state
     await refreshData();
     
     // Show success message
@@ -544,7 +544,7 @@ function HrPage() {
         date: recordData.date
       });
       
-      // FIXED: Refresh manually approved records from database instead of manually updating state
+      // Refresh manually approved records
       await refreshData();
       
       toast.success('Manual time record added successfully');
