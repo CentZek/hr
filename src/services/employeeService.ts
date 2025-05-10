@@ -100,24 +100,24 @@ const convertTimeRecordsToShifts = (timeRecords: any[], employeeId: string) => {
 
   // Process each date to create shifts
   Object.entries(recordsByDate).forEach(([date, records]) => {
-    // Skip days without both check-in and check-out
+    // Skip days with only one record (we need both check-in and check-out)
+    if (records.length <= 1) return;
+    
+    // Find check-in and check-out records
     const checkIns = records.filter(r => r.status === 'check_in');
     const checkOuts = records.filter(r => r.status === 'check_out');
     
-    if (checkIns.length === 0 || checkOuts.length === 0) {
-      // If we're missing either check-in or check-out, don't create a shift
-      return;
-    }
+    // Skip if we don't have both check-in and check-out
+    if (checkIns.length === 0 || checkOuts.length === 0) return;
     
-    // Sort check-ins and check-outs by timestamp
+    // Sort to get earliest check-in and latest check-out
     checkIns.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
     checkOuts.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
     
-    // Get the first check-in and last check-out
     const checkIn = checkIns[0];
     const checkOut = checkOuts[0];
     
-    // Extract the shift type (prefer check-in's shift type)
+    // Determine shift type (prioritize check-in's shift type)
     const shiftType = checkIn.shift_type || checkOut.shift_type || 'morning';
     
     // Use display values directly if available

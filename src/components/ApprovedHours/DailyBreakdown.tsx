@@ -13,6 +13,16 @@ interface DailyBreakdownProps {
 const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records }) => {
   // Group records by date for better display
   const recordsByDate = records.reduce((acc: any, record: any) => {
+    // For night shifts, use working_week_start as the key for grouping if available
+    if (record.shift_type === 'night' && record.working_week_start) {
+      const workWeekDate = record.working_week_start;
+      if (!acc[workWeekDate]) {
+        acc[workWeekDate] = [];
+      }
+      acc[workWeekDate].push(record);
+      return acc;
+    }
+
     // Use the UTC date portion so nothing shifts under local timezones
     const utc = parseISO(record.timestamp);
     const date = utc.toISOString().slice(0,10);  // "YYYY-MM-DD"

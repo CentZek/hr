@@ -14,11 +14,13 @@ interface TimeRecord {
   early_leave: boolean;
   deduction_minutes: number;
   notes?: string;
+  display_check_in?: string;
+  display_check_out?: string;
+  working_week_start?: string;
   employees?: {
     name: string;
     employee_number: string;
   };
-  working_week_start?: string;
 }
 
 interface TimeRecordsTableProps {
@@ -81,6 +83,23 @@ const TimeRecordsTable: React.FC<TimeRecordsTableProps> = ({
           status: 'off_day' // Ensure status is set
         });
         
+        return;
+      }
+      
+      // For night shifts, use working_week_start to group records if available
+      if (record.shift_type === 'night' && record.working_week_start) {
+        const groupDate = record.working_week_start;
+        const employeeId = record.employee_id;
+        
+        if (!groups[groupDate]) {
+          groups[groupDate] = {};
+        }
+        
+        if (!groups[groupDate][employeeId]) {
+          groups[groupDate][employeeId] = [];
+        }
+        
+        groups[groupDate][employeeId].push(record);
         return;
       }
       
@@ -221,7 +240,8 @@ const TimeRecordsTable: React.FC<TimeRecordsTableProps> = ({
                     display_check_in: sortedPrevCheckIns[0].display_check_in || 
                       format(new Date(sortedPrevCheckIns[0].timestamp), 'HH:mm'),
                     display_check_out: latestCheckOut.display_check_out || 
-                      format(new Date(latestCheckOut.timestamp), 'HH:mm')
+                      format(new Date(latestCheckOut.timestamp), 'HH:mm'),
+                    shift_type: latestCheckOut.shift_type || sortedPrevCheckIns[0].shift_type
                   });
                 } else {
                   // No matching check-in from previous day, just use the check-out as is

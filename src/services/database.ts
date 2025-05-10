@@ -261,8 +261,8 @@ export const saveRecordsToDatabase = async (employeeRecords: EmployeeRecord[]): 
             deduction_minutes: day.penaltyMinutes,
             notes: day.notes ? `${day.notes}; hours:${day.hoursWorked.toFixed(2)}` : `hours:${day.hoursWorked.toFixed(2)}`,
             exact_hours: day.hoursWorked,
-            display_check_in: day.firstCheckIn ? format(day.firstCheckIn, 'HH:mm') : 'Missing',
-            display_check_out: day.lastCheckOut ? format(day.lastCheckOut, 'HH:mm') : 'Missing',
+            display_check_in: day.displayCheckIn || (day.firstCheckIn ? format(day.firstCheckIn, 'HH:mm') : 'Missing'),
+            display_check_out: day.displayCheckOut || (day.lastCheckOut ? format(day.lastCheckOut, 'HH:mm') : 'Missing'),
             is_fixed: day.correctedRecords || false,
             corrected_records: day.correctedRecords || false,
             mislabeled: false,
@@ -283,8 +283,8 @@ export const saveRecordsToDatabase = async (employeeRecords: EmployeeRecord[]): 
             deduction_minutes: day.penaltyMinutes,
             notes: day.notes ? `${day.notes}; hours:${day.hoursWorked.toFixed(2)}` : `hours:${day.hoursWorked.toFixed(2)}`,
             exact_hours: day.hoursWorked,
-            display_check_in: day.firstCheckIn ? format(day.firstCheckIn, 'HH:mm') : 'Missing',
-            display_check_out: day.lastCheckOut ? format(day.lastCheckOut, 'HH:mm') : 'Missing',
+            display_check_in: day.displayCheckIn || (day.firstCheckIn ? format(day.firstCheckIn, 'HH:mm') : 'Missing'),
+            display_check_out: day.displayCheckOut || (day.lastCheckOut ? format(day.lastCheckOut, 'HH:mm') : 'Missing'),
             is_fixed: day.correctedRecords || false,
             corrected_records: day.correctedRecords || false,
             mislabeled: false,
@@ -385,6 +385,14 @@ export const fetchManualTimeRecords = async (limit: number = 50): Promise<any[]>
           ...record,
           display_check_in: record.status === 'check_in' ? '13:00' : record.display_check_in,
           display_check_out: record.status === 'check_out' ? '22:00' : record.display_check_out
+        };
+      }
+      // If this is a night shift, ensure display times are correct
+      else if (record.shift_type === 'night') {
+        return {
+          ...record,
+          display_check_in: record.status === 'check_in' ? '21:00' : record.display_check_in,
+          display_check_out: record.status === 'check_out' ? '06:00' : record.display_check_out
         };
       }
       return record;
