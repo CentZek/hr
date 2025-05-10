@@ -121,29 +121,87 @@ const ManualEntryModal: React.FC<ManualEntryModalProps> = ({ isOpen, onClose, on
       // Use our helper function to properly handle day rollover
       const { checkIn, checkOut } = parseShiftTimes(shift.date, startTime, endTime, shift.shift_type);
       
-      const timeRecords = [
-        {
-          employee_id: shift.employee_id,
-          timestamp: checkIn.toISOString(), // Use full ISO string with timezone
-          status: 'check_in',
-          shift_type: shift.shift_type,
-          notes: 'Employee submitted shift - HR approved; hours:9.00',
-          is_manual_entry: true,
-          working_week_start: shift.date // Set working_week_start for proper grouping
-        },
-        {
-          employee_id: shift.employee_id,
-          timestamp: checkOut.toISOString(), // Use full ISO string with timezone
-          status: 'check_out',
-          shift_type: shift.shift_type,
-          notes: 'Employee submitted shift - HR approved; hours:9.00',
-          is_manual_entry: true,
-          working_week_start: shift.date // Same working_week_start for both records
-        }
-      ];
+      // Check if records already exist with the same key combination
+      const { data: existingCheckIn, error: checkInError } = await supabase
+        .from('time_records')
+        .select('id')
+        .eq('employee_id', shift.employee_id)
+        .eq('shift_type', shift.shift_type)
+        .eq('status', 'check_in')
+        .eq('working_week_start', shift.date)
+        .eq('is_manual_entry', true)
+        .maybeSingle();
       
-      const { error: insertError } = await supabase.from('time_records').insert(timeRecords);
-      if (insertError) throw insertError;
+      if (checkInError) throw checkInError;
+      
+      const { data: existingCheckOut, error: checkOutError } = await supabase
+        .from('time_records')
+        .select('id')
+        .eq('employee_id', shift.employee_id)
+        .eq('shift_type', shift.shift_type)
+        .eq('status', 'check_out')
+        .eq('working_week_start', shift.date)
+        .eq('is_manual_entry', true)
+        .maybeSingle();
+      
+      if (checkOutError) throw checkOutError;
+      
+      // Prepare time records
+      const checkInRecord = {
+        employee_id: shift.employee_id,
+        timestamp: checkIn.toISOString(),
+        status: 'check_in',
+        shift_type: shift.shift_type,
+        notes: 'Employee submitted shift - HR approved; hours:9.00',
+        is_manual_entry: true,
+        working_week_start: shift.date,
+        exact_hours: 9.0
+      };
+      
+      const checkOutRecord = {
+        employee_id: shift.employee_id,
+        timestamp: checkOut.toISOString(),
+        status: 'check_out',
+        shift_type: shift.shift_type,
+        notes: 'Employee submitted shift - HR approved; hours:9.00',
+        is_manual_entry: true,
+        working_week_start: shift.date,
+        exact_hours: 9.0
+      };
+      
+      // Handle check-in record (update if exists, insert if not)
+      if (existingCheckIn) {
+        const { error: updateCheckInError } = await supabase
+          .from('time_records')
+          .update(checkInRecord)
+          .eq('id', existingCheckIn.id);
+        
+        if (updateCheckInError) throw updateCheckInError;
+        console.log('Updated existing check-in record');
+      } else {
+        const { error: insertCheckInError } = await supabase
+          .from('time_records')
+          .insert([checkInRecord]);
+        
+        if (insertCheckInError) throw insertCheckInError;
+      }
+      
+      // Handle check-out record (update if exists, insert if not)
+      if (existingCheckOut) {
+        const { error: updateCheckOutError } = await supabase
+          .from('time_records')
+          .update(checkOutRecord)
+          .eq('id', existingCheckOut.id);
+        
+        if (updateCheckOutError) throw updateCheckOutError;
+        console.log('Updated existing check-out record');
+      } else {
+        const { error: insertCheckOutError } = await supabase
+          .from('time_records')
+          .insert([checkOutRecord]);
+        
+        if (insertCheckOutError) throw insertCheckOutError;
+      }
       
       // Refresh the list
       fetchEmployeeShiftRequests();
@@ -233,34 +291,92 @@ const ManualEntryModal: React.FC<ManualEntryModalProps> = ({ isOpen, onClose, on
         times.end, 
         shiftType
       );
-
-      // Add records to time_records table with full ISO timestamps
-      await supabase
+      
+      // Check if records already exist
+      const { data: existingCheckIn, error: checkInError } = await supabase
         .from('time_records')
-        .insert([
-          {
-            employee_id: employeeId,
-            timestamp: checkIn.toISOString(), // Use full ISO string with timezone
-            status: 'check_in',
-            shift_type: shiftType,
-            notes: notes || 'Manual entry; hours:9.00',
-            is_manual_entry: true,
-            working_week_start: selectedDate, // Set working_week_start for proper grouping
-            display_check_in: times.start,
-            display_check_out: times.end
-          },
-          {
-            employee_id: employeeId,
-            timestamp: checkOut.toISOString(), // Use full ISO string with timezone
-            status: 'check_out',
-            shift_type: shiftType,
-            notes: notes || 'Manual entry; hours:9.00',
-            is_manual_entry: true,
-            working_week_start: selectedDate, // Same working_week_start for both records
-            display_check_in: times.start,
-            display_check_out: times.end
-          }
-        ]);
+        .select('id')
+        .eq('employee_id', employeeId)
+        .eq('shift_type', shiftType)
+        .eq('status', 'check_in')
+        .eq('working_week_start', selectedDate)
+        .eq('is_manual_entry', true)
+        .maybeSingle();
+      
+      if (checkInError) throw checkInError;
+      
+      const { data: existingCheckOut, error: checkOutError } = await supabase
+        .from('time_records')
+        .select('id')
+        .eq('employee_id', employeeId)
+        .eq('shift_type', shiftType)
+        .eq('status', 'check_out')
+        .eq('working_week_start', selectedDate)
+        .eq('is_manual_entry', true)
+        .maybeSingle();
+      
+      if (checkOutError) throw checkOutError;
+
+      // Prepare time records
+      const checkInRecord = {
+        employee_id: employeeId,
+        timestamp: checkIn.toISOString(),
+        status: 'check_in',
+        shift_type: shiftType,
+        notes: notes || 'Manual entry; hours:9.00',
+        is_manual_entry: true,
+        working_week_start: selectedDate,
+        display_check_in: times.start,
+        display_check_out: times.end,
+        exact_hours: 9.0
+      };
+      
+      const checkOutRecord = {
+        employee_id: employeeId,
+        timestamp: checkOut.toISOString(),
+        status: 'check_out',
+        shift_type: shiftType,
+        notes: notes || 'Manual entry; hours:9.00',
+        is_manual_entry: true,
+        working_week_start: selectedDate,
+        display_check_in: times.start,
+        display_check_out: times.end,
+        exact_hours: 9.0
+      };
+      
+      // Handle check-in record (update if exists, insert if not)
+      if (existingCheckIn) {
+        const { error: updateCheckInError } = await supabase
+          .from('time_records')
+          .update(checkInRecord)
+          .eq('id', existingCheckIn.id);
+        
+        if (updateCheckInError) throw updateCheckInError;
+        console.log('Updated existing check-in record');
+      } else {
+        const { error: insertCheckInError } = await supabase
+          .from('time_records')
+          .insert([checkInRecord]);
+        
+        if (insertCheckInError) throw insertCheckInError;
+      }
+      
+      // Handle check-out record (update if exists, insert if not)
+      if (existingCheckOut) {
+        const { error: updateCheckOutError } = await supabase
+          .from('time_records')
+          .update(checkOutRecord)
+          .eq('id', existingCheckOut.id);
+        
+        if (updateCheckOutError) throw updateCheckOutError;
+        console.log('Updated existing check-out record');
+      } else {
+        const { error: insertCheckOutError } = await supabase
+          .from('time_records')
+          .insert([checkOutRecord]);
+        
+        if (insertCheckOutError) throw insertCheckOutError;
+      }
 
       // Call the save callback
       onSave({
