@@ -74,20 +74,7 @@ const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
     try {
       const { data, error } = await supabase
         .from('employee_shifts')
-        .select(`
-          id,
-          employee_id,
-          date,
-          shift_type,
-          start_time,
-          end_time,
-          status,
-          notes,
-          employees (
-            name,
-            employee_number
-          )
-        `)
+        .select('id, employee_id, date, shift_type, start_time, end_time, status, notes, employees(name, employee_number)')
         .eq('status', 'pending')
         .order('date', { ascending: false });
 
