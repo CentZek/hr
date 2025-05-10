@@ -118,8 +118,21 @@ const ManualEntryModal: React.FC<ManualEntryModalProps> = ({ isOpen, onClose, on
       const startTime = shift.shift_type === 'morning' ? '05:00' : shift.shift_type === 'evening' ? '13:00' : '21:00';
       const endTime = shift.shift_type === 'morning' ? '14:00' : shift.shift_type === 'evening' ? '22:00' : '06:00';
       
-      // Use our helper function to properly handle day rollover
-      const { checkIn, checkOut } = parseShiftTimes(shift.date, startTime, endTime, shift.shift_type);
+      // Parse check-in time (always same day as shift.date)
+      const checkIn = new Date(`${shift.date}T${startTime}:00`);
+      
+      // Parse check-out time - handle differently for night shift
+      let checkOut;
+      if (shift.shift_type === 'night') {
+        // Night shift: check-out is on the next day
+        const nextDay = new Date(shift.date);
+        nextDay.setDate(nextDay.getDate() + 1);
+        const nextDateStr = format(nextDay, 'yyyy-MM-dd');
+        checkOut = new Date(`${nextDateStr}T${endTime}:00`);
+      } else {
+        // Morning and evening shifts: check-out is on the same day
+        checkOut = new Date(`${shift.date}T${endTime}:00`);
+      }
       
       // First, check for any manual records with this shift type to ensure we're not violating the unique constraint
       const { data: existingManualRecords, error: manualError } = await supabase
@@ -132,7 +145,7 @@ const ManualEntryModal: React.FC<ManualEntryModalProps> = ({ isOpen, onClose, on
       
       if (manualError) throw manualError;
       
-      // If we found manual entries with the same key fields, delete them to avoid unique constraint violation
+      // If we found manual entries, delete them to avoid constraint violation
       if (existingManualRecords && existingManualRecords.length > 0) {
         const recordIds = existingManualRecords.map(record => record.id);
         console.log(`Deleting ${existingManualRecords.length} existing manual records to avoid constraint violation`);
@@ -153,7 +166,9 @@ const ManualEntryModal: React.FC<ManualEntryModalProps> = ({ isOpen, onClose, on
         notes: 'Employee submitted shift - HR approved; hours:9.00',
         is_manual_entry: true,
         working_week_start: shift.date,
-        exact_hours: 9.0
+        exact_hours: 9.0,
+        display_check_in: startTime,
+        display_check_out: endTime
       };
       
       const checkOutRecord = {
@@ -164,7 +179,9 @@ const ManualEntryModal: React.FC<ManualEntryModalProps> = ({ isOpen, onClose, on
         notes: 'Employee submitted shift - HR approved; hours:9.00',
         is_manual_entry: true,
         working_week_start: shift.date,
-        exact_hours: 9.0
+        exact_hours: 9.0,
+        display_check_in: startTime,
+        display_check_out: endTime
       };
       
       // Insert both records in a single insert to ensure atomicity
@@ -255,13 +272,21 @@ const ManualEntryModal: React.FC<ManualEntryModalProps> = ({ isOpen, onClose, on
           notes: notes || 'Manual entry by HR'
         });
 
-      // Parse dates properly with the helper function to handle day rollover
-      const { checkIn, checkOut } = parseShiftTimes(
-        selectedDate, 
-        times.start, 
-        times.end, 
-        shiftType
-      );
+      // Parse check-in time (always on the selected date)
+      const checkIn = new Date(`${selectedDate}T${times.start}:00`);
+      
+      // Parse check-out time - different handling for night shift
+      let checkOut;
+      if (shiftType === 'night') {
+        // Night shift: check-out is on the next day
+        const nextDay = new Date(selectedDate);
+        nextDay.setDate(nextDay.getDate() + 1);
+        const nextDateStr = format(nextDay, 'yyyy-MM-dd');
+        checkOut = new Date(`${nextDateStr}T${times.end}:00`);
+      } else {
+        // Morning and evening shifts: check-out is on the same day
+        checkOut = new Date(`${selectedDate}T${times.end}:00`);
+      }
       
       // First check for existing manual records that would violate the constraint
       const { data: existingManualRecords, error: manualError } = await supabase

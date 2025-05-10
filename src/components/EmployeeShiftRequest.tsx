@@ -125,22 +125,21 @@ const EmployeeShiftRequest: React.FC<EmployeeShiftRequestProps> = ({ onShiftAppr
       
       console.log('Processing shift with:', { dateStr, startTime, endTime, shiftType: shift.shift_type });
       
-      // Parse shift times to get correct date objects for both check-in and check-out
-      const { checkIn: checkInDate, checkOut: checkOutDate } = parseShiftTimes(
-        dateStr,
-        startTime,
-        endTime,
-        shift.shift_type
-      );
+      // Parse check-in time (always on the same day as shift.date)
+      const checkIn = new Date(`${dateStr}T${startTime}:00`);
       
-      // Validate the parsed dates
-      if (!isValid(checkInDate) || !isValid(checkOutDate)) {
-        throw new Error('Invalid date after parsing shift times');
+      // Parse check-out time - handle differently for night shift
+      let checkOut;
+      if (shift.shift_type === 'night') {
+        // Night shift: check-out is on the next day
+        const nextDay = new Date(dateStr);
+        nextDay.setDate(nextDay.getDate() + 1);
+        const nextDateStr = format(nextDay, 'yyyy-MM-dd');
+        checkOut = new Date(`${nextDateStr}T${endTime}:00`);
+      } else {
+        // Morning and evening shifts: check-out is on the same day
+        checkOut = new Date(`${dateStr}T${endTime}:00`);
       }
-      
-      // Format timestamps correctly for database insertion with full ISO string
-      const checkInTimestamp = checkInDate.toISOString();
-      const checkOutTimestamp = checkOutDate.toISOString();
       
       // Calculate hours worked for consistency
       const hoursWorked = 9.0; // Standard hours for all shift types
@@ -172,7 +171,7 @@ const EmployeeShiftRequest: React.FC<EmployeeShiftRequestProps> = ({ onShiftAppr
       // Create time records
       const checkInRecord = {
         employee_id: shift.employee_id,
-        timestamp: checkInTimestamp,
+        timestamp: checkIn.toISOString(),
         status: 'check_in',
         shift_type: shift.shift_type,
         notes: `Employee submitted shift - HR approved; ${hoursNote}`,
@@ -188,7 +187,7 @@ const EmployeeShiftRequest: React.FC<EmployeeShiftRequestProps> = ({ onShiftAppr
       
       const checkOutRecord = {
         employee_id: shift.employee_id,
-        timestamp: checkOutTimestamp,
+        timestamp: checkOut.toISOString(),
         status: 'check_out',
         shift_type: shift.shift_type,
         notes: `Employee submitted shift - HR approved; ${hoursNote}`,
