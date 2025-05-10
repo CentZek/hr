@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { format, parseISO } from 'date-fns';
+import { format, parseISO, isValid } from 'date-fns';
 import { Clock, AlertTriangle, CheckCircle } from 'lucide-react';
 import { DISPLAY_SHIFT_TIMES } from '../types';
 import { formatTime24H } from '../utils/dateTimeHelper';
@@ -384,10 +384,32 @@ const TimeRecordsTable: React.FC<TimeRecordsTableProps> = ({
     }
     
     // If no predefined display time, use the actual timestamp from the database
-    const timestamp = new Date(record.timestamp);
+    if (!record.timestamp) return '—';
     
-    // Format with 24-hour format
-    return formatTime24H(timestamp);
+    try {
+      const timestamp = new Date(record.timestamp);
+      if (!isValid(timestamp)) return '—';
+      
+      // Format with 24-hour format
+      return formatTime24H(timestamp);
+    } catch (error) {
+      console.error('Error formatting time:', error);
+      return '—';
+    }
+  };
+
+  // Safe format function to prevent "Invalid time value" errors
+  const safeFormatDate = (dateString: string, formatStr: string): string => {
+    if (!dateString) return '—';
+    
+    try {
+      const date = new Date(dateString);
+      if (!isValid(date)) return '—';
+      return format(date, formatStr);
+    } catch (error) {
+      console.error('Error formatting date:', error, dateString);
+      return '—';
+    }
   };
   
   if (isLoading) {
@@ -431,7 +453,7 @@ const TimeRecordsTable: React.FC<TimeRecordsTableProps> = ({
               </div>
               
               <div className="text-xs text-gray-500 mb-2">
-                {format(new Date(record.date), 'EEE, MMM d, yyyy')}
+                {safeFormatDate(record.date, 'EEE, MMM d, yyyy')}
               </div>
               
               {record.isOffDay ? (
@@ -545,7 +567,7 @@ const TimeRecordsTable: React.FC<TimeRecordsTableProps> = ({
             {processedRecords.map((record, index) => (
               <tr key={index} className={`hover:bg-gray-50 ${record.isOffDay ? 'bg-gray-50' : ''}`}>
                 <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                  {format(new Date(record.date), 'EEE, MMM d, yyyy')}
+                  {safeFormatDate(record.date, 'EEE, MMM d, yyyy')}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                   <div>
