@@ -164,6 +164,7 @@ export const fetchEmployeeDetails = async (employeeId: string, monthFilter: stri
         display_check_in,
         display_check_out,
         mislabeled,
+        working_week_start,
         employees (
           name,
           employee_number
@@ -216,12 +217,13 @@ export const saveRecordsToDatabase = async (employeeRecords: EmployeeRecord[]): 
           const { error } = await supabase.from('time_records').insert([
             {
               employee_id: await getEmployeeId(employee.employeeNumber),
-              timestamp: `${day.date}T12:00:00`,
+              timestamp: new Date(`${day.date}T12:00:00`).toISOString(), // Use full ISO string
               status: 'off_day',
               shift_type: 'off_day',
               notes: 'OFF-DAY',
               is_manual_entry: true,
-              exact_hours: 0
+              exact_hours: 0,
+              working_week_start: day.date // Set working_week_start for proper grouping
             }
           ]);
           
@@ -251,7 +253,7 @@ export const saveRecordsToDatabase = async (employeeRecords: EmployeeRecord[]): 
         if (day.firstCheckIn) {
           records.push({
             employee_id: employeeId,
-            timestamp: day.firstCheckIn.toISOString(),
+            timestamp: day.firstCheckIn.toISOString(), // Use full ISO string
             status: 'check_in',
             shift_type: day.shiftType,
             is_late: day.isLate,
@@ -273,7 +275,7 @@ export const saveRecordsToDatabase = async (employeeRecords: EmployeeRecord[]): 
         if (day.lastCheckOut) {
           records.push({
             employee_id: employeeId,
-            timestamp: day.lastCheckOut.toISOString(),
+            timestamp: day.lastCheckOut.toISOString(), // Use full ISO string
             status: 'check_out',
             shift_type: day.shiftType,
             is_late: false,
@@ -361,6 +363,7 @@ export const fetchManualTimeRecords = async (limit: number = 50): Promise<any[]>
         display_check_in,
         display_check_out,
         exact_hours,
+        working_week_start,
         employees (
           name,
           employee_number

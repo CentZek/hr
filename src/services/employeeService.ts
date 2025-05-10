@@ -74,22 +74,21 @@ export const getEmployeeShifts = async (employeeId: string) => {
 const convertTimeRecordsToShifts = (timeRecords: any[], employeeId: string) => {
   // Group records by date
   const recordsByDate = timeRecords.reduce((acc: Record<string, any[]>, record) => {
-    // Ensure timestamp is valid
-    const timestamp = new Date(record.timestamp);
-    if (!isValid(timestamp)) {
+    // Use the UTC date portion for consistency across timezones
+    const utc = parseISO(record.timestamp);
+    const date = utc.toISOString().slice(0,10);  // "YYYY-MM-DD"
+    
+    // For check-outs after midnight, use working_week_start if available
+    if (record.status === 'check_out' && record.working_week_start) {
+      const workDate = record.working_week_start;
+      if (!acc[workDate]) {
+        acc[workDate] = [];
+      }
+      acc[workDate].push(record);
       return acc;
     }
     
-    // For check-outs after midnight, associate with previous day if it's an evening shift
-    let date = format(timestamp, 'yyyy-MM-dd');
-    if (record.status === 'check_out' && 
-        record.shift_type === 'evening' && 
-        timestamp.getHours() < 12) {
-      const prevDay = new Date(timestamp);
-      prevDay.setDate(prevDay.getDate() - 1);
-      date = format(prevDay, 'yyyy-MM-dd');
-    }
-    
+    // If not a check-out with working_week_start, use the date
     if (!acc[date]) {
       acc[date] = [];
     }
@@ -121,9 +120,9 @@ const convertTimeRecordsToShifts = (timeRecords: any[], employeeId: string) => {
     // Extract the shift type (prefer check-in's shift type)
     const shiftType = checkIn.shift_type || checkOut.shift_type || 'morning';
     
-    // Format the times (HH:MM format)
-    const start_time = format(new Date(checkIn.timestamp), 'HH:mm');
-    const end_time = format(new Date(checkOut.timestamp), 'HH:mm');
+    // Use display values directly if available
+    const start_time = checkIn.display_check_in || format(new Date(checkIn.timestamp), 'HH:mm');
+    const end_time = checkOut.display_check_out || format(new Date(checkOut.timestamp), 'HH:mm');
     
     // Create a shift object
     shifts.push({
@@ -251,14 +250,17 @@ export const submitShiftForApproval = async (shiftData: any) => {
       shiftData.shift_type
     );
     
-    // Create check-in record
+    // Create check-in record with full ISO timestamp for consistent timezone handling
     const checkInData = {
       employee_id: shiftData.employee_id,
-      timestamp: checkIn.toISOString(),
+      timestamp: checkIn.toISOString(), // Use full ISO string with timezone
       status: 'check_in',
       shift_type: shiftData.shift_type,
       notes: 'Employee submitted; hours:9.00',
-      is_manual_entry: true
+      is_manual_entry: true,
+      display_check_in: shiftData.start_time,
+      display_check_out: shiftData.end_time,
+      working_week_start: shiftData.date // Add working_week_start for proper grouping
     };
     
     const { error: checkInError } = await supabase
@@ -267,14 +269,17 @@ export const submitShiftForApproval = async (shiftData: any) => {
       
     if (checkInError) throw checkInError;
     
-    // Create check-out record
+    // Create check-out record with full ISO timestamp
     const checkOutData = {
       employee_id: shiftData.employee_id,
-      timestamp: checkOut.toISOString(),
+      timestamp: checkOut.toISOString(), // Use full ISO string with timezone
       status: 'check_out',
       shift_type: shiftData.shift_type,
       notes: 'Employee submitted; hours:9.00',
-      is_manual_entry: true
+      is_manual_entry: true,
+      display_check_in: shiftData.start_time,
+      display_check_out: shiftData.end_time,
+      working_week_start: shiftData.date // Same working_week_start for consistency
     };
     
     const { error: checkOutError } = await supabase

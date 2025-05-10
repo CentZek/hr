@@ -137,7 +137,7 @@ const EmployeeShiftRequest: React.FC<EmployeeShiftRequestProps> = ({ onShiftAppr
           throw new Error('Invalid date after parsing shift times');
         }
         
-        // Format timestamps correctly for database insertion
+        // Format timestamps correctly for database insertion with full ISO string
         const checkInTimestamp = checkInDate.toISOString();
         const checkOutTimestamp = checkOutDate.toISOString();
         
@@ -159,7 +159,8 @@ const EmployeeShiftRequest: React.FC<EmployeeShiftRequestProps> = ({ onShiftAppr
             early_leave: false,
             deduction_minutes: 0,
             display_check_in: startTime,
-            display_check_out: endTime
+            display_check_out: endTime,
+            working_week_start: dateStr // Add working_week_start for proper grouping
           },
           {
             employee_id: shift.employee_id,
@@ -173,7 +174,8 @@ const EmployeeShiftRequest: React.FC<EmployeeShiftRequestProps> = ({ onShiftAppr
             early_leave: false,
             deduction_minutes: 0,
             display_check_in: startTime,
-            display_check_out: endTime
+            display_check_out: endTime,
+            working_week_start: dateStr // Same working_week_start for both records
           }
         ];
         

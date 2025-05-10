@@ -18,6 +18,7 @@ interface TimeRecord {
     name: string;
     employee_number: string;
   };
+  working_week_start?: string;
 }
 
 interface TimeRecordsTableProps {
@@ -35,9 +36,9 @@ const TimeRecordsTable: React.FC<TimeRecordsTableProps> = ({
 
   // Helper function to determine if a timestamp should be handled as a possible night shift
   const shouldHandleAsPossibleNightShift = (timestamp: Date): boolean => {
-    const hour = timestamp.getHours();
+    const hourUTC = new Date(timestamp).getUTCHours();
     // Early morning hours (midnight to 8 AM) could be night shift check-outs
-    return hour >= 0 && hour < 8;
+    return hourUTC >= 0 && hourUTC < 8;
   };
 
   // Check if we're on mobile
@@ -90,17 +91,18 @@ const TimeRecordsTable: React.FC<TimeRecordsTableProps> = ({
       
       // Special handling for night shift or evening shift checkouts in early morning hours
       if (record.status === 'check_out') {
-        const recordHour = new Date(record.timestamp).getHours();
+        // Use UTC hours to ensure consistency across timezones
+        const recordHourUTC = utc.getUTCHours();
         
         // For night shifts with early morning checkout, associate with previous day
-        if (record.shift_type === 'night' && recordHour < 12) {
+        if (record.shift_type === 'night' && recordHourUTC < 12) {
           // This is a night shift checkout on the next day
           const prevDate = new Date(record.timestamp);
           prevDate.setDate(prevDate.getDate() - 1);
           date = prevDate.toISOString().slice(0,10);  // "YYYY-MM-DD"
         }
         // For evening shifts with early morning checkout, associate with previous day
-        else if (record.shift_type === 'evening' && recordHour < 12) {
+        else if (record.shift_type === 'evening' && recordHourUTC < 12) {
           // This is likely an evening shift checkout on the next day
           const prevDate = new Date(record.timestamp);
           prevDate.setDate(prevDate.getDate() - 1);
@@ -184,7 +186,7 @@ const TimeRecordsTable: React.FC<TimeRecordsTableProps> = ({
               // Set display values if missing
               result.push({
                 ...earliestCheckIn,
-                display_check_in: format(new Date(earliestCheckIn.timestamp), 'HH:mm'),
+                display_check_in: earliestCheckIn.display_check_in || format(new Date(earliestCheckIn.timestamp), 'HH:mm'),
                 display_check_out: 'Missing'
               });
             }
@@ -337,6 +339,15 @@ const TimeRecordsTable: React.FC<TimeRecordsTableProps> = ({
   const getActualTime = (record: any) => {
     if (!record) return '—';
     
+    // First check if this record has display values set
+    if (record.status === 'check_in' && record.display_check_in && record.display_check_in !== 'Missing') {
+      return record.display_check_in;
+    }
+    
+    if (record.status === 'check_out' && record.display_check_out && record.display_check_out !== 'Missing') {
+      return record.display_check_out;
+    }
+    
     // First check if this is a standard shift type with predefined display times
     if (record.shift_type) {
       const shiftType = record.shift_type;
@@ -419,7 +430,7 @@ const TimeRecordsTable: React.FC<TimeRecordsTableProps> = ({
                         {record.checkIn ? (
                           <>
                             {record.checkIn.is_late && <AlertTriangle className="inline w-3 h-3 mr-1 text-amber-500" />}
-                            {getActualTime(record.checkIn)}
+                            {record.checkIn.display_check_in || getActualTime(record.checkIn)}
                           </>
                         ) : (
                           <span className="text-gray-400">Missing</span>
@@ -433,7 +444,7 @@ const TimeRecordsTable: React.FC<TimeRecordsTableProps> = ({
                         {record.checkOut ? (
                           <>
                             {record.checkOut.early_leave && <AlertTriangle className="inline w-3 h-3 mr-1 text-amber-500" />}
-                            {getActualTime(record.checkOut)}
+                            {record.checkOut.display_check_out || getActualTime(record.checkOut)}
                           </>
                         ) : (
                           <span className="text-gray-400">Missing</span>
@@ -528,7 +539,7 @@ const TimeRecordsTable: React.FC<TimeRecordsTableProps> = ({
                   ) : record.checkIn ? (
                     <div className={`flex items-center ${record.checkIn.is_late ? 'text-amber-600' : 'text-gray-600'}`}>
                       {record.checkIn.is_late && <AlertTriangle className="w-4 h-4 mr-1 text-amber-500" />}
-                      {getActualTime(record.checkIn)}
+                      {record.checkIn.display_check_in || getActualTime(record.checkIn)}
                       {record.checkIn.deduction_minutes > 0 && (
                         <span className="ml-2 px-1.5 py-0.5 bg-red-100 text-red-800 text-xs rounded-full">
                           -{(record.checkIn.deduction_minutes / 60).toFixed(1)}h
@@ -545,7 +556,7 @@ const TimeRecordsTable: React.FC<TimeRecordsTableProps> = ({
                   ) : record.checkOut ? (
                     <div className={`flex items-center ${record.checkOut.early_leave ? 'text-amber-600' : 'text-gray-600'}`}>
                       {record.checkOut.early_leave && <AlertTriangle className="w-4 h-4 mr-1 text-amber-500" />}
-                      {getActualTime(record.checkOut)}
+                      {record.checkOut.display_check_out || getActualTime(record.checkOut)}
                     </div>
                   ) : (
                     <span className="text-gray-400">Missing</span>

@@ -124,19 +124,21 @@ const ManualEntryModal: React.FC<ManualEntryModalProps> = ({ isOpen, onClose, on
       const timeRecords = [
         {
           employee_id: shift.employee_id,
-          timestamp: checkIn.toISOString(),
+          timestamp: checkIn.toISOString(), // Use full ISO string with timezone
           status: 'check_in',
           shift_type: shift.shift_type,
           notes: 'Employee submitted shift - HR approved; hours:9.00',
-          is_manual_entry: true
+          is_manual_entry: true,
+          working_week_start: shift.date // Set working_week_start for proper grouping
         },
         {
           employee_id: shift.employee_id,
-          timestamp: checkOut.toISOString(),
+          timestamp: checkOut.toISOString(), // Use full ISO string with timezone
           status: 'check_out',
           shift_type: shift.shift_type,
           notes: 'Employee submitted shift - HR approved; hours:9.00',
-          is_manual_entry: true
+          is_manual_entry: true,
+          working_week_start: shift.date // Same working_week_start for both records
         }
       ];
       
@@ -232,25 +234,31 @@ const ManualEntryModal: React.FC<ManualEntryModalProps> = ({ isOpen, onClose, on
         shiftType
       );
 
-      // Add records to time_records table
+      // Add records to time_records table with full ISO timestamps
       await supabase
         .from('time_records')
         .insert([
           {
             employee_id: employeeId,
-            timestamp: checkIn.toISOString(),
+            timestamp: checkIn.toISOString(), // Use full ISO string with timezone
             status: 'check_in',
             shift_type: shiftType,
             notes: notes || 'Manual entry; hours:9.00',
-            is_manual_entry: true
+            is_manual_entry: true,
+            working_week_start: selectedDate, // Set working_week_start for proper grouping
+            display_check_in: times.start,
+            display_check_out: times.end
           },
           {
             employee_id: employeeId,
-            timestamp: checkOut.toISOString(),
+            timestamp: checkOut.toISOString(), // Use full ISO string with timezone
             status: 'check_out',
             shift_type: shiftType,
             notes: notes || 'Manual entry; hours:9.00',
-            is_manual_entry: true
+            is_manual_entry: true,
+            working_week_start: selectedDate, // Same working_week_start for both records
+            display_check_in: times.start,
+            display_check_out: times.end
           }
         ]);
 
