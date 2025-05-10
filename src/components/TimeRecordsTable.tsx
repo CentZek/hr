@@ -111,7 +111,8 @@ const TimeRecordsTable: React.FC<TimeRecordsTableProps> = ({
       
       // For normal records, handle date grouping safely
       const ts = parseISO(record.timestamp);
-      let dayKey = format(ts, 'yyyy-MM-dd');
+      // use the UTC date portion so local offsets never shift the day
+      let dayKey = ts.toISOString().slice(0,10);  // "YYYY-MM-DD" in UTC
       
       if (
         record.status === 'check_out' &&
@@ -119,8 +120,8 @@ const TimeRecordsTable: React.FC<TimeRecordsTableProps> = ({
         // use UTC hour so we don't accidentally catch evening or morning shifts
         ts.getUTCHours() < 12
       ) {
-        const prev = subDays(ts, 1);
-        dayKey = format(prev, 'yyyy-MM-dd');
+        const prevUtc = subDays(ts, 1);
+        dayKey = prevUtc.toISOString().slice(0,10);
       }
       
       if (!groups[dayKey]) {
@@ -157,11 +158,41 @@ const TimeRecordsTable: React.FC<TimeRecordsTableProps> = ({
         const offDayRecords = records.filter(r => r.status === 'off_day');
         if (offDayRecords.length > 0) {
           // Add off day records with special formatting
+          const offDayRecord = offDayRecords[0];
+          
+          // Mobile view
+          if (typeof window !== 'undefined' && window.innerWidth < 640) {
+            return (
+              <div key={date} className="p-3 border-b border-gray-100 last:border-0">
+                <div className="font-medium text-gray-800 mb-2">
+                  {format(new Date(date), 'EEE, MMM d, yyyy')}
+                </div>
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <div>
+                    <span className="text-xs text-gray-500">Status:</span>
+                    <div className="mt-1">
+                      <span className="px-2 py-0.5 text-xs font-medium rounded-full bg-red-100 text-red-800">
+                        OFF-DAY
+                      </span>
+                    </div>
+                  </div>
+                  <div>
+                    <span className="text-xs text-gray-500">Hours:</span>
+                    <div className="font-medium text-gray-800 mt-1">
+                      0.00
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          }
+          
+          // Desktop view
           result.push({
             date,
             employeeId,
-            employeeName: records[0]?.employees?.name || 'Unknown Employee',
-            employeeNumber: records[0]?.employees?.employee_number || 'Unknown',
+            employeeName: offDayRecord.employees?.name || 'Unknown Employee',
+            employeeNumber: offDayRecord.employees?.employee_number || 'Unknown',
             isOffDay: true,
             notes: 'OFF-DAY'
           });
