@@ -186,7 +186,7 @@ const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
           exact_hours: 9.0,
           display_check_in: displayCheckIn,
           display_check_out: displayCheckOut,
-          working_week_start: shift.date // Same working_week_start for both records
+          working_week_start: shift.date // Always use check-in date for working_week_start
         }
       ];
       
@@ -328,7 +328,7 @@ const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
             shift_type: shiftType,
             notes: notes || 'Manual entry; hours:9.00',
             is_manual_entry: true,
-            working_week_start: selectedDate, // Same working_week_start for both records
+            working_week_start: selectedDate, // Always use check-in date for working_week_start
             display_check_in: displayCheckIn,
             display_check_out: displayCheckOut,
             exact_hours: 9.0

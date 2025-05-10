@@ -195,7 +195,7 @@ const EmployeeShiftRequest: React.FC<EmployeeShiftRequestProps> = ({ onShiftAppr
             deduction_minutes: 0,
             display_check_in: displayCheckIn,
             display_check_out: displayCheckOut,
-            working_week_start: dateStr // Same working_week_start for both records
+            working_week_start: dateStr // For night shifts, always use check-in date as working_week_start
           }
         ];
         
