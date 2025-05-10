@@ -213,49 +213,21 @@ export const saveRecordsToDatabase = async (employeeRecords: EmployeeRecord[]): 
       try {
         // Skip if this is an OFF-DAY with no hours
         if (day.notes === 'OFF-DAY' && day.hoursWorked === 0) {
-          // Check if an OFF-DAY record already exists for this employee and date
-          const { data: existingOffDay, error: checkError } = await supabase
-            .from('time_records')
-            .select('id')
-            .eq('employee_id', await getEmployeeId(employee.employeeNumber))
-            .eq('status', 'off_day')
-            .eq('working_week_start', day.date)
-            .maybeSingle();
+          // Create an OFF-DAY record
+          const { error } = await supabase.from('time_records').insert([
+            {
+              employee_id: await getEmployeeId(employee.employeeNumber),
+              timestamp: new Date(`${day.date}T12:00:00`).toISOString(), // Use full ISO string
+              status: 'off_day',
+              shift_type: 'off_day',
+              notes: 'OFF-DAY',
+              is_manual_entry: true,
+              exact_hours: 0,
+              working_week_start: day.date // Set working_week_start for proper grouping
+            }
+          ]);
           
-          if (checkError) throw checkError;
-          
-          // Create or update the OFF-DAY record
-          if (existingOffDay) {
-            // Update existing record
-            const { error: updateError } = await supabase
-              .from('time_records')
-              .update({
-                timestamp: new Date(`${day.date}T12:00:00`).toISOString(),
-                notes: 'OFF-DAY',
-                is_manual_entry: true,
-                exact_hours: 0
-              })
-              .eq('id', existingOffDay.id);
-            
-            if (updateError) throw updateError;
-          } else {
-            // Create new record
-            const { error } = await supabase.from('time_records').insert([
-              {
-                employee_id: await getEmployeeId(employee.employeeNumber),
-                timestamp: new Date(`${day.date}T12:00:00`).toISOString(),
-                status: 'off_day',
-                shift_type: 'off_day',
-                notes: 'OFF-DAY',
-                is_manual_entry: true,
-                exact_hours: 0,
-                working_week_start: day.date
-              }
-            ]);
-            
-            if (error) throw error;
-          }
-          
+          if (error) throw error;
           successCount++;
           continue;
         }
@@ -274,29 +246,6 @@ export const saveRecordsToDatabase = async (employeeRecords: EmployeeRecord[]): 
         // Get employee ID
         const employeeId = await getEmployeeId(employee.employeeNumber);
         
-        // Check for any existing manual records that would violate the constraint
-        const { data: existingManualRecords, error: manualError } = await supabase
-          .from('time_records')
-          .select('id, status')
-          .eq('employee_id', employeeId)
-          .eq('shift_type', day.shiftType)
-          .eq('working_week_start', day.date)
-          .eq('is_manual_entry', true);
-        
-        if (manualError) throw manualError;
-        
-        // If we found manual entries, delete them to avoid constraint violation
-        if (existingManualRecords && existingManualRecords.length > 0) {
-          const recordIds = existingManualRecords.map(record => record.id);
-          console.log(`Deleting ${existingManualRecords.length} existing manual records to avoid constraint violation`);
-          const { error: deleteError } = await supabase
-            .from('time_records')
-            .delete()
-            .in('id', recordIds);
-            
-          if (deleteError) throw deleteError;
-        }
-        
         // Prepare records to insert
         const records = [];
         
@@ -304,7 +253,7 @@ export const saveRecordsToDatabase = async (employeeRecords: EmployeeRecord[]): 
         if (day.firstCheckIn) {
           records.push({
             employee_id: employeeId,
-            timestamp: day.firstCheckIn.toISOString(),
+            timestamp: day.firstCheckIn.toISOString(), // Use full ISO string
             status: 'check_in',
             shift_type: day.shiftType,
             is_late: day.isLate,
@@ -312,13 +261,13 @@ export const saveRecordsToDatabase = async (employeeRecords: EmployeeRecord[]): 
             deduction_minutes: day.penaltyMinutes,
             notes: day.notes ? `${day.notes}; hours:${day.hoursWorked.toFixed(2)}` : `hours:${day.hoursWorked.toFixed(2)}`,
             exact_hours: day.hoursWorked,
-            display_check_in: day.displayCheckIn || (day.firstCheckIn ? format(day.firstCheckIn, 'HH:mm') : 'Missing'),
-            display_check_out: day.displayCheckOut || (day.lastCheckOut ? format(day.lastCheckOut, 'HH:mm') : 'Missing'),
+            display_check_in: format(day.firstCheckIn, 'HH:mm'),
+            display_check_out: day.lastCheckOut ? format(day.lastCheckOut, 'HH:mm') : 'Missing',
             is_fixed: day.correctedRecords || false,
             corrected_records: day.correctedRecords || false,
             mislabeled: false,
-            working_week_start: day.date,
-            is_manual_entry: true
+            // For night shifts, set working_week_start to help with grouping
+            working_week_start: day.date
           });
         }
         
@@ -326,7 +275,7 @@ export const saveRecordsToDatabase = async (employeeRecords: EmployeeRecord[]): 
         if (day.lastCheckOut) {
           records.push({
             employee_id: employeeId,
-            timestamp: day.lastCheckOut.toISOString(),
+            timestamp: day.lastCheckOut.toISOString(), // Use full ISO string
             status: 'check_out',
             shift_type: day.shiftType,
             is_late: false,
@@ -334,26 +283,23 @@ export const saveRecordsToDatabase = async (employeeRecords: EmployeeRecord[]): 
             deduction_minutes: day.penaltyMinutes,
             notes: day.notes ? `${day.notes}; hours:${day.hoursWorked.toFixed(2)}` : `hours:${day.hoursWorked.toFixed(2)}`,
             exact_hours: day.hoursWorked,
-            display_check_in: day.displayCheckIn || (day.firstCheckIn ? format(day.firstCheckIn, 'HH:mm') : 'Missing'),
-            display_check_out: day.displayCheckOut || (day.lastCheckOut ? format(day.lastCheckOut, 'HH:mm') : 'Missing'),
+            display_check_in: day.firstCheckIn ? format(day.firstCheckIn, 'HH:mm') : 'Missing',
+            display_check_out: format(day.lastCheckOut, 'HH:mm'),
             is_fixed: day.correctedRecords || false,
             corrected_records: day.correctedRecords || false,
             mislabeled: false,
-            working_week_start: day.date,
-            is_manual_entry: true
+            // For night shifts with early morning checkout, set working_week_start to the check-in date
+            working_week_start: day.shiftType === 'night' && day.lastCheckOut.getHours() < 12 ? day.date : day.date
           });
         }
         
-        // Insert records if any
+        // Insert records
         if (records.length > 0) {
-          const { error: insertError } = await supabase
-            .from('time_records')
-            .insert(records);
+          const { error } = await supabase.from('time_records').insert(records);
           
-          if (insertError) throw insertError;
+          if (error) throw error;
+          successCount++;
         }
-        
-        successCount++;
       } catch (error) {
         console.error(`Error saving record for ${employee.name} on ${day.date}:`, error);
         errorCount++;
@@ -439,14 +385,6 @@ export const fetchManualTimeRecords = async (limit: number = 50): Promise<any[]>
           ...record,
           display_check_in: record.status === 'check_in' ? '13:00' : record.display_check_in,
           display_check_out: record.status === 'check_out' ? '22:00' : record.display_check_out
-        };
-      }
-      // If this is a night shift, ensure display times are correct
-      else if (record.shift_type === 'night') {
-        return {
-          ...record,
-          display_check_in: record.status === 'check_in' ? '21:00' : record.display_check_in,
-          display_check_out: record.status === 'check_out' ? '06:00' : record.display_check_out
         };
       }
       return record;

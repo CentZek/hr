@@ -284,9 +284,9 @@ export const convertShiftRequestsToRecords = async () => {
       
       // Use our helper function to properly handle night shifts
       const { checkIn, checkOut } = parseShiftTimes(
-        shift.date, 
-        shift.start_time, 
-        shift.end_time, 
+        shift.date,
+        shift.start_time,
+        shift.end_time,
         shift.shift_type
       );
       

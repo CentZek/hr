@@ -118,60 +118,42 @@ const ManualEntryModal: React.FC<ManualEntryModalProps> = ({ isOpen, onClose, on
       const startTime = shift.shift_type === 'morning' ? '05:00' : shift.shift_type === 'evening' ? '13:00' : '21:00';
       const endTime = shift.shift_type === 'morning' ? '14:00' : shift.shift_type === 'evening' ? '22:00' : '06:00';
       
+      // Get display times from the shift type constants
+      const displayTimes = DISPLAY_SHIFT_TIMES[shift.shift_type as keyof typeof DISPLAY_SHIFT_TIMES];
+      const displayCheckIn = displayTimes?.startTime || startTime;
+      const displayCheckOut = displayTimes?.endTime || endTime;
+      
       // Use our helper function to properly handle day rollover
       const { checkIn, checkOut } = parseShiftTimes(shift.date, startTime, endTime, shift.shift_type);
       
-      // First, check for any manual records with this shift type to ensure we're not violating the unique constraint
-      const { data: existingManualRecords, error: manualError } = await supabase
-        .from('time_records')
-        .select('id, status')
-        .eq('employee_id', shift.employee_id)
-        .eq('shift_type', shift.shift_type)
-        .eq('working_week_start', shift.date)
-        .eq('is_manual_entry', true);
+      const timeRecords = [
+        {
+          employee_id: shift.employee_id,
+          timestamp: checkIn.toISOString(), // Use full ISO string with timezone
+          status: 'check_in',
+          shift_type: shift.shift_type,
+          notes: 'Employee submitted shift - HR approved; hours:9.00',
+          is_manual_entry: true,
+          exact_hours: 9.0,
+          display_check_in: displayCheckIn,
+          display_check_out: displayCheckOut,
+          working_week_start: shift.date // Set working_week_start for proper grouping
+        },
+        {
+          employee_id: shift.employee_id,
+          timestamp: checkOut.toISOString(), // Use full ISO string with timezone
+          status: 'check_out',
+          shift_type: shift.shift_type,
+          notes: 'Employee submitted shift - HR approved; hours:9.00',
+          is_manual_entry: true,
+          exact_hours: 9.0,
+          display_check_in: displayCheckIn,
+          display_check_out: displayCheckOut,
+          working_week_start: shift.date // Same working_week_start for both records
+        }
+      ];
       
-      if (manualError) throw manualError;
-      
-      // If we found manual entries with the same key fields, delete them to avoid unique constraint violation
-      if (existingManualRecords && existingManualRecords.length > 0) {
-        const recordIds = existingManualRecords.map(record => record.id);
-        console.log(`Deleting ${existingManualRecords.length} existing manual records to avoid constraint violation`);
-        const { error: deleteError } = await supabase
-          .from('time_records')
-          .delete()
-          .in('id', recordIds);
-          
-        if (deleteError) throw deleteError;
-      }
-      
-      // Prepare time records
-      const checkInRecord = {
-        employee_id: shift.employee_id,
-        timestamp: checkIn.toISOString(),
-        status: 'check_in',
-        shift_type: shift.shift_type,
-        notes: 'Employee submitted shift - HR approved; hours:9.00',
-        is_manual_entry: true,
-        working_week_start: shift.date,
-        exact_hours: 9.0
-      };
-      
-      const checkOutRecord = {
-        employee_id: shift.employee_id,
-        timestamp: checkOut.toISOString(),
-        status: 'check_out',
-        shift_type: shift.shift_type,
-        notes: 'Employee submitted shift - HR approved; hours:9.00',
-        is_manual_entry: true,
-        working_week_start: shift.date,
-        exact_hours: 9.0
-      };
-      
-      // Insert both records in a single insert to ensure atomicity
-      const { error: insertError } = await supabase
-        .from('time_records')
-        .insert([checkInRecord, checkOutRecord]);
-      
+      const { error: insertError } = await supabase.from('time_records').insert(timeRecords);
       if (insertError) throw insertError;
       
       // Refresh the list
@@ -241,6 +223,11 @@ const ManualEntryModal: React.FC<ManualEntryModalProps> = ({ isOpen, onClose, on
 
       // Get standard times for selected shift
       const times = getStandardShiftTimes(shiftType);
+      
+      // Get display times from constants
+      const displayTimes = DISPLAY_SHIFT_TIMES[shiftType];
+      const displayCheckIn = displayTimes.startTime;
+      const displayCheckOut = displayTimes.endTime;
 
       // Create employee shift first
       await supabase
@@ -262,63 +249,36 @@ const ManualEntryModal: React.FC<ManualEntryModalProps> = ({ isOpen, onClose, on
         times.end, 
         shiftType
       );
-      
-      // First check for existing manual records that would violate the constraint
-      const { data: existingManualRecords, error: manualError } = await supabase
-        .from('time_records')
-        .select('id, status')
-        .eq('employee_id', employeeId)
-        .eq('shift_type', shiftType)
-        .eq('working_week_start', selectedDate)
-        .eq('is_manual_entry', true);
-      
-      if (manualError) throw manualError;
-      
-      // If we found manual entries, delete them to avoid constraint violation
-      if (existingManualRecords && existingManualRecords.length > 0) {
-        const recordIds = existingManualRecords.map(record => record.id);
-        console.log(`Deleting ${existingManualRecords.length} existing manual records to avoid constraint violation`);
-        const { error: deleteError } = await supabase
-          .from('time_records')
-          .delete()
-          .in('id', recordIds);
-          
-        if (deleteError) throw deleteError;
-      }
 
-      // Prepare time records
-      const checkInRecord = {
-        employee_id: employeeId,
-        timestamp: checkIn.toISOString(),
-        status: 'check_in',
-        shift_type: shiftType,
-        notes: notes || 'Manual entry; hours:9.00',
-        is_manual_entry: true,
-        working_week_start: selectedDate,
-        display_check_in: times.start,
-        display_check_out: times.end,
-        exact_hours: 9.0
-      };
-      
-      const checkOutRecord = {
-        employee_id: employeeId,
-        timestamp: checkOut.toISOString(),
-        status: 'check_out',
-        shift_type: shiftType,
-        notes: notes || 'Manual entry; hours:9.00',
-        is_manual_entry: true,
-        working_week_start: selectedDate,
-        display_check_in: times.start,
-        display_check_out: times.end,
-        exact_hours: 9.0
-      };
-      
-      // Insert both records in a single insert to ensure atomicity
-      const { error: insertError } = await supabase
+      // Add records to time_records table with full ISO timestamps
+      await supabase
         .from('time_records')
-        .insert([checkInRecord, checkOutRecord]);
-      
-      if (insertError) throw insertError;
+        .insert([
+          {
+            employee_id: employeeId,
+            timestamp: checkIn.toISOString(), // Use full ISO string with timezone
+            status: 'check_in',
+            shift_type: shiftType,
+            notes: notes || 'Manual entry; hours:9.00',
+            is_manual_entry: true,
+            working_week_start: selectedDate, // Set working_week_start for proper grouping
+            display_check_in: displayCheckIn,
+            display_check_out: displayCheckOut,
+            exact_hours: 9.0
+          },
+          {
+            employee_id: employeeId,
+            timestamp: checkOut.toISOString(), // Use full ISO string with timezone
+            status: 'check_out',
+            shift_type: shiftType,
+            notes: notes || 'Manual entry; hours:9.00',
+            is_manual_entry: true,
+            working_week_start: selectedDate, // Same working_week_start for both records
+            display_check_in: displayCheckIn,
+            display_check_out: displayCheckOut,
+            exact_hours: 9.0
+          }
+        ]);
 
       // Call the save callback
       onSave({

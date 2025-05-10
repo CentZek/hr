@@ -1,5 +1,5 @@
 import React from 'react';
-import { format, differenceInMinutes, parseISO, isValid } from 'date-fns';
+import { format, differenceInMinutes, parseISO } from 'date-fns';
 import { AlertTriangle, CheckCircle, Clock } from 'lucide-react';
 import { DISPLAY_SHIFT_TIMES } from '../../types';
 import { formatTime24H } from '../../utils/dateTimeHelper';
@@ -13,34 +13,47 @@ interface DailyBreakdownProps {
 const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records }) => {
   // Group records by date for better display
   const recordsByDate = records.reduce((acc: any, record: any) => {
-    try {
-      // Skip invalid records
-      if (!record.timestamp) return acc;
+    // Use the UTC date portion so nothing shifts under local timezones
+    const utc = parseISO(record.timestamp);
+    const date = utc.toISOString().slice(0,10);  // "YYYY-MM-DD"
+    
+    // Special handling for night shift or evening shift checkouts in early morning hours
+    if (record.status === 'check_out') {
+      // Use UTC hours to ensure consistency across timezones
+      const recordHourUTC = utc.getUTCHours();
       
-      // parse the ISO timestamp into a JS Date
-      const ts = parseISO(record.timestamp);
-      // start by assuming it belongs on its own day
-      let key = format(ts, 'yyyy-MM-dd');
-
-      // if this is a night‐shift check-out after midnight, re-group onto the PREVIOUS day
-      if (
-        record.status === 'check_out' &&
-        record.shift_type === 'night' &&
-        ts.getHours() < 12           // local hour: 0–11 = early morning
-      ) {
-        const prev = new Date(ts);
-        prev.setDate(prev.getDate() - 1);
-        key = format(prev, 'yyyy-MM-dd');
+      // For night shifts with early morning checkout, associate with previous day
+      if (record.shift_type === 'night' && recordHourUTC < 12) {
+        // This is a night shift checkout on the next day
+        const prevDate = new Date(record.timestamp);
+        prevDate.setDate(prevDate.getDate() - 1);
+        const prevDateStr = prevDate.toISOString().slice(0,10);  // "YYYY-MM-DD"
+        
+        if (!acc[prevDateStr]) {
+          acc[prevDateStr] = [];
+        }
+        acc[prevDateStr].push(record);
+        return acc;
       }
-
-      // (leave evening & morning entirely alone—no other shifting)
-
-      // push into the proper bucket
-      (acc[key] = acc[key] || []).push(record);
-      return acc;
-    } catch (error) {
-      console.error('Error grouping record by date:', error, record);
+      // For evening shifts with early morning checkout, associate with previous day
+      else if (record.shift_type === 'evening' && recordHourUTC < 12) {
+        // This is likely an evening shift checkout on the next day
+        const prevDate = new Date(record.timestamp);
+        prevDate.setDate(prevDate.getDate() - 1);
+        const prevDateStr = prevDate.toISOString().slice(0,10);  // "YYYY-MM-DD"
+        
+        if (!acc[prevDateStr]) {
+          acc[prevDateStr] = [];
+        }
+        acc[prevDateStr].push(record);
+        return acc;
+      }
     }
+
+    if (!acc[date]) {
+      acc[date] = [];
+    }
+    acc[date].push(record);
     return acc;
   }, {});
 
@@ -49,11 +62,13 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records }) =
     if (!timestamp) return '–';
     
     try {
+      // Get the timestamp and ensure it's treated consistently
       const date = parseISO(timestamp);
-      if (!isValid(date)) return '–';
-      return formatTime24H(date);
-    } catch (error) {
-      console.error('Error formatting timestamp:', error);
+      
+      // IMPORTANT: Format as local time, not UTC - this fixes the time differences
+      return format(date, 'HH:mm');
+    } catch (err) {
+      console.error("Error formatting time:", err);
       return '–';
     }
   };
@@ -170,12 +185,7 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records }) =
           // Get the latest check-out time (most important for night shifts)
           const checkOut = checkOuts.length > 0 ? 
             checkOuts.reduce((latest, current) => {
-              try {
-                return new Date(current.timestamp) > new Date(latest.timestamp) ? current : latest;
-              } catch (error) {
-                console.error('Error comparing timestamps:', error);
-                return latest;
-              }
+              return new Date(current.timestamp) > new Date(latest.timestamp) ? current : latest;
             }, checkOuts[0]) : null;
           
           // Get hours - prioritize exact_hours field first
@@ -215,33 +225,27 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records }) =
           
           // If no stored hours, calculate using the timestamps
           if (hours === 0 && checkIn && checkOut) {
-            try {
-              const checkInTime = parseISO(checkIn.timestamp);
-              const checkOutTime = parseISO(checkOut.timestamp);
-              
-              if (isValid(checkInTime) && isValid(checkOutTime)) {
-                // Calculate total minutes
-                let diffMinutes = differenceInMinutes(checkOutTime, checkInTime);
-                
-                // If time difference is negative, it means checkout is on the next day
-                if (diffMinutes < 0) {
-                  diffMinutes += 24 * 60; // Add 24 hours
-                }
-                
-                // Convert to hours
-                hours = diffMinutes / 60;
-                
-                // Apply deduction minutes if any
-                if (checkIn.deduction_minutes) {
-                  hours = Math.max(0, hours - (checkIn.deduction_minutes / 60));
-                }
-                
-                // Round to exactly a 2 decimal number
-                hours = parseFloat(hours.toFixed(2));
-              }
-            } catch (error) {
-              console.error('Error calculating hours:', error);
+            const checkInTime = new Date(checkIn.timestamp);
+            const checkOutTime = new Date(checkOut.timestamp);
+            
+            // Calculate total minutes
+            let diffMinutes = differenceInMinutes(checkOutTime, checkInTime);
+            
+            // If time difference is negative, it means checkout is on the next day
+            if (diffMinutes < 0) {
+              diffMinutes += 24 * 60; // Add 24 hours
             }
+            
+            // Convert to hours
+            hours = diffMinutes / 60;
+            
+            // Apply deduction minutes if any
+            if (checkIn.deduction_minutes) {
+              hours = Math.max(0, hours - (checkIn.deduction_minutes / 60));
+            }
+            
+            // Round to exactly a 2 decimal number
+            hours = parseFloat(hours.toFixed(2));
           }
           
           // Determine if there's a penalty
@@ -250,10 +254,6 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records }) =
           // Determine if this is significant overtime
           const isSignificantOvertime = hours > 9.5;
 
-          // Get check-in and check-out display values
-          const checkInDisplay = checkIn?.display_check_in || (checkIn ? formatTimeDisplay(checkIn.timestamp) : 'Missing');
-          const checkOutDisplay = checkOut?.display_check_out || (checkOut ? formatTimeDisplay(checkOut.timestamp) : 'Missing');
-          
           // Mobile view
           if (typeof window !== 'undefined' && window.innerWidth < 640) {
             return (
@@ -269,7 +269,7 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records }) =
                       {checkIn ? (
                         <>
                           {checkIn.is_late && <AlertTriangle className="inline w-3 h-3 mr-1 text-amber-500" />}
-                          {checkInDisplay}
+                          {formatTimeDisplay(checkIn.timestamp)}
                         </>
                       ) : (
                         <span className="text-gray-400">Missing</span>
@@ -283,7 +283,7 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records }) =
                       {checkOut ? (
                         <>
                           {checkOut.early_leave && <AlertTriangle className="inline w-3 h-3 mr-1 text-amber-500" />}
-                          {checkOutDisplay}
+                          {formatTimeDisplay(checkOut.timestamp)}
                         </>
                       ) : (
                         <span className="text-gray-400">Missing</span>
@@ -342,7 +342,7 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records }) =
                 {checkIn ? (
                   <div className={`flex items-center ${checkIn.is_late ? 'text-amber-600' : 'text-gray-700'}`}>
                     {checkIn.is_late && <AlertTriangle className="w-3 h-3 mr-1 text-amber-500" />}
-                    {checkInDisplay}
+                    {formatTimeDisplay(checkIn.timestamp)}
                   </div>
                 ) : (
                   <span className="text-gray-400">Missing</span>
@@ -352,7 +352,7 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records }) =
                 {checkOut ? (
                   <div className={`flex items-center ${checkOut.early_leave ? 'text-amber-600' : 'text-gray-700'}`}>
                     {checkOut.early_leave && <AlertTriangle className="w-3 h-3 mr-1 text-amber-500" />}
-                    {checkOutDisplay}
+                    {formatTimeDisplay(checkOut.timestamp)}
                   </div>
                 ) : (
                   <span className="text-gray-400">Missing</span>
