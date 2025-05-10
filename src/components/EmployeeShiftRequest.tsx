@@ -32,20 +32,7 @@ const EmployeeShiftRequest: React.FC<EmployeeShiftRequestProps> = ({ onShiftAppr
     try {
       const { data, error } = await supabase
         .from('employee_shifts')
-        .select(`
-          id, 
-          employee_id, 
-          date, 
-          shift_type, 
-          start_time, 
-          end_time, 
-          status, 
-          notes, 
-          employees (
-            name, 
-            employee_number
-          )
-        `)
+        .select('id, employee_id, date, shift_type, start_time, end_time, status, notes, employees(name, employee_number)')
         .eq('status', 'pending')
         .order('date', { ascending: false });
 
@@ -136,114 +123,119 @@ const EmployeeShiftRequest: React.FC<EmployeeShiftRequestProps> = ({ onShiftAppr
       
       console.log('Processing shift with:', { dateStr, startTime, endTime, shiftType: shift.shift_type });
       
-      // Use our helper function to handle date parsing correctly
-      const { checkIn, checkOut } = parseShiftTimes(
-        dateStr,
-        startTime,
-        endTime,
-        shift.shift_type
-      );
-      
-      // Validate the parsed dates
-      if (!isValid(checkIn) || !isValid(checkOut)) {
-        throw new Error('Invalid date after parsing shift times');
-      }
-      
-      // Format timestamps for database insertion
-      const checkInTimestamp = checkIn.toISOString();
-      const checkOutTimestamp = checkOut.toISOString();
-      
-      // Calculate standard hours for all shift types
-      const hoursWorked = 9.0;
-      const hoursNote = `hours:${hoursWorked.toFixed(2)}`;
+      // Handle night shift that crosses to next day using our helper function
+      try {
+        const { checkIn: checkInDate, checkOut: checkOutDate } = parseShiftTimes(
+          dateStr,
+          startTime,
+          endTime,
+          shift.shift_type
+        );
+        
+        // Validate the parsed dates
+        if (!isValid(checkInDate) || !isValid(checkOutDate)) {
+          throw new Error('Invalid date after parsing shift times');
+        }
+        
+        // Format timestamps correctly for database insertion with full ISO string
+        const checkInTimestamp = checkInDate.toISOString();
+        const checkOutTimestamp = checkOutDate.toISOString();
+        
+        // Calculate hours worked for consistency
+        const hoursWorked = 9.0; // Standard hours for all shift types
+        const hoursNote = `hours:${hoursWorked.toFixed(2)}`;
 
-      // First, check for any manual records with this shift type to ensure we're not violating the unique constraint
-      const { data: existingManualRecords, error: manualError } = await supabase
-        .from('time_records')
-        .select('id, status')
-        .eq('employee_id', shift.employee_id)
-        .eq('shift_type', shift.shift_type)
-        .eq('working_week_start', dateStr)
-        .eq('is_manual_entry', true);
-      
-      if (manualError) throw manualError;
-      
-      // If we found manual entries with the same key fields, delete them to avoid unique constraint violation
-      if (existingManualRecords && existingManualRecords.length > 0) {
-        const recordIds = existingManualRecords.map(record => record.id);
-        console.log(`Deleting ${existingManualRecords.length} existing manual records to avoid constraint violation`);
-        const { error: deleteError } = await supabase
+        // First, check for any manual records with this shift type to ensure we're not violating the unique constraint
+        const { data: existingManualRecords, error: manualError } = await supabase
           .from('time_records')
-          .delete()
-          .in('id', recordIds);
-          
-        if (deleteError) throw deleteError;
-      }
-      
-      // Create time records
-      const checkInRecord = {
-        employee_id: shift.employee_id,
-        timestamp: checkInTimestamp,
-        status: 'check_in',
-        shift_type: shift.shift_type,
-        notes: `Employee submitted shift - HR approved; ${hoursNote}`,
-        is_manual_entry: true,
-        exact_hours: hoursWorked,
-        is_late: false,
-        early_leave: false,
-        deduction_minutes: 0,
-        display_check_in: startTime,
-        display_check_out: endTime,
-        working_week_start: dateStr
-      };
-      
-      const checkOutRecord = {
-        employee_id: shift.employee_id,
-        timestamp: checkOutTimestamp,
-        status: 'check_out',
-        shift_type: shift.shift_type,
-        notes: `Employee submitted shift - HR approved; ${hoursNote}`,
-        is_manual_entry: true,
-        exact_hours: hoursWorked,
-        is_late: false,
-        early_leave: false,
-        deduction_minutes: 0,
-        display_check_in: startTime,
-        display_check_out: endTime,
-        working_week_start: dateStr
-      };
-      
-      // Insert both records in a single insert to ensure atomicity
-      const { error: insertError } = await supabase
-        .from('time_records')
-        .insert([checkInRecord, checkOutRecord]);
-      
-      if (insertError) throw insertError;
-      
-      // Remove the shift from the list
-      setEmployeeShiftRequests(prev => prev.filter(s => s.id !== shift.id));
-      
-      // Call callback if provided
-      if (onShiftApproved) {
-        const employeeData = {
-          id: shift.employee_id,
-          name: shift.employees.name,
-          employeeNumber: shift.employees.employee_number,
-          employee_number: shift.employees.employee_number
+          .select('id, status')
+          .eq('employee_id', shift.employee_id)
+          .eq('shift_type', shift.shift_type)
+          .eq('working_week_start', dateStr)
+          .eq('is_manual_entry', true);
+        
+        if (manualError) throw manualError;
+        
+        // If we found manual entries with the same key fields, delete them to avoid unique constraint violation
+        if (existingManualRecords && existingManualRecords.length > 0) {
+          const recordIds = existingManualRecords.map(record => record.id);
+          console.log(`Deleting ${existingManualRecords.length} existing manual records to avoid constraint violation`);
+          const { error: deleteError } = await supabase
+            .from('time_records')
+            .delete()
+            .in('id', recordIds);
+            
+          if (deleteError) throw deleteError;
+        }
+        
+        // Create time records
+        const checkInRecord = {
+          employee_id: shift.employee_id,
+          timestamp: checkInTimestamp,
+          status: 'check_in',
+          shift_type: shift.shift_type,
+          notes: `Employee submitted shift - HR approved; ${hoursNote}`,
+          is_manual_entry: true,
+          exact_hours: hoursWorked,
+          is_late: false,
+          early_leave: false,
+          deduction_minutes: 0,
+          display_check_in: startTime,
+          display_check_out: endTime,
+          working_week_start: dateStr
         };
         
-        onShiftApproved(employeeData, {
-          ...shift,
-          date: dateStr,
-          start_time: startTime,
-          end_time: endTime,
-          checkInDate: checkIn,
-          checkOutDate: checkOut,
-          hoursWorked
-        });
+        const checkOutRecord = {
+          employee_id: shift.employee_id,
+          timestamp: checkOutTimestamp,
+          status: 'check_out',
+          shift_type: shift.shift_type,
+          notes: `Employee submitted shift - HR approved; ${hoursNote}`,
+          is_manual_entry: true,
+          exact_hours: hoursWorked,
+          is_late: false,
+          early_leave: false,
+          deduction_minutes: 0,
+          display_check_in: startTime,
+          display_check_out: endTime,
+          working_week_start: dateStr
+        };
+        
+        // Insert both records in a single insert to ensure atomicity
+        const { error: insertError } = await supabase
+          .from('time_records')
+          .insert([checkInRecord, checkOutRecord]);
+        
+        if (insertError) throw insertError;
+        
+        // Remove the shift from the list
+        setEmployeeShiftRequests(prev => prev.filter(s => s.id !== shift.id));
+        
+        // Call callback if provided
+        if (onShiftApproved) {
+          const employeeData = {
+            id: shift.employee_id,
+            name: shift.employees.name,
+            employeeNumber: shift.employees.employee_number,
+            employee_number: shift.employees.employee_number
+          };
+          
+          onShiftApproved(employeeData, {
+            ...shift,
+            date: dateStr,
+            start_time: startTime,
+            end_time: endTime,
+            checkInDate,
+            checkOutDate,
+            hoursWorked
+          });
+        }
+        
+        toast.success(`Approved shift for ${shift.employees.name}`);
+      } catch (parseError) {
+        console.error('Error parsing shift times:', parseError);
+        throw new Error(`Failed to parse shift times: ${parseError.message}`);
       }
-      
-      toast.success(`Approved shift for ${shift.employees.name}`);
     } catch (error) {
       console.error('Error approving employee shift:', error);
       toast.error('Failed to approve shift');

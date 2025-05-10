@@ -232,7 +232,7 @@ export const saveRecordsToDatabase = async (employeeRecords: EmployeeRecord[]): 
               .update({
                 timestamp: new Date(`${day.date}T12:00:00`).toISOString(),
                 notes: 'OFF-DAY',
-                is_manual_entry: false, // Set to false as it's from Excel data
+                is_manual_entry: true,
                 exact_hours: 0
               })
               .eq('id', existingOffDay.id);
@@ -247,7 +247,7 @@ export const saveRecordsToDatabase = async (employeeRecords: EmployeeRecord[]): 
                 status: 'off_day',
                 shift_type: 'off_day',
                 notes: 'OFF-DAY',
-                is_manual_entry: false, // Set to false as it's from Excel data
+                is_manual_entry: true,
                 exact_hours: 0,
                 working_week_start: day.date
               }
@@ -297,32 +297,8 @@ export const saveRecordsToDatabase = async (employeeRecords: EmployeeRecord[]): 
           if (deleteError) throw deleteError;
         }
         
-        // Get standard display times based on shift type
-        const getStandardDisplayTime = (type: string | null, timeType: 'start' | 'end'): string => {
-          if (!type) return '';
-          
-          const displayTimes = {
-            morning: { startTime: '05:00', endTime: '14:00' },
-            evening: { startTime: '13:00', endTime: '22:00' },
-            night: { startTime: '21:00', endTime: '06:00' },
-            canteen: { startTime: '07:00', endTime: '16:00' }
-          };
-          
-          if (!['morning', 'evening', 'night', 'canteen'].includes(type)) return '';
-          
-          return timeType === 'start' ? 
-            displayTimes[type as keyof typeof displayTimes].startTime : 
-            displayTimes[type as keyof typeof displayTimes].endTime;
-        };
-        
         // Prepare records to insert
         const records = [];
-        
-        // Get display times based on shift type
-        const displayCheckIn = day.displayCheckIn || getStandardDisplayTime(day.shiftType, 'start') || 
-                              (day.firstCheckIn ? format(day.firstCheckIn, 'HH:mm') : 'Missing');
-        const displayCheckOut = day.displayCheckOut || getStandardDisplayTime(day.shiftType, 'end') || 
-                               (day.lastCheckOut ? format(day.lastCheckOut, 'HH:mm') : 'Missing');
         
         // Add check-in record if available
         if (day.firstCheckIn) {
@@ -336,13 +312,13 @@ export const saveRecordsToDatabase = async (employeeRecords: EmployeeRecord[]): 
             deduction_minutes: day.penaltyMinutes,
             notes: day.notes ? `${day.notes}; hours:${day.hoursWorked.toFixed(2)}` : `hours:${day.hoursWorked.toFixed(2)}`,
             exact_hours: day.hoursWorked,
-            display_check_in: displayCheckIn,
-            display_check_out: displayCheckOut,
+            display_check_in: day.displayCheckIn || (day.firstCheckIn ? format(day.firstCheckIn, 'HH:mm') : 'Missing'),
+            display_check_out: day.displayCheckOut || (day.lastCheckOut ? format(day.lastCheckOut, 'HH:mm') : 'Missing'),
             is_fixed: day.correctedRecords || false,
             corrected_records: day.correctedRecords || false,
             mislabeled: false,
             working_week_start: day.date,
-            is_manual_entry: false // Set to false as it's from Excel data
+            is_manual_entry: true
           });
         }
         
@@ -358,13 +334,13 @@ export const saveRecordsToDatabase = async (employeeRecords: EmployeeRecord[]): 
             deduction_minutes: day.penaltyMinutes,
             notes: day.notes ? `${day.notes}; hours:${day.hoursWorked.toFixed(2)}` : `hours:${day.hoursWorked.toFixed(2)}`,
             exact_hours: day.hoursWorked,
-            display_check_in: displayCheckIn,
-            display_check_out: displayCheckOut,
+            display_check_in: day.displayCheckIn || (day.firstCheckIn ? format(day.firstCheckIn, 'HH:mm') : 'Missing'),
+            display_check_out: day.displayCheckOut || (day.lastCheckOut ? format(day.lastCheckOut, 'HH:mm') : 'Missing'),
             is_fixed: day.correctedRecords || false,
             corrected_records: day.correctedRecords || false,
             mislabeled: false,
             working_week_start: day.date,
-            is_manual_entry: false // Set to false as it's from Excel data
+            is_manual_entry: true
           });
         }
         
