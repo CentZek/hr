@@ -61,8 +61,8 @@ export function parseShiftTimes(dateStr: string, timeIn: string, timeOut: string
   checkIn: Date; 
   checkOut: Date;
 } {
-  const checkIn = parse(`${dateStr}T${timeIn}:00.000Z`, "yyyy-MM-dd'T'HH:mm:ss.SSSX", new Date());
-  let checkOut = parse(`${dateStr}T${timeOut}:00.000Z`, "yyyy-MM-dd'T'HH:mm:ss.SSSX", new Date());
+  const checkIn = parse(`${dateStr} ${timeIn}`, 'yyyy-MM-dd HH:mm', new Date());
+  let checkOut = parse(`${dateStr} ${timeOut}`, 'yyyy-MM-dd HH:mm', new Date());
   
   // For night shifts, always roll over to next day if checkout is in early morning hours
   if (shiftType === 'night' && checkOut.getHours() < 12) {
@@ -86,7 +86,7 @@ export function parseTime(timeStr: string, dateStr: string): Date | null {
   try {
     // Handle direct 24-hour input (standard)
     if (timeStr.match(/^\d{1,2}:\d{2}$/)) {
-      return parse(`${dateStr}T${timeStr}:00.000Z`, "yyyy-MM-dd'T'HH:mm:ss.SSSX", new Date());
+      return parse(`${dateStr} ${timeStr}`, 'yyyy-MM-dd HH:mm', new Date());
     }
     
     // Handle 12-hour format with AM/PM if present
@@ -95,7 +95,7 @@ export function parseTime(timeStr: string, dateStr: string): Date | null {
     }
     
     // Default fallback
-    return parse(`${dateStr}T${timeStr}:00.000Z`, "yyyy-MM-dd'T'HH:mm:ss.SSSX", new Date());
+    return parse(`${dateStr} ${timeStr}`, 'yyyy-MM-dd HH:mm', new Date());
   } catch (e) {
     console.error('Failed to parse time:', e);
     return null;
