@@ -145,6 +145,11 @@ const EmployeeShiftRequest: React.FC<EmployeeShiftRequestProps> = ({ onShiftAppr
         const hoursWorked = 9.0; // Standard hours for all shift types
         const hoursNote = `hours:${hoursWorked.toFixed(2)}`;
 
+        // Get standard display times for check-in and check-out based on shift type
+        const displayTimes = DISPLAY_SHIFT_TIMES[shift.shift_type as keyof typeof DISPLAY_SHIFT_TIMES];
+        const displayCheckIn = displayTimes?.startTime || startTime;
+        const displayCheckOut = displayTimes?.endTime || endTime;
+
         // Create time records
         const records = [
           {
@@ -158,8 +163,8 @@ const EmployeeShiftRequest: React.FC<EmployeeShiftRequestProps> = ({ onShiftAppr
             is_late: false,
             early_leave: false,
             deduction_minutes: 0,
-            display_check_in: startTime,
-            display_check_out: endTime,
+            display_check_in: displayCheckIn,
+            display_check_out: displayCheckOut,
             working_week_start: dateStr // Add working_week_start for proper grouping
           },
           {
@@ -173,8 +178,8 @@ const EmployeeShiftRequest: React.FC<EmployeeShiftRequestProps> = ({ onShiftAppr
             is_late: false,
             early_leave: false,
             deduction_minutes: 0,
-            display_check_in: startTime,
-            display_check_out: endTime,
+            display_check_in: displayCheckIn,
+            display_check_out: displayCheckOut,
             working_week_start: dateStr // Same working_week_start for both records
           }
         ];

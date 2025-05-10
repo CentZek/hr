@@ -17,8 +17,9 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records }) =
     const utc = parseISO(record.timestamp);
     const date = utc.toISOString().slice(0,10);  // "YYYY-MM-DD"
     
-    // Check for night shift or evening shift checkouts in early morning hours
+    // Special handling for night shift or evening shift checkouts in early morning hours
     if (record.status === 'check_out') {
+      // Use UTC hours to ensure consistency across timezones
       const recordHourUTC = utc.getUTCHours();
       
       // For night shifts with early morning checkout, associate with previous day

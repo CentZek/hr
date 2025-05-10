@@ -134,12 +134,12 @@ const TimeRecordsTable: React.FC<TimeRecordsTableProps> = ({
     const result: any[] = [];
     const processedDates = new Set<string>();
     
-    // First look for night shifts that span days
-    for (const date in groupedRecords) {
+    // Process each date
+    Object.entries(groupedRecords).forEach(([date, employeeRecords]) => {
       // Skip if this date was already processed
-      if (processedDates.has(date)) continue;
+      if (processedDates.has(date)) return;
       
-      Object.entries(groupedRecords[date]).forEach(([employeeId, records]) => {
+      Object.entries(employeeRecords).forEach(([employeeId, records]) => {
         // Check if this is an off day
         const offDayRecords = records.filter(r => r.status === 'off_day');
         if (offDayRecords.length > 0) {
@@ -156,16 +156,12 @@ const TimeRecordsTable: React.FC<TimeRecordsTableProps> = ({
           return;
         }
         
-        // Get all check-ins and check-outs for this day
-        const checkIns = records.filter((r) => r.status === 'check_in');
-        const checkOuts = records.filter((r) => r.status === 'check_out');
-        
         // Sort by timestamp to get earliest check-in and latest check-out
-        const sortedCheckIns = checkIns.sort((a, b) => 
+        const sortedCheckIns = records.filter(r => r.status === 'check_in').sort((a, b) => 
           new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
         );
         
-        const sortedCheckOuts = checkOuts.sort((a, b) => 
+        const sortedCheckOuts = records.filter(r => r.status === 'check_out').sort((a, b) => 
           new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
         );
         
@@ -178,18 +174,12 @@ const TimeRecordsTable: React.FC<TimeRecordsTableProps> = ({
         if ((earliestCheckIn && !latestCheckOut) || (!earliestCheckIn && latestCheckOut)) {
           // For days with only check-ins, ensure they're properly displayed
           if (earliestCheckIn && !latestCheckOut) {
-            // Use display values from the check-in record if available
-            if (earliestCheckIn.display_check_in && (earliestCheckIn.display_check_out === 'Missing' || !earliestCheckIn.display_check_out)) {
-              // This record already has correct display values
-              result.push(earliestCheckIn);
-            } else {
-              // Set display values if missing
-              result.push({
-                ...earliestCheckIn,
-                display_check_in: earliestCheckIn.display_check_in || format(new Date(earliestCheckIn.timestamp), 'HH:mm'),
-                display_check_out: 'Missing'
-              });
-            }
+            // This record already has correct display values
+            result.push({
+              ...earliestCheckIn,
+              display_check_in: earliestCheckIn.display_check_in || format(new Date(earliestCheckIn.timestamp), 'HH:mm'),
+              display_check_out: 'Missing'
+            });
             processedDates.add(date);
             console.log(`Processed single check-in for date ${date}`);
             return;
@@ -322,15 +312,15 @@ const TimeRecordsTable: React.FC<TimeRecordsTableProps> = ({
         result.push({
           date,
           employeeId,
-          employeeName: (checkIns[0] || checkOuts[0])?.employees?.name || 'Unknown',
-          employeeNumber: (checkIns[0] || checkOuts[0])?.employees?.employee_number || 'Unknown',
-          checkIn: checkIns.length > 0 ? checkIns[0] : null,
-          checkOut: checkOuts.length > 0 ? checkOuts[0] : null,
-          shiftType: (checkIns[0] || checkOuts[0])?.shift_type || 'unknown'
+          employeeName: (records[0])?.employees?.name || 'Unknown',
+          employeeNumber: (records[0])?.employees?.employee_number || 'Unknown',
+          checkIn: earliestCheckIn,
+          checkOut: latestCheckOut,
+          shiftType: (earliestCheckIn || latestCheckOut)?.shift_type || 'unknown'
         });
         processedDates.add(date);
       });
-    }
+    });
     
     return result;
   }, [groupedRecords]);
@@ -430,7 +420,7 @@ const TimeRecordsTable: React.FC<TimeRecordsTableProps> = ({
                         {record.checkIn ? (
                           <>
                             {record.checkIn.is_late && <AlertTriangle className="inline w-3 h-3 mr-1 text-amber-500" />}
-                            {record.checkIn.display_check_in || getActualTime(record.checkIn)}
+                            {formatTimeDisplay(record.checkIn.timestamp)}
                           </>
                         ) : (
                           <span className="text-gray-400">Missing</span>
@@ -444,7 +434,7 @@ const TimeRecordsTable: React.FC<TimeRecordsTableProps> = ({
                         {record.checkOut ? (
                           <>
                             {record.checkOut.early_leave && <AlertTriangle className="inline w-3 h-3 mr-1 text-amber-500" />}
-                            {record.checkOut.display_check_out || getActualTime(record.checkOut)}
+                            {formatTimeDisplay(record.checkOut.timestamp)}
                           </>
                         ) : (
                           <span className="text-gray-400">Missing</span>
@@ -539,7 +529,7 @@ const TimeRecordsTable: React.FC<TimeRecordsTableProps> = ({
                   ) : record.checkIn ? (
                     <div className={`flex items-center ${record.checkIn.is_late ? 'text-amber-600' : 'text-gray-600'}`}>
                       {record.checkIn.is_late && <AlertTriangle className="w-4 h-4 mr-1 text-amber-500" />}
-                      {record.checkIn.display_check_in || getActualTime(record.checkIn)}
+                      {getActualTime(record.checkIn)}
                       {record.checkIn.deduction_minutes > 0 && (
                         <span className="ml-2 px-1.5 py-0.5 bg-red-100 text-red-800 text-xs rounded-full">
                           -{(record.checkIn.deduction_minutes / 60).toFixed(1)}h
@@ -556,7 +546,7 @@ const TimeRecordsTable: React.FC<TimeRecordsTableProps> = ({
                   ) : record.checkOut ? (
                     <div className={`flex items-center ${record.checkOut.early_leave ? 'text-amber-600' : 'text-gray-600'}`}>
                       {record.checkOut.early_leave && <AlertTriangle className="w-4 h-4 mr-1 text-amber-500" />}
-                      {record.checkOut.display_check_out || getActualTime(record.checkOut)}
+                      {getActualTime(record.checkOut)}
                     </div>
                   ) : (
                     <span className="text-gray-400">Missing</span>

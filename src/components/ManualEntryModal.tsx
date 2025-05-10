@@ -118,6 +118,11 @@ const ManualEntryModal: React.FC<ManualEntryModalProps> = ({ isOpen, onClose, on
       const startTime = shift.shift_type === 'morning' ? '05:00' : shift.shift_type === 'evening' ? '13:00' : '21:00';
       const endTime = shift.shift_type === 'morning' ? '14:00' : shift.shift_type === 'evening' ? '22:00' : '06:00';
       
+      // Get display times from the shift type constants
+      const displayTimes = DISPLAY_SHIFT_TIMES[shift.shift_type as keyof typeof DISPLAY_SHIFT_TIMES];
+      const displayCheckIn = displayTimes?.startTime || startTime;
+      const displayCheckOut = displayTimes?.endTime || endTime;
+      
       // Use our helper function to properly handle day rollover
       const { checkIn, checkOut } = parseShiftTimes(shift.date, startTime, endTime, shift.shift_type);
       
@@ -129,6 +134,9 @@ const ManualEntryModal: React.FC<ManualEntryModalProps> = ({ isOpen, onClose, on
           shift_type: shift.shift_type,
           notes: 'Employee submitted shift - HR approved; hours:9.00',
           is_manual_entry: true,
+          exact_hours: 9.0,
+          display_check_in: displayCheckIn,
+          display_check_out: displayCheckOut,
           working_week_start: shift.date // Set working_week_start for proper grouping
         },
         {
@@ -138,6 +146,9 @@ const ManualEntryModal: React.FC<ManualEntryModalProps> = ({ isOpen, onClose, on
           shift_type: shift.shift_type,
           notes: 'Employee submitted shift - HR approved; hours:9.00',
           is_manual_entry: true,
+          exact_hours: 9.0,
+          display_check_in: displayCheckIn,
+          display_check_out: displayCheckOut,
           working_week_start: shift.date // Same working_week_start for both records
         }
       ];
@@ -212,6 +223,11 @@ const ManualEntryModal: React.FC<ManualEntryModalProps> = ({ isOpen, onClose, on
 
       // Get standard times for selected shift
       const times = getStandardShiftTimes(shiftType);
+      
+      // Get display times from constants
+      const displayTimes = DISPLAY_SHIFT_TIMES[shiftType];
+      const displayCheckIn = displayTimes.startTime;
+      const displayCheckOut = displayTimes.endTime;
 
       // Create employee shift first
       await supabase
@@ -246,8 +262,9 @@ const ManualEntryModal: React.FC<ManualEntryModalProps> = ({ isOpen, onClose, on
             notes: notes || 'Manual entry; hours:9.00',
             is_manual_entry: true,
             working_week_start: selectedDate, // Set working_week_start for proper grouping
-            display_check_in: times.start,
-            display_check_out: times.end
+            display_check_in: displayCheckIn,
+            display_check_out: displayCheckOut,
+            exact_hours: 9.0
           },
           {
             employee_id: employeeId,
@@ -257,8 +274,9 @@ const ManualEntryModal: React.FC<ManualEntryModalProps> = ({ isOpen, onClose, on
             notes: notes || 'Manual entry; hours:9.00',
             is_manual_entry: true,
             working_week_start: selectedDate, // Same working_week_start for both records
-            display_check_in: times.start,
-            display_check_out: times.end
+            display_check_in: displayCheckIn,
+            display_check_out: displayCheckOut,
+            exact_hours: 9.0
           }
         ]);
 
