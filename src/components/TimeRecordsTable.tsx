@@ -269,6 +269,7 @@ const TimeRecordsTable: React.FC<TimeRecordsTableProps> = ({
         if ((earliestCheckIn && !latestCheckOut) || (!earliestCheckIn && latestCheckOut)) {
           // For days with only check-ins, ensure they're properly displayed
           if (earliestCheckIn && !latestCheckOut) {
+            // Use display values from the check-in record if available
             result.push({
               date,
               employeeId,
