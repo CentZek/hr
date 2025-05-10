@@ -298,8 +298,8 @@ export const saveRecordsToDatabase = async (employeeRecords: EmployeeRecord[]): 
             is_fixed: day.correctedRecords || false,
             corrected_records: day.correctedRecords || false,
             mislabeled: false,
-            // Always use the original day's date as working_week_start regardless of checkout time
-            working_week_start: day.date
+            // For night shifts with early morning checkout, set working_week_start to the check-in date
+            working_week_start: day.shiftType === 'night' && day.lastCheckOut.getHours() < 12 ? day.date : day.date
           });
         }
         
