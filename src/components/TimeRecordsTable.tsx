@@ -236,7 +236,7 @@ const TimeRecordsTable: React.FC<TimeRecordsTableProps> = ({
               
               processedDates.add(date);
               // Don't fully process the next day - we'll handle any other records separately
-              continue;
+              return; // Changed from continue to return
             }
           }
         }
