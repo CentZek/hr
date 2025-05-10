@@ -19,18 +19,21 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records }) =
       
       // parse the ISO timestamp into a JS Date
       const ts = parseISO(record.timestamp);
-      // Use the local date for consistent grouping
-      let key = format(ts, 'yyyy-MM-dd');  // local date
-      
-      // Only roll back a true night-shift check-out that fell before noon local time
+      // start by assuming it belongs on its own day
+      let key = format(ts, 'yyyy-MM-dd');
+
+      // if this is a night‐shift check-out after midnight, re-group onto the PREVIOUS day
       if (
         record.status === 'check_out' &&
         record.shift_type === 'night' &&
-        ts.getHours() < 12           // local hour: 0–11
+        ts.getHours() < 12           // local hour: 0–11 = early morning
       ) {
-        const prevLocal = subDays(ts, 1);
-        key = format(prevLocal, 'yyyy-MM-dd');
+        const prev = new Date(ts);
+        prev.setDate(prev.getDate() - 1);
+        key = format(prev, 'yyyy-MM-dd');
       }
+
+      // (leave evening & morning entirely alone—no other shifting)
 
       // push into the proper bucket
       (acc[key] = acc[key] || []).push(record);
@@ -248,8 +251,39 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records }) =
           const isSignificantOvertime = hours > 9.5;
 
           // Get check-in and check-out display values
-          const checkInDisplay = checkIn?.display_check_in || (checkIn ? formatTimeDisplay(checkIn.timestamp) : 'Missing');
-          const checkOutDisplay = checkOut?.display_check_out || (checkOut ? formatTimeDisplay(checkOut.timestamp) : 'Missing');
+          let checkInDisplay, checkOutDisplay;
+          
+          // First check if we have specific display values in the records
+          if (checkIn?.display_check_in && checkIn.display_check_in !== 'Missing') {
+            checkInDisplay = checkIn.display_check_in;
+          } else if (checkIn) {
+            checkInDisplay = formatTimeDisplay(checkIn.timestamp);
+          } else {
+            checkInDisplay = 'Missing';
+          }
+          
+          if (checkOut?.display_check_out && checkOut.display_check_out !== 'Missing') {
+            checkOutDisplay = checkOut.display_check_out;
+          } else if (checkOut) {
+            checkOutDisplay = formatTimeDisplay(checkOut.timestamp);
+          } else {
+            checkOutDisplay = 'Missing';
+          }
+          
+          // For standard shifts, use the standard display times if available
+          const shiftType = (checkIn || checkOut)?.shift_type;
+          if (shiftType && DISPLAY_SHIFT_TIMES[shiftType as keyof typeof DISPLAY_SHIFT_TIMES]) {
+            const displayTimes = DISPLAY_SHIFT_TIMES[shiftType as keyof typeof DISPLAY_SHIFT_TIMES];
+            
+            // Only override if the current values are "Missing"
+            if (checkInDisplay === 'Missing') {
+              checkInDisplay = displayTimes.startTime;
+            }
+            
+            if (checkOutDisplay === 'Missing') {
+              checkOutDisplay = displayTimes.endTime;
+            }
+          }
           
           // Mobile view
           if (typeof window !== 'undefined' && window.innerWidth < 640) {
@@ -396,12 +430,5 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records }) =
     </div>
   );
 };
-
-// Add missing import
-function subDays(date: Date, days: number): Date {
-  const result = new Date(date);
-  result.setDate(result.getDate() - days);
-  return result;
-}
 
 export default DailyBreakdown;
