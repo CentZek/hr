@@ -251,39 +251,8 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records }) =
           const isSignificantOvertime = hours > 9.5;
 
           // Get check-in and check-out display values
-          let checkInDisplay, checkOutDisplay;
-          
-          // First check if we have specific display values in the records
-          if (checkIn?.display_check_in && checkIn.display_check_in !== 'Missing') {
-            checkInDisplay = checkIn.display_check_in;
-          } else if (checkIn) {
-            checkInDisplay = formatTimeDisplay(checkIn.timestamp);
-          } else {
-            checkInDisplay = 'Missing';
-          }
-          
-          if (checkOut?.display_check_out && checkOut.display_check_out !== 'Missing') {
-            checkOutDisplay = checkOut.display_check_out;
-          } else if (checkOut) {
-            checkOutDisplay = formatTimeDisplay(checkOut.timestamp);
-          } else {
-            checkOutDisplay = 'Missing';
-          }
-          
-          // For standard shifts, use the standard display times if available
-          const shiftType = (checkIn || checkOut)?.shift_type;
-          if (shiftType && DISPLAY_SHIFT_TIMES[shiftType as keyof typeof DISPLAY_SHIFT_TIMES]) {
-            const displayTimes = DISPLAY_SHIFT_TIMES[shiftType as keyof typeof DISPLAY_SHIFT_TIMES];
-            
-            // Only override if the current values are "Missing"
-            if (checkInDisplay === 'Missing') {
-              checkInDisplay = displayTimes.startTime;
-            }
-            
-            if (checkOutDisplay === 'Missing') {
-              checkOutDisplay = displayTimes.endTime;
-            }
-          }
+          const checkInDisplay = checkIn?.display_check_in || (checkIn ? formatTimeDisplay(checkIn.timestamp) : 'Missing');
+          const checkOutDisplay = checkOut?.display_check_out || (checkOut ? formatTimeDisplay(checkOut.timestamp) : 'Missing');
           
           // Mobile view
           if (typeof window !== 'undefined' && window.innerWidth < 640) {
