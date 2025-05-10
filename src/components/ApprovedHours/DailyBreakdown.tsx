@@ -13,47 +13,13 @@ interface DailyBreakdownProps {
 const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records }) => {
   // Group records by date for better display
   const recordsByDate = records.reduce((acc: any, record: any) => {
-    // Use the UTC date portion so nothing shifts under local timezones
-    const utc = parseISO(record.timestamp);
-    const date = utc.toISOString().slice(0,10);  // "YYYY-MM-DD"
+    // FIXED: Use working_week_start if available for consistent grouping
+    const groupDate = record.working_week_start || parseISO(record.timestamp).toISOString().slice(0,10);
     
-    // Special handling for night shift or evening shift checkouts in early morning hours
-    if (record.status === 'check_out') {
-      // Use UTC hours to ensure consistency across timezones
-      const recordHourUTC = utc.getUTCHours();
-      
-      // For night shifts with early morning checkout, associate with previous day
-      if (record.shift_type === 'night' && recordHourUTC < 12) {
-        // This is a night shift checkout on the next day
-        const prevDate = new Date(record.timestamp);
-        prevDate.setDate(prevDate.getDate() - 1);
-        const prevDateStr = prevDate.toISOString().slice(0,10);  // "YYYY-MM-DD"
-        
-        if (!acc[prevDateStr]) {
-          acc[prevDateStr] = [];
-        }
-        acc[prevDateStr].push(record);
-        return acc;
-      }
-      // For evening shifts with early morning checkout, associate with previous day
-      else if (record.shift_type === 'evening' && recordHourUTC < 12) {
-        // This is likely an evening shift checkout on the next day
-        const prevDate = new Date(record.timestamp);
-        prevDate.setDate(prevDate.getDate() - 1);
-        const prevDateStr = prevDate.toISOString().slice(0,10);  // "YYYY-MM-DD"
-        
-        if (!acc[prevDateStr]) {
-          acc[prevDateStr] = [];
-        }
-        acc[prevDateStr].push(record);
-        return acc;
-      }
+    if (!acc[groupDate]) {
+      acc[groupDate] = [];
     }
-
-    if (!acc[date]) {
-      acc[date] = [];
-    }
-    acc[date].push(record);
+    acc[groupDate].push(record);
     return acc;
   }, {});
 
@@ -311,7 +277,7 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records }) =
                 
                 <div className="grid grid-cols-2 gap-3 text-sm">
                   <div>
-                    <span className="text-xs text-gray-500">Check In:</span>
+                    <span className="text-xs text-gray-500">Check In</span>
                     <div className={`text-sm mt-1 ${checkIn?.is_late ? 'text-amber-600' : 'text-gray-700'}`}>
                       {checkIn ? (
                         <>
@@ -325,7 +291,7 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records }) =
                   </div>
                   
                   <div>
-                    <span className="text-xs text-gray-500">Check Out:</span>
+                    <span className="text-xs text-gray-500">Check Out</span>
                     <div className={`text-sm mt-1 ${checkOut?.early_leave ? 'text-amber-600' : 'text-gray-700'}`}>
                       {checkOut ? (
                         <>
