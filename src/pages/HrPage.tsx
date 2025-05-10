@@ -120,11 +120,14 @@ function HrPage() {
 
   // Refresh manual records and pending shifts after changes
   const refreshData = async () => {
+    setLoadingManualRecords(true);
     try {
       const records = await fetchManualTimeRecords(50);
       setManualRecords(records);
     } catch (error) {
       console.error('Error refreshing data:', error);
+    } finally {
+      setLoadingManualRecords(false);
     }
   };
 
@@ -438,7 +441,7 @@ function HrPage() {
   };
 
   // Handle employee shift request approval
-  const handleEmployeeShiftApproved = (employeeData: any, shiftData: any) => {
+  const handleEmployeeShiftApproved = async (employeeData: any, shiftData: any) => {
     // Create a daily record in the format expected by the app
     const dailyRecord: DailyRecord = {
       date: shiftData.date,
@@ -506,8 +509,8 @@ function HrPage() {
     // Set hasUploadedFile to true to ensure proper display
     setHasUploadedFile(true);
     
-    // Refresh manual records
-    refreshData();
+    // Refresh manual records - FIXED: Get fresh data from database instead of manually updating state
+    await refreshData();
     
     // Show success message
     toast.success(`Added ${employeeData.name}'s submitted shift to the Face ID Data`);
@@ -536,7 +539,7 @@ function HrPage() {
         date: recordData.date
       });
       
-      // Refresh manually approved records
+      // FIXED: Refresh manually approved records from database instead of manually updating state
       await refreshData();
       
       toast.success('Manual time record added successfully');

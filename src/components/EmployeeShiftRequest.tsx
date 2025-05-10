@@ -5,6 +5,7 @@ import { supabase } from '../lib/supabase';
 import toast from 'react-hot-toast';
 import { DISPLAY_SHIFT_TIMES } from '../types';
 import { parseShiftTimes } from '../utils/dateTimeHelper';
+import { fetchManualTimeRecords } from '../services/database';
 
 interface EmployeeShiftRequestProps {
   onShiftApproved?: (employeeData: any, shiftData: any) => void;
@@ -199,6 +200,9 @@ const EmployeeShiftRequest: React.FC<EmployeeShiftRequestProps> = ({ onShiftAppr
             employee_number: shift.employees.employee_number
           };
           
+          // FIXED: Fetch the actual records from the database instead of creating objects by hand
+          const freshRecords = await fetchManualTimeRecords(50);
+
           onShiftApproved(employeeData, {
             ...shift,
             date: dateStr,

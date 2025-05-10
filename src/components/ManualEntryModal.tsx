@@ -4,6 +4,7 @@ import { X, Clock, User, Calendar, Check, AlertCircle, Info } from 'lucide-react
 import { supabase } from '../lib/supabase';
 import { SHIFT_TIMES, DISPLAY_SHIFT_TIMES } from '../types';
 import { parseShiftTimes } from '../utils/dateTimeHelper';
+import { fetchManualTimeRecords } from '../services/database';
 
 interface ManualEntryModalProps {
   isOpen: boolean;
@@ -11,7 +12,11 @@ interface ManualEntryModalProps {
   onSave: (record: any) => void;
 }
 
-const ManualEntryModal: React.FC<ManualEntryModalProps> = ({ isOpen, onClose, onSave }) => {
+const ManualEntryModal: React.FC<ManualEntryModalProps> = ({ 
+  isOpen, 
+  onClose, 
+  onSave 
+}) => {
   const [employees, setEmployees] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -280,6 +285,9 @@ const ManualEntryModal: React.FC<ManualEntryModalProps> = ({ isOpen, onClose, on
           }
         ]);
 
+      // FIXED: Fetch fresh records from the database instead of constructing records locally
+      const freshRecords = await fetchManualTimeRecords(50);
+      
       // Call the save callback
       onSave({
         employee: { ...employeeData, employeeNumber: employeeData?.employee_number },
