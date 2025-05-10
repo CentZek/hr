@@ -38,8 +38,7 @@ const TimeRecordsTable: React.FC<TimeRecordsTableProps> = ({
 
   // Helper function to determine if a timestamp should be handled as a possible night shift
   const shouldHandleAsPossibleNightShift = (timestamp: Date): boolean => {
-    // Use UTC hours to ensure consistency across timezones
-    const hourUTC = timestamp.getUTCHours();
+    const hourUTC = new Date(timestamp).getUTCHours();
     // Early morning hours (midnight to 8 AM) could be night shift check-outs
     return hourUTC >= 0 && hourUTC < 8;
   };
@@ -58,31 +57,16 @@ const TimeRecordsTable: React.FC<TimeRecordsTableProps> = ({
     };
   }, []);
   
-  // Group records by date and employee - safe date handling to avoid Invalid Date errors
+  // Group records by date and employee
   const groupedRecords = React.useMemo(() => {
     const groups: Record<string, Record<string, any[]>> = {};
     
     records.forEach(record => {
       // Handle OFF-DAY records specially
       if (record.status === 'off_day' || record.notes?.includes('OFF-DAY')) {
-        // Make sure we have a valid date string
-        let date;
-        try {
-          if (record.timestamp) {
-            // Use the UTC date portion so nothing shifts under local timezones
-            const utc = parseISO(record.timestamp);
-            date = utc.toISOString().slice(0,10);  // "YYYY-MM-DD"
-          } else if (record.working_week_start) {
-            date = record.working_week_start;
-          } else {
-            // If no valid date, skip this record
-            console.warn("OFF-DAY record has no valid timestamp or working_week_start", record);
-            return;
-          }
-        } catch (error) {
-          console.error("Error parsing date for OFF-DAY record", error, record);
-          return;
-        }
+        // Use the UTC date portion so nothing shifts under local timezones
+        const utc = parseISO(record.timestamp);
+        const date = utc.toISOString().slice(0,10);  // "YYYY-MM-DD"
         
         const employeeId = record.employee_id;
         
@@ -119,42 +103,30 @@ const TimeRecordsTable: React.FC<TimeRecordsTableProps> = ({
         return;
       }
       
-      // Make sure we have a valid timestamp
-      if (!record.timestamp) {
-        console.warn("Record has no timestamp", record);
-        return;
-      }
+      // For normal records, handle date grouping
+      // Use the UTC date portion so nothing shifts under local timezones
+      let utc = parseISO(record.timestamp);
+      let date = utc.toISOString().slice(0,10);  // "YYYY-MM-DD"
       
-      // For normal records, handle date grouping safely
-      let date;
-      try {
-        // Use the UTC date portion so nothing shifts under local timezones
-        const utc = parseISO(record.timestamp);
-        date = utc.toISOString().slice(0,10);  // "YYYY-MM-DD"
+      // Special handling for night shift or evening shift checkouts in early morning hours
+      if (record.status === 'check_out') {
+        // Use UTC hours to ensure consistency across timezones
+        const recordHourUTC = utc.getUTCHours();
         
-        // Special handling for night shift or evening shift checkouts in early morning hours
-        if (record.status === 'check_out') {
-          // Use UTC hours to ensure consistency across timezones
-          const recordHourUTC = utc.getUTCHours();
-          
-          // For night shifts with early morning checkout, associate with previous day
-          if (record.shift_type === 'night' && recordHourUTC < 12) {
-            // This is a night shift checkout on the next day
-            const prevDate = new Date(record.timestamp);
-            prevDate.setDate(prevDate.getDate() - 1);
-            date = prevDate.toISOString().slice(0,10);  // "YYYY-MM-DD"
-          }
-          // For evening shifts with early morning checkout, associate with previous day
-          else if (record.shift_type === 'evening' && recordHourUTC < 12) {
-            // This is likely an evening shift checkout on the next day
-            const prevDate = new Date(record.timestamp);
-            prevDate.setDate(prevDate.getDate() - 1);
-            date = prevDate.toISOString().slice(0,10);  // "YYYY-MM-DD"
-          }
+        // For night shifts with early morning checkout, associate with previous day
+        if (record.shift_type === 'night' && recordHourUTC < 12) {
+          // This is a night shift checkout on the next day
+          const prevDate = new Date(record.timestamp);
+          prevDate.setDate(prevDate.getDate() - 1);
+          date = prevDate.toISOString().slice(0,10);  // "YYYY-MM-DD"
         }
-      } catch (error) {
-        console.error("Error parsing date from timestamp", error, record);
-        return;
+        // For evening shifts with early morning checkout, associate with previous day
+        else if (record.shift_type === 'evening' && recordHourUTC < 12) {
+          // This is likely an evening shift checkout on the next day
+          const prevDate = new Date(record.timestamp);
+          prevDate.setDate(prevDate.getDate() - 1);
+          date = prevDate.toISOString().slice(0,10);  // "YYYY-MM-DD"
+        }
       }
 
       if (!groups[date]) {
@@ -176,7 +148,7 @@ const TimeRecordsTable: React.FC<TimeRecordsTableProps> = ({
     return groups;
   }, [records]);
   
-  // Calculate pairs of check-in/check-out - with better error handling
+  // Calculate pairs of check-in/check-out
   const processedRecords = React.useMemo(() => {
     const result: any[] = [];
     const processedDates = new Set<string>();
@@ -207,58 +179,14 @@ const TimeRecordsTable: React.FC<TimeRecordsTableProps> = ({
         const checkIns = records.filter((r) => r.status === 'check_in');
         const checkOuts = records.filter((r) => r.status === 'check_out');
         
-        // Check for night shift pattern - check-in on this day, check-out on next day
-        if (checkIns.length > 0 && checkIns[0].shift_type === 'night') {
-          // This could be the start of a night shift - try to find the matching checkout
-          const nextDay = new Date(date);
-          nextDay.setDate(nextDay.getDate() + 1);
-          const nextDayDate = nextDay.toISOString().slice(0,10);  // "YYYY-MM-DD"
-          
-          // Check if next day has check-out records
-          if (groupedRecords[nextDayDate] && groupedRecords[nextDayDate][employeeId]) {
-            const nextDayCheckOuts = groupedRecords[nextDayDate][employeeId]
-              .filter((r: any) => r.status === 'check_out' && r.shift_type === 'night');
-            
-            if (nextDayCheckOuts.length > 0) {
-              // We have a night shift spanning days
-              const checkIn = checkIns[0];
-              const checkOut = nextDayCheckOuts[0];
-              
-              result.push({
-                date,
-                employeeId,
-                employeeName: checkIn.employees?.name || 'Unknown',
-                employeeNumber: checkIn.employees?.employee_number || 'Unknown',
-                checkIn,
-                checkOut,
-                shiftType: 'night'
-              });
-              
-              processedDates.add(date);
-              // Don't fully process the next day - we'll handle any other records separately
-              continue;
-            }
-          }
-        }
-        
         // Sort by timestamp to get earliest check-in and latest check-out
-        const sortedCheckIns = [...checkIns].sort((a, b) => {
-          try {
-            return new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime();
-          } catch (error) {
-            console.error("Error sorting check-ins by timestamp", error, a, b);
-            return 0;
-          }
-        });
+        const sortedCheckIns = checkIns.sort((a, b) => 
+          new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+        );
         
-        const sortedCheckOuts = [...checkOuts].sort((a, b) => {
-          try {
-            return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
-          } catch (error) {
-            console.error("Error sorting check-outs by timestamp", error, a, b);
-            return 0;
-          }
-        });
+        const sortedCheckOuts = checkOuts.sort((a, b) => 
+          new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+        );
         
         // Use earliest check-in and latest check-out
         const earliestCheckIn = sortedCheckIns.length > 0 ? sortedCheckIns[0] : null;
@@ -270,16 +198,19 @@ const TimeRecordsTable: React.FC<TimeRecordsTableProps> = ({
           // For days with only check-ins, ensure they're properly displayed
           if (earliestCheckIn && !latestCheckOut) {
             // Use display values from the check-in record if available
-            result.push({
-              date,
-              employeeId,
-              employeeName: earliestCheckIn.employees?.name || 'Unknown',
-              employeeNumber: earliestCheckIn.employees?.employee_number || 'Unknown',
-              checkIn: earliestCheckIn,
-              checkOut: null,
-              shiftType: earliestCheckIn.shift_type || 'unknown'
-            });
+            if (earliestCheckIn.display_check_in && (earliestCheckIn.display_check_out === 'Missing' || !earliestCheckIn.display_check_out)) {
+              // This record already has correct display values
+              result.push(earliestCheckIn);
+            } else {
+              // Set display values if missing
+              result.push({
+                ...earliestCheckIn,
+                display_check_in: earliestCheckIn.display_check_in || format(new Date(earliestCheckIn.timestamp), 'HH:mm'),
+                display_check_out: 'Missing'
+              });
+            }
             processedDates.add(date);
+            console.log(`Processed single check-in for date ${date}`);
             return;
           }
           
@@ -296,72 +227,59 @@ const TimeRecordsTable: React.FC<TimeRecordsTableProps> = ({
               if (prevDayEmployee) {
                 const prevDayCheckIns = prevDayEmployee.filter((r: any) => r.status === 'check_in');
                 if (prevDayCheckIns.length > 0) {
-                  // Sort to get earliest check-in from previous day
-                  const sortedPrevCheckIns = [...prevDayCheckIns].sort((a: any, b: any) => {
-                    try {
-                      return new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime();
-                    } catch (error) {
-                      console.error("Error sorting previous day check-ins", error, a, b);
-                      return 0;
-                    }
-                  });
+                  console.log(`Found check-in from previous day ${prevDateStr} for checkout on ${date}`);
                   
+                  // Sort to get earliest check-in from previous day
+                  const sortedPrevCheckIns = prevDayCheckIns.sort((a: any, b: any) => 
+                    new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+                  );
+                  
+                  // Use the display values from both records to preserve consistency
                   result.push({
-                    date: prevDateStr, // Associate with previous day
-                    employeeId,
-                    employeeName: latestCheckOut.employees?.name || 'Unknown',
-                    employeeNumber: latestCheckOut.employees?.employee_number || 'Unknown',
-                    checkIn: sortedPrevCheckIns[0],
-                    checkOut: latestCheckOut,
-                    shiftType: latestCheckOut.shift_type || sortedPrevCheckIns[0].shift_type || 'night'
+                    ...latestCheckOut,
+                    display_check_in: sortedPrevCheckIns[0].display_check_in || 
+                      format(new Date(sortedPrevCheckIns[0].timestamp), 'HH:mm'),
+                    display_check_out: latestCheckOut.display_check_out || 
+                      format(new Date(latestCheckOut.timestamp), 'HH:mm'),
+                    shift_type: latestCheckOut.shift_type || sortedPrevCheckIns[0].shift_type
                   });
                 } else {
                   // No matching check-in from previous day, just use the check-out as is
                   result.push({
-                    date,
-                    employeeId,
-                    employeeName: latestCheckOut.employees?.name || 'Unknown',
-                    employeeNumber: latestCheckOut.employees?.employee_number || 'Unknown',
-                    checkIn: null,
-                    checkOut: latestCheckOut,
-                    shiftType: latestCheckOut.shift_type || 'unknown'
+                    ...latestCheckOut,
+                    display_check_in: 'Missing',
+                    display_check_out: latestCheckOut.display_check_out || 
+                      format(new Date(latestCheckOut.timestamp), 'HH:mm')
                   });
                 }
-              } else {
-                // No employee records from previous day
-                result.push({
-                  date,
-                  employeeId,
-                  employeeName: latestCheckOut.employees?.name || 'Unknown',
-                  employeeNumber: latestCheckOut.employees?.employee_number || 'Unknown',
-                  checkIn: null,
-                  checkOut: latestCheckOut,
-                  shiftType: latestCheckOut.shift_type || 'unknown'
-                });
               }
             } else {
               // No records from previous day, just use the check-out as is
-              // Safely check for night shift pattern
-              let isNightShift = false;
-              try {
-                const timestamp = new Date(latestCheckOut.timestamp);
-                isNightShift = isValid(timestamp) && shouldHandleAsPossibleNightShift(timestamp);
-              } catch (error) {
-                console.error("Error checking for night shift", error, latestCheckOut);
+              // CRITICAL: This is where we need to check if it's an early morning checkout
+              // If it is, mark as "Missing Check-in" instead of treating it as OFF-DAY
+              if (shouldHandleAsPossibleNightShift(new Date(latestCheckOut.timestamp))) {
+                // Handle as night shift with missing check-in
+                result.push({
+                  ...latestCheckOut,
+                  display_check_in: 'Missing',
+                  display_check_out: latestCheckOut.display_check_out || 
+                    format(new Date(latestCheckOut.timestamp), 'HH:mm'),
+                  shift_type: 'night' // Set to night shift type
+                });
+                console.log(`Treating ${date} with early morning checkout as night shift with missing check-in`);
+              } else {
+                // Regular case, not night shift
+                result.push({
+                  ...latestCheckOut,
+                  display_check_in: 'Missing',
+                  display_check_out: latestCheckOut.display_check_out || 
+                    format(new Date(latestCheckOut.timestamp), 'HH:mm')
+                });
               }
-              
-              result.push({
-                date,
-                employeeId,
-                employeeName: latestCheckOut.employees?.name || 'Unknown',
-                employeeNumber: latestCheckOut.employees?.employee_number || 'Unknown',
-                checkIn: null,
-                checkOut: latestCheckOut,
-                shiftType: isNightShift ? 'night' : (latestCheckOut.shift_type || 'unknown')
-              });
             }
             
             processedDates.add(date);
+            console.log(`Processed single check-out for date ${date}`);
             return;
           }
         }
@@ -379,7 +297,45 @@ const TimeRecordsTable: React.FC<TimeRecordsTableProps> = ({
             shiftType: (earliestCheckIn || latestCheckOut)?.shift_type || 'unknown'
           });
           processedDates.add(date);
+          console.log(`Processed complete day with check-in and check-out for date ${date}`);
           return;
+        }
+        
+        // Handle night shifts that span days
+        if (earliestCheckIn && earliestCheckIn.shift_type === 'night' && !latestCheckOut) {
+          const nextDay = new Date(date);
+          nextDay.setDate(nextDay.getDate() + 1);
+          const nextDayDate = nextDay.toISOString().slice(0,10);  // "YYYY-MM-DD"
+          
+          // Check if next day has check-out records
+          if (groupedRecords[nextDayDate] && groupedRecords[nextDayDate][employeeId]) {
+            const nextDayCheckOuts = groupedRecords[nextDayDate][employeeId].filter((r: any) => r.status === 'check_out');
+            
+            if (nextDayCheckOuts.length > 0) {
+              // Sort to get latest check-out
+              const sortedNextDayCheckOuts = nextDayCheckOuts.sort((a: any, b: any) => 
+                new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+              );
+              
+              // Add check-in and next day's check-out
+              result.push({
+                date,
+                employeeId,
+                employeeName: earliestCheckIn.employees?.name || 'Unknown',
+                employeeNumber: earliestCheckIn.employees?.employee_number || 'Unknown',
+                checkIn: earliestCheckIn,
+                checkOut: sortedNextDayCheckOuts[0],
+                shiftType: 'night'
+              });
+              
+              // Mark both days as processed
+              processedDates.add(date);
+              processedDates.add(nextDayDate);
+              
+              console.log(`Processed night shift spanning ${date} to ${nextDayDate}`);
+              return;
+            }
+          }
         }
         
         // If we reach here, just add whatever records we have for this day
@@ -399,8 +355,8 @@ const TimeRecordsTable: React.FC<TimeRecordsTableProps> = ({
     return result;
   }, [groupedRecords]);
 
-  // Get time in 24-hour format - safely handle possible invalid dates
-  const getActualTime = (record: any): string => {
+  // Get time in 24-hour format
+  const getActualTime = (record: any) => {
     if (!record) return '—';
     
     // First check if this record has display values set
@@ -412,7 +368,7 @@ const TimeRecordsTable: React.FC<TimeRecordsTableProps> = ({
       return record.display_check_out;
     }
     
-    // Check for standard shift type display times
+    // First check if this is a standard shift type with predefined display times
     if (record.shift_type) {
       const shiftType = record.shift_type;
       if (DISPLAY_SHIFT_TIMES[shiftType as keyof typeof DISPLAY_SHIFT_TIMES]) {
@@ -431,24 +387,23 @@ const TimeRecordsTable: React.FC<TimeRecordsTableProps> = ({
     if (!record.timestamp) return '—';
     
     try {
-      // Make sure we have a valid timestamp
-      const utc = parseISO(record.timestamp);
-      if (!isValid(utc)) return '—';
+      const timestamp = new Date(record.timestamp);
+      if (!isValid(timestamp)) return '—';
       
       // Format with 24-hour format
-      return formatTime24H(utc);
+      return formatTime24H(timestamp);
     } catch (error) {
-      console.error('Error formatting time:', error, record);
+      console.error('Error formatting time:', error);
       return '—';
     }
   };
-  
+
   // Safe format function to prevent "Invalid time value" errors
   const safeFormatDate = (dateString: string, formatStr: string): string => {
     if (!dateString) return '—';
     
     try {
-      const date = parseISO(dateString);
+      const date = new Date(dateString);
       if (!isValid(date)) return '—';
       return format(date, formatStr);
     } catch (error) {
