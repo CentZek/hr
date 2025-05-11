@@ -98,24 +98,30 @@ const TimeRecordsTable: React.FC<TimeRecordsTableProps> = ({
         const utc = parseISO(record.timestamp);
         dateKey = utc.toISOString().slice(0,10);  // "YYYY-MM-DD"
         
-        // Special handling for night shift or evening shift checkouts in early morning hours
-        if (record.status === 'check_out') {
-          // Use UTC hours to ensure consistency across timezones
-          const recordHourUTC = utc.getUTCHours();
-          
-          // For night shifts with early morning checkout, associate with previous day
-          if (record.shift_type === 'night' && recordHourUTC < 12) {
-            // This is a night shift checkout on the next day
+        // For check-outs after midnight, use working_week_start if available
+        if (record.status === 'check_out' && record.shift_type === 'night') {
+          const hour = utc.getHours();
+          if (hour < 12) {
+            // This is likely a night shift check-out, associate with previous day
             const prevDate = new Date(record.timestamp);
             prevDate.setDate(prevDate.getDate() - 1);
-            dateKey = prevDate.toISOString().slice(0,10);  // "YYYY-MM-DD"
-          }
-          // For evening shifts with early morning checkout, associate with previous day
-          else if (record.shift_type === 'evening' && recordHourUTC < 12) {
-            // This is likely an evening shift checkout on the next day
-            const prevDate = new Date(record.timestamp);
-            prevDate.setDate(prevDate.getDate() - 1);
-            dateKey = prevDate.toISOString().slice(0,10);  // "YYYY-MM-DD"
+            const prevDateStr = prevDate.toISOString().slice(0,10);  // "YYYY-MM-DD"
+            
+            if (!groups[prevDateStr]) {
+              groups[prevDateStr] = {};
+            }
+            
+            const employeeId = record.employee_id;
+            
+            if (!groups[prevDateStr][employeeId]) {
+              groups[prevDateStr][employeeId] = [];
+            }
+            
+            groups[prevDateStr][employeeId].push({
+              ...record,
+              date: prevDateStr
+            });
+            return;
           }
         }
       }
@@ -448,7 +454,7 @@ const TimeRecordsTable: React.FC<TimeRecordsTableProps> = ({
                     <span className={`px-2 py-1 text-xs font-medium rounded-full ${
                       record.shiftType === 'morning' ? 'bg-blue-100 text-blue-800' : 
                       record.shiftType === 'evening' ? 'bg-orange-100 text-orange-800' : 
-                      record.shiftType === 'night' ? 'bg-purple-100 text-purple-800' : 
+                      record.shiftType === 'night' ? 'bg-purple-100 text-purple-800' :
                       record.shiftType === 'canteen' ? 'bg-yellow-100 text-yellow-800' :
                       'bg-gray-100 text-gray-800'
                     }`}>
