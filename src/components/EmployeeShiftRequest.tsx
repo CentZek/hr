@@ -33,7 +33,7 @@ const EmployeeShiftRequest: React.FC<EmployeeShiftRequestProps> = ({ onShiftAppr
     try {
       const { data, error } = await supabase
         .from('employee_shifts')
-        .select('id, employee_id, date, shift_type, start_time, end_time, status, notes, working_week_start, employees(name, employee_number)')
+        .select('id, employee_id, date, shift_type, start_time, end_time, status, notes, employees(name, employee_number)')
         .eq('status', 'pending')
         .order('date', { ascending: false });
 
@@ -138,9 +138,6 @@ const EmployeeShiftRequest: React.FC<EmployeeShiftRequestProps> = ({ onShiftAppr
           throw new Error('Invalid date after parsing shift times');
         }
         
-        // Get working_week_start - use shift's value if available, otherwise use dateStr
-        const workingWeekStart = shift.working_week_start || dateStr;
-        
         // FIXED: Use local date-time strings instead of UTC timestamps
         let checkInTimestamp, checkOutTimestamp;
         
@@ -183,7 +180,7 @@ const EmployeeShiftRequest: React.FC<EmployeeShiftRequestProps> = ({ onShiftAppr
             deduction_minutes: 0,
             display_check_in: displayCheckIn,
             display_check_out: displayCheckOut,
-            working_week_start: workingWeekStart // Use working_week_start for proper grouping
+            working_week_start: dateStr // Add working_week_start for proper grouping
           },
           {
             employee_id: shift.employee_id,
@@ -198,7 +195,7 @@ const EmployeeShiftRequest: React.FC<EmployeeShiftRequestProps> = ({ onShiftAppr
             deduction_minutes: 0,
             display_check_in: displayCheckIn,
             display_check_out: displayCheckOut,
-            working_week_start: workingWeekStart // Same working_week_start for both records
+            working_week_start: dateStr // Same working_week_start for both records
           }
         ];
         
@@ -227,8 +224,7 @@ const EmployeeShiftRequest: React.FC<EmployeeShiftRequestProps> = ({ onShiftAppr
             end_time: endTime,
             checkInDate,
             checkOutDate,
-            hoursWorked,
-            working_week_start: workingWeekStart
+            hoursWorked
           });
         }
         
