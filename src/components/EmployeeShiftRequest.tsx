@@ -55,21 +55,48 @@ const EmployeeShiftRequest: React.FC<EmployeeShiftRequestProps> = ({ onShiftAppr
         .from('time_records')
         .select('id, status')
         .eq('employee_id', shift.employee_id)
-        .gte('timestamp', `${shift.date}T00:00:00`)
-        .lt('timestamp', `${shift.date}T23:59:59`);
+        .eq('shift_type', shift.shift_type)
+        .eq('is_manual_entry', true)
+        .eq('working_week_start', shift.date);
         
       if (checkError) throw checkError;
       
-      // Delete any existing records for this date
+      // If records exist, update the shift status but don't create new time records
       if (existingRecords && existingRecords.length > 0) {
-        console.log(`Deleting ${existingRecords.length} existing records for date ${shift.date}`);
-        const recordIds = existingRecords.map(record => record.id);
-        const { error: deleteError } = await supabase
-          .from('time_records')
-          .delete()
-          .in('id', recordIds);
+        console.log(`Using existing records for shift on date ${shift.date}`);
+        
+        // Update the shift status to confirmed
+        const { error: updateError } = await supabase
+          .from('employee_shifts')
+          .update({ status: 'confirmed' })
+          .eq('id', shift.id);
           
-        if (deleteError) throw deleteError;
+        if (updateError) throw updateError;
+        
+        // Remove the shift from the list
+        setEmployeeShiftRequests(prev => prev.filter(s => s.id !== shift.id));
+        
+        // Get fresh records from the database
+        const freshRecords = await fetchManualTimeRecords(50);
+        
+        // Call callback if provided
+        if (onShiftApproved) {
+          const employeeData = {
+            id: shift.employee_id,
+            name: shift.employees.name,
+            employeeNumber: shift.employees.employee_number,
+            employee_number: shift.employees.employee_number
+          };
+          
+          onShiftApproved(employeeData, {
+            ...shift,
+            date: shift.date,
+            hoursWorked: 9.0
+          });
+        }
+        
+        toast.success(`Approved shift for ${shift.employees.name} (using existing records)`);
+        return;
       }
       
       // Update the shift status to confirmed
@@ -139,22 +166,12 @@ const EmployeeShiftRequest: React.FC<EmployeeShiftRequestProps> = ({ onShiftAppr
         }
         
         // FIXED: Use local date-time strings instead of UTC timestamps
-        let checkInTimestamp, checkOutTimestamp;
+        const checkInDateStr = format(checkInDate, 'yyyy-MM-dd');
+        const checkInTimestamp = `${checkInDateStr}T${startTime}:00`;
         
-        // For night shifts, handle the day boundary properly
-        if (shift.shift_type === 'night') {
-          // The check-in day
-          const checkInDateStr = format(checkInDate, 'yyyy-MM-dd');
-          checkInTimestamp = `${checkInDateStr}T${startTime}:00`;
-          
-          // The check-out is next day for night shifts
-          const checkOutDateStr = format(checkOutDate, 'yyyy-MM-dd');
-          checkOutTimestamp = `${checkOutDateStr}T${endTime}:00`;
-        } else {
-          // For normal shifts, both are on the same day
-          checkInTimestamp = `${dateStr}T${startTime}:00`;
-          checkOutTimestamp = `${dateStr}T${endTime}:00`;
-        }
+        // The check-out day (might be next day for night shifts)
+        const checkOutDateStr = format(checkOutDate, 'yyyy-MM-dd');
+        const checkOutTimestamp = `${checkOutDateStr}T${endTime}:00`;
         
         // Calculate hours worked for consistency
         const hoursWorked = 9.0; // Standard hours for all shift types
@@ -165,7 +182,10 @@ const EmployeeShiftRequest: React.FC<EmployeeShiftRequestProps> = ({ onShiftAppr
         const displayCheckIn = displayTimes?.startTime || startTime;
         const displayCheckOut = displayTimes?.endTime || endTime;
 
-        // Create time records
+        // CRITICAL: Set working_week_start to the selected date for BOTH records
+        const workingWeekStart = dateStr;
+        
+        // First, try using upsert to handle potential duplicates
         const records = [
           {
             employee_id: shift.employee_id,
@@ -180,7 +200,7 @@ const EmployeeShiftRequest: React.FC<EmployeeShiftRequestProps> = ({ onShiftAppr
             deduction_minutes: 0,
             display_check_in: displayCheckIn,
             display_check_out: displayCheckOut,
-            working_week_start: dateStr // Use check-in date for working_week_start for consistent grouping
+            working_week_start: workingWeekStart
           },
           {
             employee_id: shift.employee_id,
@@ -195,12 +215,37 @@ const EmployeeShiftRequest: React.FC<EmployeeShiftRequestProps> = ({ onShiftAppr
             deduction_minutes: 0,
             display_check_in: displayCheckIn,
             display_check_out: displayCheckOut,
-            working_week_start: dateStr // Always use check-in date for working_week_start, even for night shift check-outs
+            working_week_start: workingWeekStart
           }
         ];
         
-        const { error: insertError } = await supabase.from('time_records').insert(records);
-        if (insertError) throw insertError;
+        // Try to upsert records with conflict handling
+        const { error: upsertError } = await supabase
+          .from('time_records')
+          .upsert(records, {
+            onConflict: 'employee_id,shift_type,status,working_week_start',
+            ignoreDuplicates: true
+          });
+        
+        if (upsertError) {
+          console.warn('Upsert failed, falling back to insert with individual error handling:', upsertError);
+          
+          // Try inserting each record individually with error handling
+          for (const record of records) {
+            try {
+              const { error: insertError } = await supabase
+                .from('time_records')
+                .insert([record]);
+                
+              if (insertError && !insertError.message.includes('duplicate')) {
+                throw insertError;
+              }
+            } catch (err) {
+              console.error('Error inserting record:', err);
+              // Continue with next record even if this one fails
+            }
+          }
+        }
         
         // Remove the shift from the list
         setEmployeeShiftRequests(prev => prev.filter(s => s.id !== shift.id));
