@@ -18,6 +18,7 @@ export const fetchApprovedHours = async (monthFilter: string = ''): Promise<{
         timestamp,
         status,
         exact_hours,
+        working_week_start,
         employees (
           id,
           name,
