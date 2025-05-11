@@ -13,47 +13,41 @@ interface DailyBreakdownProps {
 const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records }) => {
   // Group records by date for better display
   const recordsByDate = records.reduce((acc: any, record: any) => {
-    // Use the UTC date portion so nothing shifts under local timezones
-    const utc = parseISO(record.timestamp);
-    const date = utc.toISOString().slice(0,10);  // "YYYY-MM-DD"
+    // Use working_week_start if available (preferred for consistency)
+    let dateKey = record.working_week_start || '';
     
-    // Special handling for night shift or evening shift checkouts in early morning hours
-    if (record.status === 'check_out') {
-      // Use UTC hours to ensure consistency across timezones
-      const recordHourUTC = utc.getUTCHours();
+    // If working_week_start is not available, extract from timestamp
+    if (!dateKey) {
+      // Use the UTC date portion so nothing shifts under local timezones
+      const utc = parseISO(record.timestamp);
+      dateKey = utc.toISOString().slice(0,10);  // "YYYY-MM-DD"
       
-      // For night shifts with early morning checkout, associate with previous day
-      if (record.shift_type === 'night' && recordHourUTC < 12) {
-        // This is a night shift checkout on the next day
-        const prevDate = new Date(record.timestamp);
-        prevDate.setDate(prevDate.getDate() - 1);
-        const prevDateStr = prevDate.toISOString().slice(0,10);  // "YYYY-MM-DD"
+      // Special handling for night shift or evening shift checkouts in early morning hours
+      if (record.status === 'check_out') {
+        // Use UTC hours to ensure consistency across timezones
+        const recordHourUTC = utc.getUTCHours();
         
-        if (!acc[prevDateStr]) {
-          acc[prevDateStr] = [];
+        // For night shifts with early morning checkout, associate with previous day
+        if (record.shift_type === 'night' && recordHourUTC < 12) {
+          // This is a night shift checkout on the next day
+          const prevDate = new Date(record.timestamp);
+          prevDate.setDate(prevDate.getDate() - 1);
+          dateKey = prevDate.toISOString().slice(0,10);  // "YYYY-MM-DD"
         }
-        acc[prevDateStr].push(record);
-        return acc;
-      }
-      // For evening shifts with early morning checkout, associate with previous day
-      else if (record.shift_type === 'evening' && recordHourUTC < 12) {
-        // This is likely an evening shift checkout on the next day
-        const prevDate = new Date(record.timestamp);
-        prevDate.setDate(prevDate.getDate() - 1);
-        const prevDateStr = prevDate.toISOString().slice(0,10);  // "YYYY-MM-DD"
-        
-        if (!acc[prevDateStr]) {
-          acc[prevDateStr] = [];
+        // For evening shifts with early morning checkout, associate with previous day
+        else if (record.shift_type === 'evening' && recordHourUTC < 12) {
+          // This is likely an evening shift checkout on the next day
+          const prevDate = new Date(record.timestamp);
+          prevDate.setDate(prevDate.getDate() - 1);
+          dateKey = prevDate.toISOString().slice(0,10);  // "YYYY-MM-DD"
         }
-        acc[prevDateStr].push(record);
-        return acc;
       }
     }
 
-    if (!acc[date]) {
-      acc[date] = [];
+    if (!acc[dateKey]) {
+      acc[dateKey] = [];
     }
-    acc[date].push(record);
+    acc[dateKey].push(record);
     return acc;
   }, {});
 
@@ -214,16 +208,15 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records }) =
           }
           
           // Get check-in and check-out records
-          const checkIn = dayRecords.find(r => r.status === 'check_in');
-          
-          // Get all check-outs for this date
+          const checkIns = dayRecords.filter(r => r.status === 'check_in');
           const checkOuts = dayRecords.filter(r => r.status === 'check_out');
           
-          // Get the latest check-out time (most important for night shifts)
-          const checkOut = checkOuts.length > 0 ? 
-            checkOuts.reduce((latest, current) => {
-              return new Date(current.timestamp) > new Date(latest.timestamp) ? current : latest;
-            }, checkOuts[0]) : null;
+          // Get the main check-in and check-out record
+          const checkIn = checkIns.length > 0 ? checkIns[0] : null;
+          const checkOut = checkOuts.length > 0 ? checkOuts[0] : null;
+          
+          // Get shift type from check-in or check-out
+          const shiftType = (checkIn || checkOut)?.shift_type || 'unknown';
           
           // Get hours - prioritize exact_hours field first
           let hours = 0;
@@ -292,7 +285,6 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records }) =
           const isSignificantOvertime = hours > 9.5;
 
           // FIXED: Get standardized display times for this shift type
-          const shiftType = (checkIn || checkOut)?.shift_type || 'unknown';
           let checkInDisplay = checkIn ? 
             formatTimeDisplay(checkIn.timestamp, checkIn, 'in') :
             (isOffDay ? 'OFF-DAY' : 'Missing');

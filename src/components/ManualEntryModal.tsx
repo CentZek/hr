@@ -74,7 +74,20 @@ const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
     try {
       const { data, error } = await supabase
         .from('employee_shifts')
-        .select('id, employee_id, date, shift_type, start_time, end_time, status, notes, employees(name, employee_number)')
+        .select(`
+          id,
+          employee_id,
+          date,
+          shift_type,
+          start_time,
+          end_time,
+          status,
+          notes,
+          employees (
+            name,
+            employee_number
+          )
+        `)
         .eq('status', 'pending')
         .order('date', { ascending: false });
 
@@ -253,7 +266,10 @@ const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
       const displayCheckIn = displayTimes.startTime;
       const displayCheckOut = displayTimes.endTime;
 
-      // Create employee shift first
+      // Determine working_week_start based on shift type
+      let workingWeekStart = selectedDate;
+      
+      // Create employee shift first with working_week_start
       await supabase
         .from('employee_shifts')
         .insert({
@@ -263,7 +279,8 @@ const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
           end_time: times.end,
           shift_type: shiftType,
           status: 'pending',
-          notes: notes || 'Manual entry by HR'
+          notes: notes || 'Manual entry by HR',
+          working_week_start: workingWeekStart
         });
 
       // Parse dates properly with the helper function to handle day rollover
@@ -303,7 +320,7 @@ const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
             shift_type: shiftType,
             notes: notes || 'Manual entry; hours:9.00',
             is_manual_entry: true,
-            working_week_start: selectedDate, // Set working_week_start for proper grouping
+            working_week_start: workingWeekStart, // Set working_week_start for proper grouping
             display_check_in: displayCheckIn,
             display_check_out: displayCheckOut,
             exact_hours: 9.0
@@ -315,7 +332,7 @@ const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
             shift_type: shiftType,
             notes: notes || 'Manual entry; hours:9.00',
             is_manual_entry: true,
-            working_week_start: selectedDate, // Same working_week_start for both records
+            working_week_start: workingWeekStart, // Same working_week_start for both records
             display_check_in: displayCheckIn,
             display_check_out: displayCheckOut,
             exact_hours: 9.0

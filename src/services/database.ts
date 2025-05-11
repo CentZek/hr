@@ -1,5 +1,5 @@
 import { supabase } from '../lib/supabase';
-import { format, parseISO, startOfMonth, endOfMonth, addDays, isValid } from 'date-fns';
+import { format, parseISO, startOfMonth, endOfMonth, addDays, isValid, subDays } from 'date-fns';
 import { EmployeeRecord, DailyRecord } from '../types';
 import toast from 'react-hot-toast';
 import { parseShiftTimes } from '../utils/dateTimeHelper';
@@ -24,7 +24,7 @@ export const fetchApprovedHours = async (monthFilter: string = ''): Promise<{
           employee_number
         )
       `)
-      .eq('status', 'check_in')  // Only count check-in records
+      .in('status', ['check_in', 'off_day'])  // Include both check-in and off-day records
       .not('exact_hours', 'is', null);
     
     // Apply month filter if provided
@@ -71,20 +71,26 @@ export const fetchApprovedHours = async (monthFilter: string = ''): Promise<{
       
       // Add date to set of days - Only if timestamp is valid
       if (record.timestamp && isValid(new Date(record.timestamp))) {
-        // Use the UTC date portion so nothing shifts under local timezones
-        const utc = parseISO(record.timestamp);
-        const date = utc.toISOString().slice(0,10); // "YYYY-MM-DD"
-        employee.total_days.add(date);
+        // Use working_week_start if available, otherwise use timestamp date
+        if (record.working_week_start) {
+          employee.total_days.add(record.working_week_start);
+        } else {
+          // Use the UTC date portion so nothing shifts under local timezones
+          const utc = parseISO(record.timestamp);
+          const date = utc.toISOString().slice(0,10); // "YYYY-MM-DD"
+          employee.total_days.add(date);
+        }
       }
     });
     
-    // Handle OFF-DAY records separately (they don't have check-in status)
+    // Add OFF-DAY records separately
     const { data: offDayData, error: offDayError } = await supabase
       .from('time_records')
       .select(`
         employee_id,
         timestamp,
         status,
+        working_week_start,
         employees (
           id,
           name,
@@ -114,7 +120,9 @@ export const fetchApprovedHours = async (monthFilter: string = ''): Promise<{
       const employee = employeeSummary.get(employeeId);
       
       // Add date to set of days for OFF-DAY
-      if (record.timestamp && isValid(new Date(record.timestamp))) {
+      if (record.working_week_start) {
+        employee.total_days.add(record.working_week_start);
+      } else if (record.timestamp && isValid(new Date(record.timestamp))) {
         // Use the UTC date portion so nothing shifts under local timezones
         const utc = parseISO(record.timestamp);
         const date = utc.toISOString().slice(0,10); // "YYYY-MM-DD"
@@ -444,6 +452,7 @@ export const fetchPendingEmployeeShifts = async (): Promise<any[]> => {
         end_time,
         status,
         notes,
+        working_week_start,
         employees (
           name,
           employee_number
