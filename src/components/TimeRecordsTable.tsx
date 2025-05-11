@@ -57,7 +57,7 @@ const TimeRecordsTable: React.FC<TimeRecordsTableProps> = ({
     };
   }, []);
   
-  // Group records by date and employee
+  // Group records by date and employee using working_week_start
   const groupedRecords = React.useMemo(() => {
     const groups: Record<string, Record<string, any[]>> = {};
     
@@ -92,9 +92,9 @@ const TimeRecordsTable: React.FC<TimeRecordsTableProps> = ({
       
       // If working_week_start is not available, extract from timestamp
       if (!dateKey) {
-        // Use the UTC date portion so nothing shifts under local timezones
+        // Just use the timestamp date portion
         const utc = parseISO(record.timestamp);
-        dateKey = utc.toISOString().slice(0,10);  // "YYYY-MM-DD"
+        dateKey = format(utc, 'yyyy-MM-dd');  // "YYYY-MM-DD" format
       }
 
       if (!groups[dateKey]) {

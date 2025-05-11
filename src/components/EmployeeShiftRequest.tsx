@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { format, parseISO, isValid } from 'date-fns';
-import { Clock, AlertCircle, CheckCircle, XCircle, Info } from 'lucide-react';
+import { ChevronDown, ChevronRight, Clock, AlertCircle, CheckCircle, XCircle, Info } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import toast from 'react-hot-toast';
 import { DISPLAY_SHIFT_TIMES } from '../types';
@@ -75,7 +75,10 @@ const EmployeeShiftRequest: React.FC<EmployeeShiftRequestProps> = ({ onShiftAppr
       // Update the shift status to confirmed
       const { error: updateError } = await supabase
         .from('employee_shifts')
-        .update({ status: 'confirmed' })
+        .update({ 
+          status: 'confirmed',
+          working_week_start: shift.date // Ensure working_week_start is set
+        })
         .eq('id', shift.id);
         
       if (updateError) throw updateError;
@@ -141,26 +144,18 @@ const EmployeeShiftRequest: React.FC<EmployeeShiftRequestProps> = ({ onShiftAppr
         // FIXED: Use local date-time strings instead of UTC timestamps
         let checkInTimestamp, checkOutTimestamp;
         
-        // For night shifts, handle the day boundary properly
-        if (shift.shift_type === 'night') {
-          // The check-in day
-          const checkInDateStr = format(checkInDate, 'yyyy-MM-dd');
-          checkInTimestamp = `${checkInDateStr}T${startTime}:00`;
-          
-          // The check-out is next day for night shifts
-          const checkOutDateStr = format(checkOutDate, 'yyyy-MM-dd');
-          checkOutTimestamp = `${checkOutDateStr}T${endTime}:00`;
-        } else {
-          // For normal shifts, both are on the same day
-          checkInTimestamp = `${dateStr}T${startTime}:00`;
-          checkOutTimestamp = `${dateStr}T${endTime}:00`;
-        }
+        // Use the formatted dates and times directly to create local timestamps
+        const checkInDateStr = format(checkInDate, 'yyyy-MM-dd');
+        checkInTimestamp = `${checkInDateStr}T${startTime}:00`;
+        
+        const checkOutDateStr = format(checkOutDate, 'yyyy-MM-dd');
+        checkOutTimestamp = `${checkOutDateStr}T${endTime}:00`;
         
         // Calculate hours worked for consistency
         const hoursWorked = 9.0; // Standard hours for all shift types
         const hoursNote = `hours:${hoursWorked.toFixed(2)}`;
 
-        // Get standard display times for check-in and check-out based on shift type
+        // Get standard display times from the shift type constants
         const displayTimes = DISPLAY_SHIFT_TIMES[shift.shift_type as keyof typeof DISPLAY_SHIFT_TIMES];
         const displayCheckIn = displayTimes?.startTime || startTime;
         const displayCheckOut = displayTimes?.endTime || endTime;
@@ -195,7 +190,7 @@ const EmployeeShiftRequest: React.FC<EmployeeShiftRequestProps> = ({ onShiftAppr
             deduction_minutes: 0,
             display_check_in: displayCheckIn,
             display_check_out: displayCheckOut,
-            working_week_start: dateStr // Always use check-in date for working_week_start, even for night shift check-outs
+            working_week_start: dateStr // ALWAYS use original shift date for working_week_start, even for night shift check-outs
           }
         ];
         

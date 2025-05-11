@@ -74,8 +74,7 @@ export const fetchApprovedHours = async (monthFilter: string = ''): Promise<{
       
       // Add date to set of days - Only if timestamp is valid
       if (record.timestamp && isValid(new Date(record.timestamp))) {
-        // Use the UTC date portion so nothing shifts under local timezones
-        const utc = parseISO(record.timestamp);
+        // Use working_week_start if available for correct grouping
         let date;
         
         if (record.working_week_start) {
@@ -83,7 +82,8 @@ export const fetchApprovedHours = async (monthFilter: string = ''): Promise<{
           date = record.working_week_start;
         } else {
           // Otherwise extract from timestamp
-          date = utc.toISOString().slice(0,10); // "YYYY-MM-DD"
+          const utc = parseISO(record.timestamp);
+          date = format(utc, 'yyyy-MM-dd'); // "YYYY-MM-DD"
         }
         
         if (!employeeSummary.has(employeeId)) {
@@ -228,6 +228,9 @@ export const saveRecordsToDatabase = async (employeeRecords: EmployeeRecord[]): 
         // Prepare records to insert
         const records = [];
         
+        // Always use the original date as working_week_start for consistency
+        const workingWeekStart = day.date;
+        
         // Add check-in record if available
         if (day.firstCheckIn) {
           // FIXED: Use local date-time string instead of UTC timestamp
@@ -251,7 +254,7 @@ export const saveRecordsToDatabase = async (employeeRecords: EmployeeRecord[]): 
             corrected_records: day.correctedRecords || false,
             mislabeled: false,
             // Always use original date for working_week_start
-            working_week_start: day.date
+            working_week_start: workingWeekStart
           });
         }
         
@@ -277,8 +280,8 @@ export const saveRecordsToDatabase = async (employeeRecords: EmployeeRecord[]): 
             is_fixed: day.correctedRecords || false,
             corrected_records: day.correctedRecords || false,
             mislabeled: false,
-            // FIXED: For night shifts, always use check-in date for working_week_start
-            working_week_start: day.date
+            // ALWAYS use the original date (check-in date) for working_week_start
+            working_week_start: workingWeekStart
           });
         }
         
@@ -399,6 +402,21 @@ export const fetchManualTimeRecords = async (limit: number = 50): Promise<any[]>
         }
       }
       
+      // Set working_week_start if not already set
+      if (!updatedRecord.working_week_start) {
+        if (updatedRecord.shift_type === 'night' && updatedRecord.status === 'check_out' && 
+            new Date(updatedRecord.timestamp).getHours() < 12) {
+          // For night shift check-outs, working_week_start should be previous day
+          const timestamp = new Date(updatedRecord.timestamp);
+          const prevDay = new Date(timestamp);
+          prevDay.setDate(prevDay.getDate() - 1);
+          updatedRecord.working_week_start = format(prevDay, 'yyyy-MM-dd');
+        } else {
+          // For all other records, working_week_start is the date of timestamp
+          updatedRecord.working_week_start = format(new Date(updatedRecord.timestamp), 'yyyy-MM-dd');
+        }
+      }
+      
       return updatedRecord;
     }) || [];
     
@@ -423,6 +441,7 @@ export const fetchPendingEmployeeShifts = async (): Promise<any[]> => {
         end_time,
         status,
         notes,
+        working_week_start,
         employees (
           name,
           employee_number
