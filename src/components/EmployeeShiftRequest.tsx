@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { format, parseISO, isValid } from 'date-fns';
+import { format, parseISO, isValid, addDays } from 'date-fns';
 import { Clock, AlertCircle, CheckCircle, XCircle, Info } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import toast from 'react-hot-toast';
@@ -33,21 +33,7 @@ const EmployeeShiftRequest: React.FC<EmployeeShiftRequestProps> = ({ onShiftAppr
     try {
       const { data, error } = await supabase
         .from('employee_shifts')
-        .select(`
-          id, 
-          employee_id, 
-          date, 
-          shift_type, 
-          start_time, 
-          end_time, 
-          status, 
-          notes, 
-          working_week_start,
-          employees(
-            name, 
-            employee_number
-          )
-        `)
+        .select('id, employee_id, date, shift_type, start_time, end_time, status, notes, employees(name, employee_number)')
         .eq('status', 'pending')
         .order('date', { ascending: false });
 
@@ -58,109 +44,6 @@ const EmployeeShiftRequest: React.FC<EmployeeShiftRequestProps> = ({ onShiftAppr
       toast.error('Failed to load employee shift requests');
     } finally {
       setIsLoading(false);
-    }
-  };
-  
-  // Check if a time record already exists for this employee, shift, status and date
-  const checkExistingTimeRecord = async (
-    employeeId: string, 
-    shiftType: string, 
-    status: string, 
-    workingWeekStart: string
-  ) => {
-    try {
-      console.log('Checking for existing record with:', {
-        employeeId,
-        shiftType,
-        status,
-        workingWeekStart,
-        is_manual_entry: true
-      });
-
-      const { data, error } = await supabase
-        .from('time_records')
-        .select('id')
-        .eq('employee_id', employeeId)
-        .eq('shift_type', shiftType)
-        .eq('status', status)
-        .eq('working_week_start', workingWeekStart)
-        .eq('is_manual_entry', true)
-        .maybeSingle();
-
-      if (error) throw error;
-      
-      if (data) {
-        console.log('Found existing record with ID:', data.id);
-      } else {
-        console.log('No existing record found');
-      }
-      
-      return data ? data.id : null;
-    } catch (error) {
-      console.error('Error checking existing time record:', error);
-      return null;
-    }
-  };
-
-  // Safely insert or update time record to handle potential conflicts
-  const safeUpsertTimeRecord = async (recordData: any, existingId: string | null = null): Promise<boolean> => {
-    try {
-      // If we have an existing ID, update the record
-      if (existingId) {
-        console.log('Updating existing record with ID:', existingId);
-        const { error } = await supabase
-          .from('time_records')
-          .update(recordData)
-          .eq('id', existingId);
-          
-        if (error) throw error;
-        return true;
-      } 
-      
-      // Otherwise try to insert, but be prepared to handle conflict
-      try {
-        console.log('Attempting to insert new record');
-        const { error } = await supabase
-          .from('time_records')
-          .insert([recordData]);
-          
-        if (error) {
-          // If we get a conflict error (409), try to find the record again and update it
-          if (error.code === '23505' || (error.message && error.message.includes('duplicate key value'))) {
-            console.log('Duplicate key detected, attempting to find and update record');
-            
-            // Try to find the record based on the unique constraint
-            const existingRecord = await checkExistingTimeRecord(
-              recordData.employee_id,
-              recordData.shift_type,
-              recordData.status,
-              recordData.working_week_start
-            );
-            
-            if (existingRecord) {
-              console.log('Found conflicting record, updating instead:', existingRecord);
-              const { error: updateError } = await supabase
-                .from('time_records')
-                .update(recordData)
-                .eq('id', existingRecord);
-                
-              if (updateError) throw updateError;
-              return true;
-            } else {
-              throw new Error('Could not find conflicting record for update');
-            }
-          } else {
-            throw error;
-          }
-        }
-        return true;
-      } catch (insertError) {
-        console.error('Error during insert/update operation:', insertError);
-        throw insertError;
-      }
-    } catch (error) {
-      console.error('Error in safeUpsertTimeRecord:', error);
-      return false;
     }
   };
 
@@ -265,7 +148,8 @@ const EmployeeShiftRequest: React.FC<EmployeeShiftRequestProps> = ({ onShiftAppr
           checkInTimestamp = `${checkInDateStr}T${startTime}:00`;
           
           // The check-out is next day for night shifts
-          const checkOutDateStr = format(checkOutDate, 'yyyy-MM-dd');
+          const nextDay = addDays(new Date(dateStr), 1);
+          const checkOutDateStr = format(nextDay, 'yyyy-MM-dd');
           checkOutTimestamp = `${checkOutDateStr}T${endTime}:00`;
         } else {
           // For normal shifts, both are on the same day
@@ -281,62 +165,43 @@ const EmployeeShiftRequest: React.FC<EmployeeShiftRequestProps> = ({ onShiftAppr
         const displayTimes = DISPLAY_SHIFT_TIMES[shift.shift_type as keyof typeof DISPLAY_SHIFT_TIMES];
         const displayCheckIn = displayTimes?.startTime || startTime;
         const displayCheckOut = displayTimes?.endTime || endTime;
-        
-        // CRITICAL FIX: Use a consistent working_week_start value for both check-in and check-out
-        // Always use the date of the check-in (the shift start date) as working_week_start
-        const workingWeekStart = dateStr;
 
-        // Check for existing records before inserting
-        const existingCheckInId = await checkExistingTimeRecord(
-          shift.employee_id,
-          shift.shift_type,
-          'check_in',
-          workingWeekStart
-        );
+        // Create time records
+        const records = [
+          {
+            employee_id: shift.employee_id,
+            timestamp: checkInTimestamp,
+            status: 'check_in',
+            shift_type: shift.shift_type,
+            notes: `Employee submitted shift - HR approved; ${hoursNote}`,
+            is_manual_entry: true,
+            exact_hours: hoursWorked,
+            is_late: false,
+            early_leave: false,
+            deduction_minutes: 0,
+            display_check_in: displayCheckIn,
+            display_check_out: displayCheckOut,
+            working_week_start: dateStr // Add working_week_start for proper grouping
+          },
+          {
+            employee_id: shift.employee_id,
+            timestamp: checkOutTimestamp,
+            status: 'check_out',
+            shift_type: shift.shift_type,
+            notes: `Employee submitted shift - HR approved; ${hoursNote}`,
+            is_manual_entry: true,
+            exact_hours: hoursWorked,
+            is_late: false,
+            early_leave: false,
+            deduction_minutes: 0,
+            display_check_in: displayCheckIn,
+            display_check_out: displayCheckOut,
+            working_week_start: dateStr // Same working_week_start for both records
+          }
+        ];
         
-        const existingCheckOutId = await checkExistingTimeRecord(
-          shift.employee_id,
-          shift.shift_type,
-          'check_out',
-          workingWeekStart
-        );
-        
-        // Common record data
-        const commonRecordData = {
-          employee_id: shift.employee_id,
-          shift_type: shift.shift_type,
-          notes: `Employee submitted shift - HR approved; ${hoursNote}`,
-          is_manual_entry: true,
-          exact_hours: hoursWorked,
-          is_late: false,
-          early_leave: false,
-          deduction_minutes: 0,
-          display_check_in: displayCheckIn,
-          display_check_out: displayCheckOut,
-          working_week_start: workingWeekStart
-        };
-
-        // Check-in record
-        const checkInData = {
-          ...commonRecordData,
-          timestamp: checkInTimestamp,
-          status: 'check_in'
-        };
-        
-        // Check-out record
-        const checkOutData = {
-          ...commonRecordData,
-          timestamp: checkOutTimestamp,
-          status: 'check_out'
-        };
-
-        // Use safe upsert for both records
-        const checkInSuccess = await safeUpsertTimeRecord(checkInData, existingCheckInId);
-        const checkOutSuccess = await safeUpsertTimeRecord(checkOutData, existingCheckOutId);
-        
-        if (!checkInSuccess || !checkOutSuccess) {
-          throw new Error('Failed to save time records');
-        }
+        const { error: insertError } = await supabase.from('time_records').insert(records);
+        if (insertError) throw insertError;
         
         // Remove the shift from the list
         setEmployeeShiftRequests(prev => prev.filter(s => s.id !== shift.id));
@@ -360,8 +225,7 @@ const EmployeeShiftRequest: React.FC<EmployeeShiftRequestProps> = ({ onShiftAppr
             end_time: endTime,
             checkInDate,
             checkOutDate,
-            hoursWorked,
-            working_week_start: workingWeekStart
+            hoursWorked
           });
         }
         
