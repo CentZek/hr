@@ -112,34 +112,6 @@ const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
 
   const handleApproveEmployeeShift = async (shift: any) => {
     try {
-      // First, check if there are existing time records for this shift
-      const { data: existingRecords, error: checkError } = await supabase
-        .from('time_records')
-        .select('id')
-        .eq('employee_id', shift.employee_id)
-        .eq('shift_type', shift.shift_type)
-        .eq('is_manual_entry', true)
-        .eq('working_week_start', shift.date);
-        
-      if (checkError) throw checkError;
-      
-      // If records exist, update status in employee_shifts but don't create new time records
-      if (existingRecords && existingRecords.length > 0) {
-        console.log('Records already exist for this shift. Updating status only.');
-        
-        // Update shift status
-        const { error: updateError } = await supabase
-          .from('employee_shifts')
-          .update({ status: 'confirmed' })
-          .eq('id', shift.id);
-          
-        if (updateError) throw updateError;
-        
-        // Refresh the shift requests
-        fetchEmployeeShiftRequests();
-        return true;
-      }
-      
       // Update shift status
       const { error: updateError } = await supabase
         .from('employee_shifts')
@@ -167,9 +139,6 @@ const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
       const checkOutDateStr = format(checkOut, 'yyyy-MM-dd');
       const checkOutTimestamp = `${checkOutDateStr}T${endTime}:00`;
       
-      // CRITICAL: Set working_week_start to the check-in date for BOTH records
-      const workingWeekStart = shift.date;
-      
       const timeRecords = [
         {
           employee_id: shift.employee_id,
@@ -181,7 +150,7 @@ const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
           exact_hours: 9.0,
           display_check_in: displayCheckIn,
           display_check_out: displayCheckOut,
-          working_week_start: workingWeekStart
+          working_week_start: shift.date // Always use original shift date for working_week_start
         },
         {
           employee_id: shift.employee_id,
@@ -193,38 +162,12 @@ const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
           exact_hours: 9.0,
           display_check_in: displayCheckIn,
           display_check_out: displayCheckOut,
-          working_week_start: workingWeekStart // Use check-in date for working_week_start, even for night shifts
+          working_week_start: shift.date // Always use original shift date for working_week_start, even for night shifts
         }
       ];
       
-      // First try to upsert records to handle potential duplicates
-      const { error: upsertError } = await supabase
-        .from('time_records')
-        .upsert(timeRecords, {
-          onConflict: 'employee_id,shift_type,status,working_week_start',
-          ignoreDuplicates: true
-        });
-      
-      if (upsertError) {
-        console.warn('Upsert failed, falling back to insert:', upsertError);
-        
-        // If upsert fails (perhaps the constraint definition is different),
-        // try inserting each record individually with error handling
-        for (const record of timeRecords) {
-          try {
-            const { error: insertError } = await supabase
-              .from('time_records')
-              .insert([record]);
-              
-            if (insertError && !insertError.message.includes('duplicate')) {
-              throw insertError;
-            }
-          } catch (err) {
-            console.error('Error inserting record:', err);
-            // Continue with next record even if this one fails
-          }
-        }
-      }
+      const { error: insertError } = await supabase.from('time_records').insert(timeRecords);
+      if (insertError) throw insertError;
       
       // Refresh the list
       fetchEmployeeShiftRequests();
@@ -328,71 +271,36 @@ const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
       // The check-out day (might be next day for night shifts)
       const checkOutDateStr = format(checkOut, 'yyyy-MM-dd');
       const checkOutTimestamp = `${checkOutDateStr}T${times.end}:00`;
-      
-      // Always use selected date for working_week_start
-      const workingWeekStart = selectedDate;
 
-      // Check for existing records to avoid duplicate constraint violation
-      const { data: existingRecords, error: checkError } = await supabase
+      // Add records to time_records table with full ISO timestamps
+      await supabase
         .from('time_records')
-        .select('id, status')
-        .eq('employee_id', employeeId)
-        .eq('shift_type', shiftType)
-        .eq('is_manual_entry', true)
-        .eq('working_week_start', workingWeekStart);
-        
-      if (checkError) throw checkError;
-      
-      // If records already exist, update them instead of inserting new ones
-      if (existingRecords && existingRecords.length > 0) {
-        console.log('Records already exist. Updating...');
-        
-        // Update each existing record (check-in and check-out)
-        for (const record of existingRecords) {
-          const updateData = {
-            timestamp: record.status === 'check_in' ? checkInTimestamp : checkOutTimestamp,
+        .insert([
+          {
+            employee_id: employeeId,
+            timestamp: checkInTimestamp,
+            status: 'check_in',
+            shift_type: shiftType,
             notes: notes || 'Manual entry; hours:9.00',
+            is_manual_entry: true,
+            working_week_start: selectedDate, // Set working_week_start to the selected date
             display_check_in: displayCheckIn,
             display_check_out: displayCheckOut,
             exact_hours: 9.0
-          };
-          
-          await supabase
-            .from('time_records')
-            .update(updateData)
-            .eq('id', record.id);
-        }
-      } else {
-        // Add records to time_records table with full ISO timestamps
-        await supabase
-          .from('time_records')
-          .insert([
-            {
-              employee_id: employeeId,
-              timestamp: checkInTimestamp,
-              status: 'check_in',
-              shift_type: shiftType,
-              notes: notes || 'Manual entry; hours:9.00',
-              is_manual_entry: true,
-              working_week_start: workingWeekStart, // Set working_week_start to the selected date
-              display_check_in: displayCheckIn,
-              display_check_out: displayCheckOut,
-              exact_hours: 9.0
-            },
-            {
-              employee_id: employeeId,
-              timestamp: checkOutTimestamp,
-              status: 'check_out',
-              shift_type: shiftType,
-              notes: notes || 'Manual entry; hours:9.00',
-              is_manual_entry: true,
-              working_week_start: workingWeekStart, // Same working_week_start for both records, even for night shift check-outs
-              display_check_in: displayCheckIn,
-              display_check_out: displayCheckOut,
-              exact_hours: 9.0
-            }
-          ]);
-      }
+          },
+          {
+            employee_id: employeeId,
+            timestamp: checkOutTimestamp,
+            status: 'check_out',
+            shift_type: shiftType,
+            notes: notes || 'Manual entry; hours:9.00',
+            is_manual_entry: true,
+            working_week_start: selectedDate, // Same working_week_start for both records, even for night shift check-outs
+            display_check_in: displayCheckIn,
+            display_check_out: displayCheckOut,
+            exact_hours: 9.0
+          }
+        ]);
 
       // FIXED: Fetch fresh records from the database
       const freshRecords = await fetchManualTimeRecords(50);
