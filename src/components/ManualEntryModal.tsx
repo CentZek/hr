@@ -123,6 +123,32 @@ const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
     };
   };
 
+  // Check if a time record already exists for this employee, shift, status and date
+  const checkExistingTimeRecord = async (
+    employeeId: string, 
+    shiftType: string, 
+    status: string, 
+    workingWeekStart: string
+  ) => {
+    try {
+      const { data, error } = await supabase
+        .from('time_records')
+        .select('id')
+        .eq('employee_id', employeeId)
+        .eq('shift_type', shiftType)
+        .eq('status', status)
+        .eq('working_week_start', workingWeekStart)
+        .eq('is_manual_entry', true)
+        .maybeSingle();
+
+      if (error) throw error;
+      return data ? data.id : null;
+    } catch (error) {
+      console.error('Error checking existing time record:', error);
+      return null;
+    }
+  };
+
   const handleApproveEmployeeShift = async (shift: any) => {
     try {
       // Update shift status
@@ -163,35 +189,86 @@ const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
         checkOutTimestamp = `${shift.date}T${endTime}:00`;
       }
       
-      const timeRecords = [
-        {
-          employee_id: shift.employee_id,
-          timestamp: checkInTimestamp,
-          status: 'check_in',
-          shift_type: shift.shift_type,
-          notes: 'Employee submitted shift - HR approved; hours:9.00',
-          is_manual_entry: true,
-          exact_hours: 9.0,
-          display_check_in: displayCheckIn,
-          display_check_out: displayCheckOut,
-          working_week_start: shift.date // Set working_week_start for proper grouping
-        },
-        {
-          employee_id: shift.employee_id,
-          timestamp: checkOutTimestamp,
-          status: 'check_out',
-          shift_type: shift.shift_type,
-          notes: 'Employee submitted shift - HR approved; hours:9.00',
-          is_manual_entry: true,
-          exact_hours: 9.0,
-          display_check_in: displayCheckIn,
-          display_check_out: displayCheckOut,
-          working_week_start: shift.date // Same working_week_start for both records
-        }
-      ];
-      
-      const { error: insertError } = await supabase.from('time_records').insert(timeRecords);
-      if (insertError) throw insertError;
+      // Set the working_week_start for both check-in and check-out records
+      const workingWeekStart = shift.date;
+
+      // First, check if the check-in record already exists
+      const existingCheckInId = await checkExistingTimeRecord(
+        shift.employee_id,
+        shift.shift_type,
+        'check_in',
+        workingWeekStart
+      );
+
+      // Then check if the check-out record already exists
+      const existingCheckOutId = await checkExistingTimeRecord(
+        shift.employee_id,
+        shift.shift_type,
+        'check_out',
+        workingWeekStart
+      );
+
+      // Prepare common record data
+      const commonRecordData = {
+        employee_id: shift.employee_id,
+        shift_type: shift.shift_type,
+        notes: 'Employee submitted shift - HR approved; hours:9.00',
+        is_manual_entry: true,
+        exact_hours: 9.0,
+        display_check_in: displayCheckIn,
+        display_check_out: displayCheckOut,
+        working_week_start: workingWeekStart
+      };
+
+      // If check-in record exists, update it
+      if (existingCheckInId) {
+        const { error: updateCheckInError } = await supabase
+          .from('time_records')
+          .update({
+            ...commonRecordData,
+            timestamp: checkInTimestamp,
+            status: 'check_in'
+          })
+          .eq('id', existingCheckInId);
+          
+        if (updateCheckInError) throw updateCheckInError;
+      } else {
+        // Otherwise, insert a new check-in record
+        const { error: insertCheckInError } = await supabase
+          .from('time_records')
+          .insert({
+            ...commonRecordData,
+            timestamp: checkInTimestamp,
+            status: 'check_in'
+          });
+          
+        if (insertCheckInError) throw insertCheckInError;
+      }
+
+      // If check-out record exists, update it
+      if (existingCheckOutId) {
+        const { error: updateCheckOutError } = await supabase
+          .from('time_records')
+          .update({
+            ...commonRecordData,
+            timestamp: checkOutTimestamp,
+            status: 'check_out'
+          })
+          .eq('id', existingCheckOutId);
+          
+        if (updateCheckOutError) throw updateCheckOutError;
+      } else {
+        // Otherwise, insert a new check-out record
+        const { error: insertCheckOutError } = await supabase
+          .from('time_records')
+          .insert({
+            ...commonRecordData,
+            timestamp: checkOutTimestamp,
+            status: 'check_out'
+          });
+          
+        if (insertCheckOutError) throw insertCheckOutError;
+      }
       
       // Refresh the list
       fetchEmployeeShiftRequests();
@@ -309,35 +386,72 @@ const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
         checkOutTimestamp = `${selectedDate}T${times.end}:00`;
       }
 
-      // Add records to time_records table with full ISO timestamps
-      await supabase
-        .from('time_records')
-        .insert([
-          {
-            employee_id: employeeId,
+      // Check for existing records before inserting
+      const existingCheckInId = await checkExistingTimeRecord(
+        employeeId,
+        shiftType,
+        'check_in',
+        workingWeekStart
+      );
+      
+      const existingCheckOutId = await checkExistingTimeRecord(
+        employeeId,
+        shiftType,
+        'check_out',
+        workingWeekStart
+      );
+
+      // Common record data for both check-in and check-out
+      const commonRecordData = {
+        employee_id: employeeId,
+        shift_type: shiftType,
+        notes: notes || 'Manual entry; hours:9.00',
+        is_manual_entry: true,
+        working_week_start: workingWeekStart,
+        display_check_in: displayCheckIn,
+        display_check_out: displayCheckOut,
+        exact_hours: 9.0
+      };
+
+      // Handle check-in record (update if exists, insert if not)
+      if (existingCheckInId) {
+        await supabase
+          .from('time_records')
+          .update({
+            ...commonRecordData,
             timestamp: checkInTimestamp,
-            status: 'check_in',
-            shift_type: shiftType,
-            notes: notes || 'Manual entry; hours:9.00',
-            is_manual_entry: true,
-            working_week_start: workingWeekStart, // Set working_week_start for proper grouping
-            display_check_in: displayCheckIn,
-            display_check_out: displayCheckOut,
-            exact_hours: 9.0
-          },
-          {
-            employee_id: employeeId,
+            status: 'check_in'
+          })
+          .eq('id', existingCheckInId);
+      } else {
+        await supabase
+          .from('time_records')
+          .insert({
+            ...commonRecordData,
+            timestamp: checkInTimestamp,
+            status: 'check_in'
+          });
+      }
+
+      // Handle check-out record (update if exists, insert if not)
+      if (existingCheckOutId) {
+        await supabase
+          .from('time_records')
+          .update({
+            ...commonRecordData,
             timestamp: checkOutTimestamp,
-            status: 'check_out',
-            shift_type: shiftType,
-            notes: notes || 'Manual entry; hours:9.00',
-            is_manual_entry: true,
-            working_week_start: workingWeekStart, // Same working_week_start for both records
-            display_check_in: displayCheckIn,
-            display_check_out: displayCheckOut,
-            exact_hours: 9.0
-          }
-        ]);
+            status: 'check_out'
+          })
+          .eq('id', existingCheckOutId);
+      } else {
+        await supabase
+          .from('time_records')
+          .insert({
+            ...commonRecordData,
+            timestamp: checkOutTimestamp,
+            status: 'check_out'
+          });
+      }
 
       // FIXED: Fetch fresh records from the database
       const freshRecords = await fetchManualTimeRecords(50);

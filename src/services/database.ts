@@ -203,6 +203,32 @@ export const fetchEmployeeDetails = async (employeeId: string, monthFilter: stri
   }
 };
 
+// Check if a time record exists before inserting
+const checkExistingTimeRecord = async (
+  employeeId: string, 
+  shiftType: string, 
+  status: string, 
+  workingWeekStart: string
+): Promise<string | null> => {
+  try {
+    const { data, error } = await supabase
+      .from('time_records')
+      .select('id')
+      .eq('employee_id', employeeId)
+      .eq('shift_type', shiftType)
+      .eq('status', status)
+      .eq('working_week_start', workingWeekStart)
+      .eq('is_manual_entry', true)
+      .maybeSingle();
+
+    if (error) throw error;
+    return data ? data.id : null;
+  } catch (error) {
+    console.error('Error checking existing time record:', error);
+    return null;
+  }
+};
+
 // Save records to database
 export const saveRecordsToDatabase = async (employeeRecords: EmployeeRecord[]): Promise<{
   successCount: number;
@@ -221,21 +247,46 @@ export const saveRecordsToDatabase = async (employeeRecords: EmployeeRecord[]): 
       try {
         // Skip if this is an OFF-DAY with no hours
         if (day.notes === 'OFF-DAY' && day.hoursWorked === 0) {
-          // Create an OFF-DAY record
-          const { error } = await supabase.from('time_records').insert([
-            {
-              employee_id: await getEmployeeId(employee.employeeNumber),
-              timestamp: `${day.date}T12:00:00`, // Use local date-time string
-              status: 'off_day',
-              shift_type: 'off_day',
-              notes: 'OFF-DAY',
-              is_manual_entry: true,
-              exact_hours: 0,
-              working_week_start: day.date // Set working_week_start for proper grouping
-            }
-          ]);
+          // Check if OFF-DAY record already exists
+          const existingOffDayId = await checkExistingTimeRecord(
+            await getEmployeeId(employee.employeeNumber),
+            'off_day',
+            'off_day',
+            day.date
+          );
+
+          if (existingOffDayId) {
+            // Update existing record
+            const { error } = await supabase
+              .from('time_records')
+              .update({
+                timestamp: `${day.date}T12:00:00`,
+                notes: 'OFF-DAY',
+                exact_hours: 0
+              })
+              .eq('id', existingOffDayId);
+              
+            if (error) throw error;
+          } else {
+            // Create a new OFF-DAY record
+            const { error } = await supabase
+              .from('time_records')
+              .insert([
+                {
+                  employee_id: await getEmployeeId(employee.employeeNumber),
+                  timestamp: `${day.date}T12:00:00`, // Use local date-time string
+                  status: 'off_day',
+                  shift_type: 'off_day',
+                  notes: 'OFF-DAY',
+                  is_manual_entry: true,
+                  exact_hours: 0,
+                  working_week_start: day.date // Set working_week_start for proper grouping
+                }
+              ]);
+              
+            if (error) throw error;
+          }
           
-          if (error) throw error;
           successCount++;
           continue;
         }
@@ -254,9 +305,6 @@ export const saveRecordsToDatabase = async (employeeRecords: EmployeeRecord[]): 
         // Get employee ID
         const employeeId = await getEmployeeId(employee.employeeNumber);
         
-        // Prepare records to insert
-        const records = [];
-        
         // Add check-in record if available
         if (day.firstCheckIn) {
           // FIXED: Use local date-time string instead of UTC timestamp
@@ -264,7 +312,15 @@ export const saveRecordsToDatabase = async (employeeRecords: EmployeeRecord[]): 
           const checkInTimeStr = format(day.firstCheckIn, 'HH:mm:ss');
           const checkInTimestamp = `${checkInDateStr}T${checkInTimeStr}`;
           
-          records.push({
+          // Check if check-in record already exists
+          const existingCheckInId = await checkExistingTimeRecord(
+            employeeId,
+            day.shiftType,
+            'check_in',
+            day.date
+          );
+
+          const checkInData = {
             employee_id: employeeId,
             timestamp: checkInTimestamp,
             status: 'check_in',
@@ -279,9 +335,26 @@ export const saveRecordsToDatabase = async (employeeRecords: EmployeeRecord[]): 
             is_fixed: day.correctedRecords || false,
             corrected_records: day.correctedRecords || false,
             mislabeled: false,
-            // For night shifts, set working_week_start to help with grouping
+            is_manual_entry: true,
             working_week_start: day.date
-          });
+          };
+
+          if (existingCheckInId) {
+            // Update existing record
+            const { error } = await supabase
+              .from('time_records')
+              .update(checkInData)
+              .eq('id', existingCheckInId);
+              
+            if (error) throw error;
+          } else {
+            // Insert new record
+            const { error } = await supabase
+              .from('time_records')
+              .insert([checkInData]);
+              
+            if (error) throw error;
+          }
         }
         
         // Add check-out record if available
@@ -291,7 +364,15 @@ export const saveRecordsToDatabase = async (employeeRecords: EmployeeRecord[]): 
           const checkOutTimeStr = format(day.lastCheckOut, 'HH:mm:ss');
           const checkOutTimestamp = `${checkOutDateStr}T${checkOutTimeStr}`;
           
-          records.push({
+          // Check if check-out record already exists
+          const existingCheckOutId = await checkExistingTimeRecord(
+            employeeId,
+            day.shiftType,
+            'check_out',
+            day.date
+          );
+
+          const checkOutData = {
             employee_id: employeeId,
             timestamp: checkOutTimestamp,
             status: 'check_out',
@@ -306,18 +387,29 @@ export const saveRecordsToDatabase = async (employeeRecords: EmployeeRecord[]): 
             is_fixed: day.correctedRecords || false,
             corrected_records: day.correctedRecords || false,
             mislabeled: false,
-            // For night shifts with early morning checkout, set working_week_start to the check-in date
+            is_manual_entry: true,
             working_week_start: day.shiftType === 'night' && day.lastCheckOut.getHours() < 12 ? day.date : day.date
-          });
+          };
+
+          if (existingCheckOutId) {
+            // Update existing record
+            const { error } = await supabase
+              .from('time_records')
+              .update(checkOutData)
+              .eq('id', existingCheckOutId);
+              
+            if (error) throw error;
+          } else {
+            // Insert new record
+            const { error } = await supabase
+              .from('time_records')
+              .insert([checkOutData]);
+              
+            if (error) throw error;
+          }
         }
         
-        // Insert records
-        if (records.length > 0) {
-          const { error } = await supabase.from('time_records').insert(records);
-          
-          if (error) throw error;
-          successCount++;
-        }
+        successCount++;
       } catch (error) {
         console.error(`Error saving record for ${employee.name} on ${day.date}:`, error);
         errorCount++;
