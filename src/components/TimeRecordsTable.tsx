@@ -64,21 +64,24 @@ const TimeRecordsTable: React.FC<TimeRecordsTableProps> = ({
     records.forEach(record => {
       // Handle OFF-DAY records specially
       if (record.status === 'off_day' || record.notes?.includes('OFF-DAY')) {
-        // Use the UTC date portion so nothing shifts under local timezones
-        const utc = parseISO(record.timestamp);
-        const date = utc.toISOString().slice(0,10);  // "YYYY-MM-DD"
+        // Use working_week_start if available, otherwise use timestamp date
+        let dateKey = record.working_week_start || '';
+        if (!dateKey) {
+          const utc = parseISO(record.timestamp);
+          dateKey = utc.toISOString().slice(0,10);  // "YYYY-MM-DD"
+        }
         
         const employeeId = record.employee_id;
         
-        if (!groups[date]) {
-          groups[date] = {};
+        if (!groups[dateKey]) {
+          groups[dateKey] = {};
         }
         
-        if (!groups[date][employeeId]) {
-          groups[date][employeeId] = [];
+        if (!groups[dateKey][employeeId]) {
+          groups[dateKey][employeeId] = [];
         }
         
-        groups[date][employeeId].push({
+        groups[dateKey][employeeId].push({
           ...record,
           status: 'off_day' // Ensure status is set
         });
@@ -86,8 +89,7 @@ const TimeRecordsTable: React.FC<TimeRecordsTableProps> = ({
         return;
       }
       
-      // FIXED: Use working_week_start if available for consistent date grouping
-      // This ensures manual entries and night shifts are grouped correctly
+      // FIXED: Use working_week_start for consistent grouping
       let dateKey = record.working_week_start || '';
       
       // If working_week_start is not available, extract from timestamp
@@ -164,29 +166,29 @@ const TimeRecordsTable: React.FC<TimeRecordsTableProps> = ({
           return;
         }
         
-        // Sort check-in records by timestamp
+        // Sort check-in records by timestamp (earliest first)
         const sortedCheckIns = records.filter(r => r.status === 'check_in').sort((a, b) => 
           new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
         );
         
-        // Sort check-out records by timestamp (latest first)
+        // Sort check-out records by timestamp (earliest first)
         const sortedCheckOuts = records.filter(r => r.status === 'check_out').sort((a, b) => 
-          new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+          new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
         );
         
-        // Use earliest check-in and latest check-out
+        // Use earliest check-in and earliest check-out
         const earliestCheckIn = sortedCheckIns.length > 0 ? sortedCheckIns[0] : null;
-        const latestCheckOut = sortedCheckOuts.length > 0 ? sortedCheckOuts[0] : null;
+        const earliestCheckOut = sortedCheckOuts.length > 0 ? sortedCheckOuts[0] : null;
         
         // Add both records
         result.push({
           date,
           employeeId,
-          employeeName: (earliestCheckIn || latestCheckOut)?.employees?.name || 'Unknown',
-          employeeNumber: (earliestCheckIn || latestCheckOut)?.employees?.employee_number || 'Unknown',
+          employeeName: (earliestCheckIn || earliestCheckOut)?.employees?.name || 'Unknown',
+          employeeNumber: (earliestCheckIn || earliestCheckOut)?.employees?.employee_number || 'Unknown',
           checkIn: earliestCheckIn,
-          checkOut: latestCheckOut,
-          shiftType: (earliestCheckIn || latestCheckOut)?.shift_type || 'unknown'
+          checkOut: earliestCheckOut,
+          shiftType: (earliestCheckIn || earliestCheckOut)?.shift_type || 'unknown'
         });
         processedDates.add(date);
       });
@@ -333,7 +335,7 @@ const TimeRecordsTable: React.FC<TimeRecordsTableProps> = ({
                       <span className={`px-2 py-1 text-xs font-medium rounded-full ${
                         record.shiftType === 'morning' ? 'bg-blue-100 text-blue-800' : 
                         record.shiftType === 'evening' ? 'bg-orange-100 text-orange-800' : 
-                        record.shiftType === 'night' ? 'bg-purple-100 text-purple-800' : 
+                        record.shiftType === 'night' ? 'bg-purple-100 text-purple-800' :
                         record.shiftType === 'canteen' ? 'bg-yellow-100 text-yellow-800' :
                         'bg-gray-100 text-gray-800'
                       }`}>
