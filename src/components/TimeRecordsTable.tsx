@@ -64,27 +64,21 @@ const TimeRecordsTable: React.FC<TimeRecordsTableProps> = ({
     records.forEach(record => {
       // Handle OFF-DAY records specially
       if (record.status === 'off_day' || record.notes?.includes('OFF-DAY')) {
-        // Use working_week_start if available, otherwise use timestamp date
-        let dateKey = '';
-        if (record.working_week_start) {
-          dateKey = record.working_week_start;
-        } else {
-          // Use the UTC date portion so nothing shifts under local timezones
-          const utc = parseISO(record.timestamp);
-          dateKey = utc.toISOString().slice(0,10);  // "YYYY-MM-DD"
-        }
+        // Use the UTC date portion so nothing shifts under local timezones
+        const utc = parseISO(record.timestamp);
+        const date = utc.toISOString().slice(0,10);  // "YYYY-MM-DD"
         
         const employeeId = record.employee_id;
         
-        if (!groups[dateKey]) {
-          groups[dateKey] = {};
+        if (!groups[date]) {
+          groups[date] = {};
         }
         
-        if (!groups[dateKey][employeeId]) {
-          groups[dateKey][employeeId] = [];
+        if (!groups[date][employeeId]) {
+          groups[date][employeeId] = [];
         }
         
-        groups[dateKey][employeeId].push({
+        groups[date][employeeId].push({
           ...record,
           status: 'off_day' // Ensure status is set
         });
@@ -93,13 +87,11 @@ const TimeRecordsTable: React.FC<TimeRecordsTableProps> = ({
       }
       
       // FIXED: Use working_week_start if available for consistent date grouping
-      let dateKey = '';
+      // This ensures manual entries and night shifts are grouped correctly
+      let dateKey = record.working_week_start || '';
       
-      // Use working_week_start if available (preferred method for consistent grouping)
-      if (record.working_week_start) {
-        dateKey = record.working_week_start;
-      } else {
-        // If working_week_start is not available, extract from timestamp
+      // If working_week_start is not available, extract from timestamp
+      if (!dateKey) {
         // Use the UTC date portion so nothing shifts under local timezones
         const utc = parseISO(record.timestamp);
         dateKey = utc.toISOString().slice(0,10);  // "YYYY-MM-DD"
@@ -194,15 +186,11 @@ const TimeRecordsTable: React.FC<TimeRecordsTableProps> = ({
           employeeNumber: (earliestCheckIn || latestCheckOut)?.employees?.employee_number || 'Unknown',
           checkIn: earliestCheckIn,
           checkOut: latestCheckOut,
-          shiftType: (earliestCheckIn || latestCheckOut)?.shift_type || 'unknown',
-          working_week_start: (earliestCheckIn || latestCheckOut)?.working_week_start || date
+          shiftType: (earliestCheckIn || latestCheckOut)?.shift_type || 'unknown'
         });
         processedDates.add(date);
       });
     });
-    
-    // Sort by date (newest first)
-    result.sort((a, b) => b.date.localeCompare(a.date));
     
     return result;
   }, [groupedRecords]);
