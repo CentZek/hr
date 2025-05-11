@@ -341,7 +341,7 @@ const TimeRecordsTable: React.FC<TimeRecordsTableProps> = ({
                       <span className={`px-2 py-1 text-xs font-medium rounded-full ${
                         record.shiftType === 'morning' ? 'bg-blue-100 text-blue-800' : 
                         record.shiftType === 'evening' ? 'bg-orange-100 text-orange-800' : 
-                        record.shiftType === 'night' ? 'bg-purple-100 text-purple-800' :
+                        record.shiftType === 'night' ? 'bg-purple-100 text-purple-800' : 
                         record.shiftType === 'canteen' ? 'bg-yellow-100 text-yellow-800' :
                         'bg-gray-100 text-gray-800'
                       }`}>
