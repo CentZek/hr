@@ -131,6 +131,14 @@ const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
     workingWeekStart: string
   ) => {
     try {
+      console.log('Checking for existing record with:', {
+        employeeId,
+        shiftType,
+        status,
+        workingWeekStart,
+        is_manual_entry: true
+      });
+
       const { data, error } = await supabase
         .from('time_records')
         .select('id')
@@ -142,10 +150,79 @@ const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
         .maybeSingle();
 
       if (error) throw error;
+      
+      if (data) {
+        console.log('Found existing record with ID:', data.id);
+      } else {
+        console.log('No existing record found');
+      }
+      
       return data ? data.id : null;
     } catch (error) {
       console.error('Error checking existing time record:', error);
       return null;
+    }
+  };
+
+  // Safely insert or update time record to handle potential conflicts
+  const safeUpsertTimeRecord = async (recordData: any, existingId: string | null = null): Promise<boolean> => {
+    try {
+      // If we have an existing ID, update the record
+      if (existingId) {
+        console.log('Updating existing record with ID:', existingId);
+        const { error } = await supabase
+          .from('time_records')
+          .update(recordData)
+          .eq('id', existingId);
+          
+        if (error) throw error;
+        return true;
+      } 
+      
+      // Otherwise try to insert, but be prepared to handle conflict
+      try {
+        console.log('Attempting to insert new record');
+        const { error } = await supabase
+          .from('time_records')
+          .insert([recordData]);
+          
+        if (error) {
+          // If we get a conflict error (409), try to find the record again and update it
+          if (error.code === '23505' || (error.message && error.message.includes('duplicate key value'))) {
+            console.log('Duplicate key detected, attempting to find and update record');
+            
+            // Try to find the record based on the unique constraint
+            const existingRecord = await checkExistingTimeRecord(
+              recordData.employee_id,
+              recordData.shift_type,
+              recordData.status,
+              recordData.working_week_start
+            );
+            
+            if (existingRecord) {
+              console.log('Found conflicting record, updating instead:', existingRecord);
+              const { error: updateError } = await supabase
+                .from('time_records')
+                .update(recordData)
+                .eq('id', existingRecord);
+                
+              if (updateError) throw updateError;
+              return true;
+            } else {
+              throw new Error('Could not find conflicting record for update');
+            }
+          } else {
+            throw error;
+          }
+        }
+        return true;
+      } catch (insertError) {
+        console.error('Error during insert/update operation:', insertError);
+        throw insertError;
+      }
+    } catch (error) {
+      console.error('Error in safeUpsertTimeRecord:', error);
+      return false;
     }
   };
 
@@ -220,54 +297,26 @@ const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
         working_week_start: workingWeekStart
       };
 
-      // If check-in record exists, update it
-      if (existingCheckInId) {
-        const { error: updateCheckInError } = await supabase
-          .from('time_records')
-          .update({
-            ...commonRecordData,
-            timestamp: checkInTimestamp,
-            status: 'check_in'
-          })
-          .eq('id', existingCheckInId);
-          
-        if (updateCheckInError) throw updateCheckInError;
-      } else {
-        // Otherwise, insert a new check-in record
-        const { error: insertCheckInError } = await supabase
-          .from('time_records')
-          .insert({
-            ...commonRecordData,
-            timestamp: checkInTimestamp,
-            status: 'check_in'
-          });
-          
-        if (insertCheckInError) throw insertCheckInError;
-      }
+      // Create check-in data
+      const checkInData = {
+        ...commonRecordData,
+        timestamp: checkInTimestamp,
+        status: 'check_in'
+      };
 
-      // If check-out record exists, update it
-      if (existingCheckOutId) {
-        const { error: updateCheckOutError } = await supabase
-          .from('time_records')
-          .update({
-            ...commonRecordData,
-            timestamp: checkOutTimestamp,
-            status: 'check_out'
-          })
-          .eq('id', existingCheckOutId);
-          
-        if (updateCheckOutError) throw updateCheckOutError;
-      } else {
-        // Otherwise, insert a new check-out record
-        const { error: insertCheckOutError } = await supabase
-          .from('time_records')
-          .insert({
-            ...commonRecordData,
-            timestamp: checkOutTimestamp,
-            status: 'check_out'
-          });
-          
-        if (insertCheckOutError) throw insertCheckOutError;
+      // Create check-out data
+      const checkOutData = {
+        ...commonRecordData,
+        timestamp: checkOutTimestamp,
+        status: 'check_out'
+      };
+
+      // Use the safe upsert function for both records
+      const checkInSuccess = await safeUpsertTimeRecord(checkInData, existingCheckInId);
+      const checkOutSuccess = await safeUpsertTimeRecord(checkOutData, existingCheckOutId);
+      
+      if (!checkInSuccess || !checkOutSuccess) {
+        throw new Error('Failed to save time records');
       }
       
       // Refresh the list
@@ -413,44 +462,26 @@ const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
         exact_hours: 9.0
       };
 
-      // Handle check-in record (update if exists, insert if not)
-      if (existingCheckInId) {
-        await supabase
-          .from('time_records')
-          .update({
-            ...commonRecordData,
-            timestamp: checkInTimestamp,
-            status: 'check_in'
-          })
-          .eq('id', existingCheckInId);
-      } else {
-        await supabase
-          .from('time_records')
-          .insert({
-            ...commonRecordData,
-            timestamp: checkInTimestamp,
-            status: 'check_in'
-          });
-      }
+      // Create check-in data
+      const checkInData = {
+        ...commonRecordData,
+        timestamp: checkInTimestamp,
+        status: 'check_in'
+      };
 
-      // Handle check-out record (update if exists, insert if not)
-      if (existingCheckOutId) {
-        await supabase
-          .from('time_records')
-          .update({
-            ...commonRecordData,
-            timestamp: checkOutTimestamp,
-            status: 'check_out'
-          })
-          .eq('id', existingCheckOutId);
-      } else {
-        await supabase
-          .from('time_records')
-          .insert({
-            ...commonRecordData,
-            timestamp: checkOutTimestamp,
-            status: 'check_out'
-          });
+      // Create check-out data
+      const checkOutData = {
+        ...commonRecordData,
+        timestamp: checkOutTimestamp,
+        status: 'check_out'
+      };
+
+      // Use the safe upsert function for both records
+      const checkInSuccess = await safeUpsertTimeRecord(checkInData, existingCheckInId);
+      const checkOutSuccess = await safeUpsertTimeRecord(checkOutData, existingCheckOutId);
+      
+      if (!checkInSuccess || !checkOutSuccess) {
+        throw new Error('Failed to save time records');
       }
 
       // FIXED: Fetch fresh records from the database
@@ -467,9 +498,18 @@ const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
         checkOutDate: checkOut
       });
 
+      // Close the modal
+      onClose();
+
     } catch (error) {
       console.error('Error saving manual time record:', error);
-      setErrors({ submit: 'Failed to save time record. Please try again.' });
+      if (error instanceof Error && error.message.includes('duplicate key value')) {
+        setErrors({ 
+          submit: 'A time record for this employee, shift type, and date already exists. Please try a different combination.' 
+        });
+      } else {
+        setErrors({ submit: 'Failed to save time record. Please try again.' });
+      }
     } finally {
       setSaving(false);
     }

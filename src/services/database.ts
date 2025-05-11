@@ -211,6 +211,15 @@ const checkExistingTimeRecord = async (
   workingWeekStart: string
 ): Promise<string | null> => {
   try {
+    // Log the search parameters for debugging
+    console.log('Checking for existing record with:', {
+      employeeId,
+      shiftType,
+      status,
+      workingWeekStart,
+      is_manual_entry: true
+    });
+
     const { data, error } = await supabase
       .from('time_records')
       .select('id')
@@ -222,10 +231,79 @@ const checkExistingTimeRecord = async (
       .maybeSingle();
 
     if (error) throw error;
+    
+    if (data) {
+      console.log('Found existing record with ID:', data.id);
+    } else {
+      console.log('No existing record found');
+    }
+    
     return data ? data.id : null;
   } catch (error) {
     console.error('Error checking existing time record:', error);
     return null;
+  }
+};
+
+// Safely insert or update time record
+const safeUpsertTimeRecord = async (recordData: any, existingId: string | null = null): Promise<boolean> => {
+  try {
+    // If we have an existing ID, update the record
+    if (existingId) {
+      console.log('Updating existing record with ID:', existingId);
+      const { error } = await supabase
+        .from('time_records')
+        .update(recordData)
+        .eq('id', existingId);
+        
+      if (error) throw error;
+      return true;
+    } 
+    
+    // Otherwise try to insert, but be prepared to handle conflict
+    try {
+      console.log('Attempting to insert new record');
+      const { error } = await supabase
+        .from('time_records')
+        .insert([recordData]);
+        
+      if (error) {
+        // If we get a conflict error (409), try to find the record again and update it
+        if (error.code === '23505' || (error.message && error.message.includes('duplicate key value'))) {
+          console.log('Duplicate key detected, attempting to find and update record');
+          
+          // Try to find the record based on the unique constraint
+          const existingRecord = await checkExistingTimeRecord(
+            recordData.employee_id,
+            recordData.shift_type,
+            recordData.status,
+            recordData.working_week_start
+          );
+          
+          if (existingRecord) {
+            console.log('Found conflicting record, updating instead:', existingRecord);
+            const { error: updateError } = await supabase
+              .from('time_records')
+              .update(recordData)
+              .eq('id', existingRecord);
+              
+            if (updateError) throw updateError;
+            return true;
+          } else {
+            throw new Error('Could not find conflicting record for update');
+          }
+        } else {
+          throw error;
+        }
+      }
+      return true;
+    } catch (insertError) {
+      console.error('Error during insert/update operation:', insertError);
+      throw insertError;
+    }
+  } catch (error) {
+    console.error('Error in safeUpsertTimeRecord:', error);
+    return false;
   }
 };
 
@@ -255,39 +333,25 @@ export const saveRecordsToDatabase = async (employeeRecords: EmployeeRecord[]): 
             day.date
           );
 
-          if (existingOffDayId) {
-            // Update existing record
-            const { error } = await supabase
-              .from('time_records')
-              .update({
-                timestamp: `${day.date}T12:00:00`,
-                notes: 'OFF-DAY',
-                exact_hours: 0
-              })
-              .eq('id', existingOffDayId);
-              
-            if (error) throw error;
-          } else {
-            // Create a new OFF-DAY record
-            const { error } = await supabase
-              .from('time_records')
-              .insert([
-                {
-                  employee_id: await getEmployeeId(employee.employeeNumber),
-                  timestamp: `${day.date}T12:00:00`, // Use local date-time string
-                  status: 'off_day',
-                  shift_type: 'off_day',
-                  notes: 'OFF-DAY',
-                  is_manual_entry: true,
-                  exact_hours: 0,
-                  working_week_start: day.date // Set working_week_start for proper grouping
-                }
-              ]);
-              
-            if (error) throw error;
-          }
+          const offDayData = {
+            employee_id: await getEmployeeId(employee.employeeNumber),
+            timestamp: `${day.date}T12:00:00`, // Use local date-time string
+            status: 'off_day',
+            shift_type: 'off_day',
+            notes: 'OFF-DAY',
+            is_manual_entry: true,
+            exact_hours: 0,
+            working_week_start: day.date // Set working_week_start for proper grouping
+          };
+
+          // Use the safe upsert function
+          const success = await safeUpsertTimeRecord(offDayData, existingOffDayId);
           
-          successCount++;
+          if (success) {
+            successCount++;
+          } else {
+            throw new Error('Failed to save OFF-DAY record');
+          }
           continue;
         }
         
@@ -339,21 +403,11 @@ export const saveRecordsToDatabase = async (employeeRecords: EmployeeRecord[]): 
             working_week_start: day.date
           };
 
-          if (existingCheckInId) {
-            // Update existing record
-            const { error } = await supabase
-              .from('time_records')
-              .update(checkInData)
-              .eq('id', existingCheckInId);
-              
-            if (error) throw error;
-          } else {
-            // Insert new record
-            const { error } = await supabase
-              .from('time_records')
-              .insert([checkInData]);
-              
-            if (error) throw error;
+          // Use the safe upsert function
+          const success = await safeUpsertTimeRecord(checkInData, existingCheckInId);
+          
+          if (!success) {
+            throw new Error('Failed to save check-in record');
           }
         }
         
@@ -391,21 +445,11 @@ export const saveRecordsToDatabase = async (employeeRecords: EmployeeRecord[]): 
             working_week_start: day.shiftType === 'night' && day.lastCheckOut.getHours() < 12 ? day.date : day.date
           };
 
-          if (existingCheckOutId) {
-            // Update existing record
-            const { error } = await supabase
-              .from('time_records')
-              .update(checkOutData)
-              .eq('id', existingCheckOutId);
-              
-            if (error) throw error;
-          } else {
-            // Insert new record
-            const { error } = await supabase
-              .from('time_records')
-              .insert([checkOutData]);
-              
-            if (error) throw error;
+          // Use the safe upsert function
+          const success = await safeUpsertTimeRecord(checkOutData, existingCheckOutId);
+          
+          if (!success) {
+            throw new Error('Failed to save check-out record');
           }
         }
         
