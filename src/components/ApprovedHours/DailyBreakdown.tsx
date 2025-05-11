@@ -14,7 +14,7 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records }) =
   // Group records by date for better display
   const recordsByDate = records.reduce((acc: any, record: any) => {
     // FIXED: Use working_week_start if available for consistent grouping
-    const groupDate = record.working_week_start || format(parseISO(record.timestamp), 'yyyy-MM-dd');
+    const groupDate = record.working_week_start || parseISO(record.timestamp).toISOString().slice(0,10);
     
     if (!acc[groupDate]) {
       acc[groupDate] = [];
@@ -381,18 +381,8 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records }) =
                     'bg-gray-100 text-gray-800'
                   }`}>
                     {checkIn.shift_type === 'canteen' 
-                      ? (new Date(checkIn.timestamp).getHours() === 7 ? 'Canteen (07:00-16:00)' : 'Canteen (08:00-17:00)') :
+                      ? (new Date(checkIn.timestamp).getHours() === 7 ? 'Canteen (07:00)' : 'Canteen (08:00)') :
                       checkIn.shift_type.charAt(0).toUpperCase() + checkIn.shift_type.slice(1)}
-                  </span>
-                ) : checkOut && checkOut.shift_type ? (
-                  <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${
-                    checkOut.shift_type === 'morning' ? 'bg-blue-100 text-blue-800' : 
-                    checkOut.shift_type === 'evening' ? 'bg-orange-100 text-orange-800' : 
-                    checkOut.shift_type === 'night' ? 'bg-purple-100 text-purple-800' :
-                    checkOut.shift_type === 'canteen' ? 'bg-yellow-100 text-yellow-800' :
-                    'bg-gray-100 text-gray-800'
-                  }`}>
-                    {checkOut.shift_type.charAt(0).toUpperCase() + checkOut.shift_type.slice(1)}
                   </span>
                 ) : (
                   <span className="text-gray-400">–</span>

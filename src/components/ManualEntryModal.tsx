@@ -115,10 +115,7 @@ const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
       // Update shift status
       const { error: updateError } = await supabase
         .from('employee_shifts')
-        .update({ 
-          status: 'confirmed',
-          working_week_start: shift.date // Set working_week_start for the shift
-        })
+        .update({ status: 'confirmed' })
         .eq('id', shift.id);
         
       if (updateError) throw updateError;
@@ -142,9 +139,6 @@ const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
       const checkOutDateStr = format(checkOut, 'yyyy-MM-dd');
       const checkOutTimestamp = `${checkOutDateStr}T${endTime}:00`;
       
-      // Set the working_week_start to the original shift date for both records
-      const workingWeekStart = shift.date;
-      
       const timeRecords = [
         {
           employee_id: shift.employee_id,
@@ -156,7 +150,7 @@ const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
           exact_hours: 9.0,
           display_check_in: displayCheckIn,
           display_check_out: displayCheckOut,
-          working_week_start: workingWeekStart // Always use original shift date
+          working_week_start: shift.date // Always use original shift date for working_week_start
         },
         {
           employee_id: shift.employee_id,
@@ -168,7 +162,7 @@ const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
           exact_hours: 9.0,
           display_check_in: displayCheckIn,
           display_check_out: displayCheckOut,
-          working_week_start: workingWeekStart // Always use original shift date
+          working_week_start: shift.date // Always use original shift date for working_week_start, even for night shifts
         }
       ];
       
@@ -248,7 +242,7 @@ const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
       const displayCheckIn = displayTimes.startTime;
       const displayCheckOut = displayTimes.endTime;
 
-      // Create employee shift first with working_week_start
+      // Create employee shift first
       await supabase
         .from('employee_shifts')
         .insert({
@@ -258,8 +252,7 @@ const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
           end_time: times.end,
           shift_type: shiftType,
           status: 'pending',
-          notes: notes || 'Manual entry by HR',
-          working_week_start: selectedDate // Set working_week_start to the selected date
+          notes: notes || 'Manual entry by HR'
         });
 
       // Parse dates properly with the helper function to handle day rollover
@@ -290,7 +283,7 @@ const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
             shift_type: shiftType,
             notes: notes || 'Manual entry; hours:9.00',
             is_manual_entry: true,
-            working_week_start: selectedDate, // ALWAYS use selected date as working_week_start
+            working_week_start: selectedDate, // Set working_week_start to the selected date
             display_check_in: displayCheckIn,
             display_check_out: displayCheckOut,
             exact_hours: 9.0
@@ -302,7 +295,7 @@ const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
             shift_type: shiftType,
             notes: notes || 'Manual entry; hours:9.00',
             is_manual_entry: true,
-            working_week_start: selectedDate, // ALWAYS use selected date as working_week_start
+            working_week_start: selectedDate, // Same working_week_start for both records, even for night shift check-outs
             display_check_in: displayCheckIn,
             display_check_out: displayCheckOut,
             exact_hours: 9.0
@@ -581,13 +574,8 @@ const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
                   <div className="mt-0.5">
                     {shiftType === 'morning' ? 'Morning shift: 5:00 AM - 2:00 PM' :
                      shiftType === 'evening' ? 'Evening shift: 1:00 PM - 10:00 PM' : 
-                     'Night shift: 9:00 PM - 6:00 AM (next day)'}
+                     'Night shift: 9:00 PM - 6:00 AM'}
                   </div>
-                  {shiftType === 'night' && (
-                    <div className="mt-1 text-blue-600 font-medium">
-                      Note: Night shifts will be properly tracked as a single shift spanning two calendar days.
-                    </div>
-                  )}
                 </div>
               </div>
             </div>
