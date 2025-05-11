@@ -133,11 +133,22 @@ const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
       const { checkIn, checkOut } = parseShiftTimes(shift.date, startTime, endTime, shift.shift_type);
       
       // FIXED: Use local date-time strings instead of UTC timestamps
-      const checkInDateStr = format(checkIn, 'yyyy-MM-dd');
-      const checkInTimestamp = `${checkInDateStr}T${startTime}:00`;
+      let checkInTimestamp, checkOutTimestamp;
+      
+      // For night shifts, handle the day boundary properly
+      if (shift.shift_type === 'night') {
+        // The check-in day
+        const checkInDateStr = format(checkIn, 'yyyy-MM-dd');
+        checkInTimestamp = `${checkInDateStr}T${startTime}:00`;
         
-      const checkOutDateStr = format(checkOut, 'yyyy-MM-dd');
-      const checkOutTimestamp = `${checkOutDateStr}T${endTime}:00`;
+        // The check-out is next day for night shifts
+        const checkOutDateStr = format(checkOut, 'yyyy-MM-dd');
+        checkOutTimestamp = `${checkOutDateStr}T${endTime}:00`;
+      } else {
+        // For normal shifts, both are on the same day
+        checkInTimestamp = `${shift.date}T${startTime}:00`;
+        checkOutTimestamp = `${shift.date}T${endTime}:00`;
+      }
       
       const timeRecords = [
         {
@@ -150,7 +161,7 @@ const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
           exact_hours: 9.0,
           display_check_in: displayCheckIn,
           display_check_out: displayCheckOut,
-          working_week_start: shift.date // Always use original shift date for working_week_start
+          working_week_start: shift.date // Set working_week_start for proper grouping
         },
         {
           employee_id: shift.employee_id,
@@ -162,7 +173,7 @@ const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
           exact_hours: 9.0,
           display_check_in: displayCheckIn,
           display_check_out: displayCheckOut,
-          working_week_start: shift.date // Always use original shift date for working_week_start, even for night shifts
+          working_week_start: shift.date // Same working_week_start for both records
         }
       ];
       
@@ -264,13 +275,22 @@ const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
       );
 
       // FIXED: Use local date-time strings instead of UTC timestamps
-      // The check-in day
-      const checkInDateStr = format(checkIn, 'yyyy-MM-dd');
-      const checkInTimestamp = `${checkInDateStr}T${times.start}:00`;
+      let checkInTimestamp, checkOutTimestamp;
       
-      // The check-out day (might be next day for night shifts)
-      const checkOutDateStr = format(checkOut, 'yyyy-MM-dd');
-      const checkOutTimestamp = `${checkOutDateStr}T${times.end}:00`;
+      // For night shifts, handle the day boundary properly
+      if (shiftType === 'night') {
+        // The check-in day
+        const checkInDateStr = format(checkIn, 'yyyy-MM-dd');
+        checkInTimestamp = `${checkInDateStr}T${times.start}:00`;
+        
+        // The check-out is next day for night shifts
+        const checkOutDateStr = format(checkOut, 'yyyy-MM-dd');
+        checkOutTimestamp = `${checkOutDateStr}T${times.end}:00`;
+      } else {
+        // For normal shifts, both are on the same day
+        checkInTimestamp = `${selectedDate}T${times.start}:00`;
+        checkOutTimestamp = `${selectedDate}T${times.end}:00`;
+      }
 
       // Add records to time_records table with full ISO timestamps
       await supabase
@@ -283,7 +303,7 @@ const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
             shift_type: shiftType,
             notes: notes || 'Manual entry; hours:9.00',
             is_manual_entry: true,
-            working_week_start: selectedDate, // Set working_week_start to the selected date
+            working_week_start: selectedDate, // Set working_week_start for proper grouping
             display_check_in: displayCheckIn,
             display_check_out: displayCheckOut,
             exact_hours: 9.0
@@ -295,7 +315,7 @@ const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
             shift_type: shiftType,
             notes: notes || 'Manual entry; hours:9.00',
             is_manual_entry: true,
-            working_week_start: selectedDate, // Same working_week_start for both records, even for night shift check-outs
+            working_week_start: selectedDate, // Same working_week_start for both records
             display_check_in: displayCheckIn,
             display_check_out: displayCheckOut,
             exact_hours: 9.0
