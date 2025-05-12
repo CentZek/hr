@@ -171,14 +171,6 @@ const resolveDuplicates = (records: TimeRecord[]): TimeRecord[] => {
       // Skip if already processed or statuses are different
       if (curr.processed || next.processed || curr.status !== next.status) continue;
       
-      // FIXED: Add a time difference check - skip if records are too close together
-      const minutesApart = differenceInMinutes(next.timestamp, curr.timestamp);
-      
-      // SKIP any pair that's too close together (less than 30 minutes)
-      if (minutesApart < 30) {
-        continue;
-      }
-      
       if (curr.status === 'check_in') {
         // Two consecutive check-ins: convert second to check-out
         next.status = 'check_out';
