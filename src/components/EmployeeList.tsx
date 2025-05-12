@@ -200,7 +200,7 @@ const EmployeeList: React.FC<EmployeeListProps> = ({
                 <>{(day.isLate || isLateNightCheckIn) && <AlertTriangle className="inline w-3 h-3 mr-1 text-amber-500" />}
                 {checkInDisplay}
                 {day.shiftType === 'canteen' && <span className="ml-1 text-xs bg-yellow-100 text-yellow-800 px-1 rounded">{day.firstCheckIn.getHours() === 7 ? '07:00' : '08:00'}</span>}</> : 
-                isOffDay ? 'OFF-DAY' : 'Missing'}
+                isOffDay ? 'OFF-DAY' : <span className="text-red-500">Missing</span>}
             </div>
           </div>
           <div>
@@ -210,7 +210,7 @@ const EmployeeList: React.FC<EmployeeListProps> = ({
                 <>{day.earlyLeave && <AlertTriangle className="inline w-3 h-3 mr-1 text-amber-500" />}
                 {day.excessiveOvertime && <Clock className="inline w-3 h-3 mr-1 text-blue-500" />}
                 {checkOutDisplay}</> : 
-                isOffDay ? 'OFF-DAY' : 'Missing'}
+                isOffDay ? 'OFF-DAY' : <span className="text-red-500">Missing</span>}
             </div>
           </div>
         </div>
@@ -309,7 +309,11 @@ const EmployeeList: React.FC<EmployeeListProps> = ({
                           ${day.notes === 'Manual entry' && day.approved ? 'bg-teal-50' : ''}
                           ${wasCorrected ? 'bg-yellow-50' : ''}
                           ${isOffDay ? 'bg-gray-50' : ''}
-                          ${day.isCrossDay ? 'border-l-4 border-purple-300' : ''}`}
+                          ${day.isCrossDay ? 'border-l-4 border-purple-300' : ''}
+                          ${day.missingCheckIn || day.missingCheckOut ? 'border-l-4 border-red-300' : ''}
+                          ${day.isLate || isLateNightCheckIn ? 'border-l-4 border-amber-300' : ''}
+                          ${day.earlyLeave ? 'border-l-4 border-amber-300' : ''}
+                          ${day.excessiveOvertime ? 'border-l-4 border-blue-300' : ''}`}
                         >
                           <div className="text-gray-900 font-medium">
                             {format(new Date(day.date), 'MM/dd/yyyy')}
@@ -326,14 +330,14 @@ const EmployeeList: React.FC<EmployeeListProps> = ({
                                 <span className="ml-1 text-xs bg-yellow-100 text-yellow-800 px-1 rounded">
                                   {day.firstCheckIn.getHours() === 7 ? '07:00' : '08:00'}
                                 </span>}</> : 
-                              (isOffDay ? 'OFF-DAY' : 'Missing')}
+                              (isOffDay ? 'OFF-DAY' : <span className="text-red-500">Missing</span>)}
                           </div>
                           <div className={`flex items-center ${day.missingCheckOut ? 'text-red-500' : day.earlyLeave ? 'text-amber-600' : day.excessiveOvertime ? 'text-blue-600' : 'text-gray-700'}`}>
                             {day.lastCheckOut ? 
                               <>{day.earlyLeave && <AlertTriangle className="w-4 h-4 mr-1 text-amber-500" />}
                               {day.excessiveOvertime && <Clock className="w-4 h-4 mr-1 text-blue-500" />}
                               {checkOutDisplay}</> : 
-                              (isOffDay ? 'OFF-DAY' : 'Missing')}
+                              (isOffDay ? 'OFF-DAY' : <span className="text-red-500">Missing</span>)}
                           </div>
                           <div className="font-medium text-gray-900">{isOffDay ? '0.00' : day.hoursWorked.toFixed(2)}</div>
                           <div><span className={`px-2 py-1 text-xs font-medium rounded-full ${shiftDisplay.color}`}>{shiftDisplay.name}</span></div>
