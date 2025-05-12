@@ -89,7 +89,7 @@ const EmployeeShiftRequest: React.FC<EmployeeShiftRequestProps> = ({ onShiftAppr
         shift.shift_type
       );
       
-      // Format dates directly into the expected timestamp format
+      // Format dates using date-fns to ensure consistent timezone handling
       const checkInTimestamp = format(checkIn, "yyyy-MM-dd'T'HH:mm:ss");
       const checkOutTimestamp = format(checkOut, "yyyy-MM-dd'T'HH:mm:ss");
       

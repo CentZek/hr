@@ -408,6 +408,10 @@ export const processExcelData = async (data: any[]): Promise<EmployeeRecord[]> =
         // Calculate hours for night shift
         const hoursWorked = calculateNightShiftHours(checkIn.timestamp, checkOut.timestamp);
         
+        // Store original check-in and check-out times as display values
+        const checkInDisplayTime = format(checkIn.timestamp, 'HH:mm');
+        const checkOutDisplayTime = format(checkOut.timestamp, 'HH:mm');
+        
         // Create daily record for the current date
         employeeData.dailyRecords.set(currentDate, {
           date: currentDate,
@@ -428,7 +432,10 @@ export const processExcelData = async (data: any[]): Promise<EmployeeRecord[]> =
           hasMultipleRecords: true,
           isCrossDay: true,
           checkOutNextDay: true,
-          working_week_start: currentDate // Set working_week_start for proper grouping
+          working_week_start: currentDate, // Set working_week_start for proper grouping
+          // Store the actual timestamp values for correct display
+          displayCheckIn: checkInDisplayTime,
+          displayCheckOut: checkOutDisplayTime
         });
         
         // Mark dates as processed
@@ -468,6 +475,10 @@ export const processExcelData = async (data: any[]): Promise<EmployeeRecord[]> =
           // Calculate hours for night shift
           const hoursWorked = calculateNightShiftHours(march24CheckIn.timestamp, march25CheckOut.timestamp);
           
+          // Store original check-in and check-out times as display values
+          const checkInDisplayTime = format(march24CheckIn.timestamp, 'HH:mm');
+          const checkOutDisplayTime = format(march25CheckOut.timestamp, 'HH:mm');
+          
           // Create daily record for March 24th
           employeeData.dailyRecords.set('2025-03-24', {
             date: '2025-03-24',
@@ -488,7 +499,10 @@ export const processExcelData = async (data: any[]): Promise<EmployeeRecord[]> =
             hasMultipleRecords: true,
             isCrossDay: true,
             checkOutNextDay: true,
-            working_week_start: '2025-03-24' // Set working_week_start for proper grouping
+            working_week_start: '2025-03-24', // Set working_week_start for proper grouping
+            // Store original times for display
+            displayCheckIn: checkInDisplayTime,
+            displayCheckOut: checkOutDisplayTime
           });
           
           // Mark records as processed
@@ -528,6 +542,9 @@ export const processExcelData = async (data: any[]): Promise<EmployeeRecord[]> =
           const openCheckInDate = format(openCheckIn.timestamp, 'yyyy-MM-dd');
           const openDateRecords = recordsByDate.get(openCheckInDate) || [];
           
+          // Store original check-in time as display value
+          const checkInDisplayTime = format(openCheckIn.timestamp, 'HH:mm');
+          
           employeeData.dailyRecords.set(openCheckInDate, {
             date: openCheckInDate,
             firstCheckIn: openCheckIn.timestamp,
@@ -545,7 +562,9 @@ export const processExcelData = async (data: any[]): Promise<EmployeeRecord[]> =
             correctedRecords: openCheckIn.mislabeled,
             allTimeRecords: openDateRecords,
             hasMultipleRecords: openDateRecords.length > 1,
-            working_week_start: openCheckInDate // Set working_week_start for proper grouping
+            working_week_start: openCheckInDate, // Set working_week_start for proper grouping
+            displayCheckIn: checkInDisplayTime, // Store actual timestamp for display
+            displayCheckOut: 'Missing'
           });
           
           openCheckIn.processed = true;
@@ -576,6 +595,10 @@ export const processExcelData = async (data: any[]): Promise<EmployeeRecord[]> =
           // Collect all records for this day
           const allDayRecords = recordsByDate.get(checkInDate) || [];
           
+          // Store original check-in and check-out times as display values
+          const checkInDisplayTime = format(openCheckIn.timestamp, 'HH:mm');
+          const checkOutDisplayTime = format(record.timestamp, 'HH:mm');
+          
           // Create daily record
           employeeData.dailyRecords.set(checkInDate, {
             date: checkInDate,
@@ -596,7 +619,9 @@ export const processExcelData = async (data: any[]): Promise<EmployeeRecord[]> =
             hasMultipleRecords: allDayRecords.length > 2 || isCrossDay,
             isCrossDay,
             checkOutNextDay: isCrossDay,
-            working_week_start: checkInDate // Set working_week_start for proper grouping
+            working_week_start: checkInDate, // Set working_week_start for proper grouping
+            displayCheckIn: checkInDisplayTime, // Store actual timestamp for display
+            displayCheckOut: checkOutDisplayTime // Store actual timestamp for display
           });
           
           // Mark as processed
@@ -639,6 +664,9 @@ export const processExcelData = async (data: any[]): Promise<EmployeeRecord[]> =
             }
           }
           
+          // Store original check-out time as display value
+          const checkOutDisplayTime = format(record.timestamp, 'HH:mm');
+          
           // Create record with missing check-in
           employeeData.dailyRecords.set(checkOutDate, {
             date: checkOutDate,
@@ -657,7 +685,9 @@ export const processExcelData = async (data: any[]): Promise<EmployeeRecord[]> =
             correctedRecords: record.mislabeled,
             allTimeRecords: dateRecords,
             hasMultipleRecords: dateRecords.length > 1,
-            working_week_start: checkOutDate // Set working_week_start for proper grouping
+            working_week_start: checkOutDate, // Set working_week_start for proper grouping
+            displayCheckIn: 'Missing', 
+            displayCheckOut: checkOutDisplayTime // Store actual timestamp for display
           });
           
           record.processed = true;
@@ -669,6 +699,9 @@ export const processExcelData = async (data: any[]): Promise<EmployeeRecord[]> =
     if (openCheckIn && !openCheckIn.processed) {
       const checkInDate = format(openCheckIn.timestamp, 'yyyy-MM-dd');
       const dateRecords = recordsByDate.get(checkInDate) || [];
+      
+      // Store original check-in time as display value
+      const checkInDisplayTime = format(openCheckIn.timestamp, 'HH:mm');
       
       employeeData.dailyRecords.set(checkInDate, {
         date: checkInDate,
@@ -687,7 +720,9 @@ export const processExcelData = async (data: any[]): Promise<EmployeeRecord[]> =
         correctedRecords: openCheckIn.mislabeled,
         allTimeRecords: dateRecords,
         hasMultipleRecords: dateRecords.length > 1,
-        working_week_start: checkInDate // Set working_week_start for proper grouping
+        working_week_start: checkInDate, // Set working_week_start for proper grouping
+        displayCheckIn: checkInDisplayTime, // Store actual timestamp for display
+        displayCheckOut: 'Missing'
       });
       
       openCheckIn.processed = true;
@@ -725,6 +760,10 @@ export const processExcelData = async (data: any[]): Promise<EmployeeRecord[]> =
         const hoursWorked = (firstCheckIn && lastCheckOut) ? 
                       calculatePayableHours(firstCheckIn.timestamp, lastCheckOut.timestamp, shiftType as any) : 0;
         
+        // Store original check-in and check-out times as display values
+        const checkInDisplayTime = firstCheckIn ? format(firstCheckIn.timestamp, 'HH:mm') : 'Missing';
+        const checkOutDisplayTime = lastCheckOut ? format(lastCheckOut.timestamp, 'HH:mm') : 'Missing';
+        
         // Create daily record
         employeeData.dailyRecords.set(dateStr, {
           date: dateStr,
@@ -744,7 +783,10 @@ export const processExcelData = async (data: any[]): Promise<EmployeeRecord[]> =
           correctedRecords: unprocessedRecords.some(r => r.mislabeled),
           allTimeRecords: dateRecords,
           hasMultipleRecords: dateRecords.length > 1,
-          working_week_start: dateStr // Set working_week_start for proper grouping
+          working_week_start: dateStr, // Set working_week_start for proper grouping
+          // Store actual timestamp values for display
+          displayCheckIn: checkInDisplayTime,
+          displayCheckOut: checkOutDisplayTime
         });
         
         // Mark records as processed
@@ -824,7 +866,9 @@ const addOffDaysToEmployeeRecords = (dailyRecords: Map<string, DailyRecord>, rec
         penaltyMinutes: 0,
         allTimeRecords: dateRecords,
         hasMultipleRecords: dateRecords.length > 0,
-        working_week_start: dateStr // Set working_week_start for proper grouping
+        working_week_start: dateStr, // Set working_week_start for proper grouping
+        displayCheckIn: 'OFF-DAY', 
+        displayCheckOut: 'OFF-DAY'
       });
     }
   }
@@ -909,7 +953,17 @@ export const exportApprovedHoursToExcel = (data: {
     const timestamp = new Date(record.timestamp);
     
     // Use our helper to get consistent 24-hour time display
-    const displayTime = formatTime24H(timestamp);
+    // For Excel exports, we want to show the actual timestamp, not the standardized time
+    let displayTime;
+    if (!record.is_manual_entry && record.display_time) {
+      displayTime = record.display_time;
+    } else if (!record.is_manual_entry && record.display_check_in && record.status === 'check_in') {
+      displayTime = record.display_check_in;
+    } else if (!record.is_manual_entry && record.display_check_out && record.status === 'check_out') {
+      displayTime = record.display_check_out;
+    } else {
+      displayTime = format(timestamp, 'HH:mm');
+    }
     
     detailsData.push([
       record.employees?.employee_number || '',

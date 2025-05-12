@@ -2,7 +2,7 @@ import React from 'react';
 import { format, differenceInMinutes, parseISO } from 'date-fns';
 import { AlertTriangle, CheckCircle, Clock } from 'lucide-react';
 import { DISPLAY_SHIFT_TIMES } from '../../types';
-import { formatTime24H } from '../../utils/dateTimeHelper';
+import { formatTime24H, formatRecordTime } from '../../utils/dateTimeHelper';
 import { getEveningShiftCheckoutDisplay } from '../../utils/shiftCalculations';
 
 interface DailyBreakdownProps {
@@ -78,29 +78,9 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records }) =
     if (!timestamp) return '–';
     
     try {
-      // Only use display values for manual entries
-      if (record.is_manual_entry === true) {
-        // Check if this record has a display value we can use
-        if (timeType === 'in' && record.display_check_in && record.display_check_in !== 'Missing') {
-          return record.display_check_in;
-        }
-        
-        if (timeType === 'out' && record.display_check_out && record.display_check_out !== 'Missing') {
-          return record.display_check_out;
-        }
-        
-        // If we don't have a display value, try to get standard time based on shift type
-        if (record.shift_type) {
-          return getStandardDisplayTime(
-            record.shift_type, 
-            timeType === 'in' ? 'start' : 'end'
-          );
-        }
-      }
-      
-      // For Excel imports or records without display values, use the actual timestamp
-      const date = parseISO(timestamp);
-      return format(date, 'HH:mm');
+      // Use our new helper function that prioritizes display values for Excel imports
+      // and manual entries differently
+      return formatRecordTime(record, timeType === 'in' ? 'check_in' : 'check_out');
     } catch (err) {
       console.error("Error formatting time:", err);
       return '–';

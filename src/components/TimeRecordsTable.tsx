@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { format, parseISO } from 'date-fns';
 import { Clock, AlertTriangle, CheckCircle } from 'lucide-react';
 import { DISPLAY_SHIFT_TIMES } from '../types';
-import { formatTime24H } from '../utils/dateTimeHelper';
+import { formatTime24H, formatRecordTime } from '../utils/dateTimeHelper';
 
 interface TimeRecord {
   id: string;
@@ -208,38 +208,8 @@ const TimeRecordsTable: React.FC<TimeRecordsTableProps> = ({
   const getActualTime = (record: any) => {
     if (!record) return '—';
     
-    // Only use display values for manual entries
-    if (record.is_manual_entry === true) {
-      // Check if this record has display values set
-      if (record.status === 'check_in' && record.display_check_in && record.display_check_in !== 'Missing') {
-        return record.display_check_in;
-      }
-      
-      if (record.status === 'check_out' && record.display_check_out && record.display_check_out !== 'Missing') {
-        return record.display_check_out;
-      }
-      
-      // For manual entries, use standard times for shift types
-      if (record.shift_type) {
-        const shiftType = record.shift_type;
-        if (DISPLAY_SHIFT_TIMES[shiftType as keyof typeof DISPLAY_SHIFT_TIMES]) {
-          const displayTimes = DISPLAY_SHIFT_TIMES[shiftType as keyof typeof DISPLAY_SHIFT_TIMES];
-          
-          // Use standard times for check-in and check-out based on shift type
-          if (record.status === 'check_in') {
-            return displayTimes.startTime;
-          } else if (record.status === 'check_out') {
-            return displayTimes.endTime;
-          }
-        }
-      }
-    }
-    
-    // For non-manual entries (Excel imports), use the actual timestamp from the database
-    const timestamp = new Date(record.timestamp);
-    
-    // Format with 24-hour format
-    return formatTime24H(timestamp);
+    // Use our new helper function for consistent time display
+    return formatRecordTime(record, record.status === 'check_in' ? 'check_in' : 'check_out');
   };
   
   const formatTimeDisplay = (timestamp: string | null): string => {

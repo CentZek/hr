@@ -227,7 +227,7 @@ export const checkExistingTimeRecord = async (
       .select('id')
       .eq('employee_id', employeeId)
       .eq('shift_type', shiftType)
-      .eq('status', status)
+      .eq('status', status) // IMPORTANT: Filter by status to prevent mix-ups
       .eq('working_week_start', workingWeekStart)
       .eq('is_manual_entry', true)
       .maybeSingle();
@@ -341,7 +341,7 @@ export const saveRecordsToDatabase = async (employeeRecords: EmployeeRecord[]): 
             status: 'off_day',
             shift_type: 'off_day',
             notes: 'OFF-DAY',
-            is_manual_entry: true,
+            is_manual_entry: false, // Mark as non-manual entry since it's from Excel
             exact_hours: 0,
             working_week_start: day.date // Set working_week_start for proper grouping
           };
@@ -373,15 +373,16 @@ export const saveRecordsToDatabase = async (employeeRecords: EmployeeRecord[]): 
         
         // Add check-in record if available
         if (day.firstCheckIn) {
-          // FIXED: Use local date-time string instead of UTC timestamp
-          const checkInDateStr = format(day.firstCheckIn, 'yyyy-MM-dd');
-          const checkInTimeStr = format(day.firstCheckIn, 'HH:mm:ss');
-          const checkInTimestamp = `${checkInDateStr}T${checkInTimeStr}`;
+          // Store original check-in time as display value
+          const checkInDisplayTime = format(day.firstCheckIn, 'HH:mm');
+
+          // Format timestamp - this ensures consistent local timezone handling
+          const checkInTimestamp = format(day.firstCheckIn, "yyyy-MM-dd'T'HH:mm:ss");
           
           // Check if check-in record already exists
           const existingCheckInId = await checkExistingTimeRecord(
             employeeId,
-            day.shiftType,
+            day.shiftType || '',
             'check_in',
             day.date
           );
@@ -396,7 +397,7 @@ export const saveRecordsToDatabase = async (employeeRecords: EmployeeRecord[]): 
             deduction_minutes: day.penaltyMinutes,
             notes: day.notes ? `${day.notes}; hours:${day.hoursWorked.toFixed(2)}` : `hours:${day.hoursWorked.toFixed(2)}`,
             exact_hours: day.hoursWorked,
-            display_check_in: day.firstCheckIn ? format(day.firstCheckIn, 'HH:mm') : 'Missing',
+            display_check_in: checkInDisplayTime, // Store the actual time for display
             display_check_out: day.lastCheckOut ? format(day.lastCheckOut, 'HH:mm') : 'Missing',
             is_fixed: day.correctedRecords || false,
             corrected_records: day.correctedRecords || false,
@@ -415,15 +416,16 @@ export const saveRecordsToDatabase = async (employeeRecords: EmployeeRecord[]): 
         
         // Add check-out record if available
         if (day.lastCheckOut) {
-          // FIXED: Use local date-time string instead of UTC timestamp
-          const checkOutDateStr = format(day.lastCheckOut, 'yyyy-MM-dd');
-          const checkOutTimeStr = format(day.lastCheckOut, 'HH:mm:ss');
-          const checkOutTimestamp = `${checkOutDateStr}T${checkOutTimeStr}`;
+          // Store original check-out time as display value
+          const checkOutDisplayTime = format(day.lastCheckOut, 'HH:mm');
+          
+          // Format timestamp - this ensures consistent local timezone handling
+          const checkOutTimestamp = format(day.lastCheckOut, "yyyy-MM-dd'T'HH:mm:ss");
           
           // Check if check-out record already exists
           const existingCheckOutId = await checkExistingTimeRecord(
             employeeId,
-            day.shiftType,
+            day.shiftType || '',
             'check_out',
             day.date
           );
@@ -439,7 +441,7 @@ export const saveRecordsToDatabase = async (employeeRecords: EmployeeRecord[]): 
             notes: day.notes ? `${day.notes}; hours:${day.hoursWorked.toFixed(2)}` : `hours:${day.hoursWorked.toFixed(2)}`,
             exact_hours: day.hoursWorked,
             display_check_in: day.firstCheckIn ? format(day.firstCheckIn, 'HH:mm') : 'Missing',
-            display_check_out: format(day.lastCheckOut, 'HH:mm'),
+            display_check_out: checkOutDisplayTime, // Store the actual time for display
             is_fixed: day.correctedRecords || false,
             corrected_records: day.correctedRecords || false,
             mislabeled: false,
