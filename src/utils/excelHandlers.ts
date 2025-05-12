@@ -1,6 +1,3 @@
-/**
- * Standardized date and time utilities with consistent 24-hour format
- */
 import { read, utils, writeFile } from 'xlsx';
 import { format, parse, isValid, addDays, subDays, eachDayOfInterval, differenceInMinutes, differenceInHours, differenceInCalendarDays, getHours, isSameDay } from 'date-fns';
 import { TimeRecord, EmployeeRecord, DailyRecord } from '../types';
@@ -466,8 +463,8 @@ export const processExcelData = async (data: any[]): Promise<EmployeeRecord[]> =
         continue;
       }
       
+      // FIXED: Logic to prevent replacing an earlier check-in with a later one if they're close together
       if (record.status === 'check_in') {
-        // FIXED: Logic to prevent replacing an earlier check-in with a later one if they're close together
         if (openCheckIn) {
           // Compare timestamps and only replace if the new one is significantly different
           const minutesApart = differenceInMinutes(record.timestamp, openCheckIn.timestamp);
@@ -539,9 +536,10 @@ export const processExcelData = async (data: any[]): Promise<EmployeeRecord[]> =
           const working_week_start = openCheckIn.working_week_start || checkInDate;
           record.working_week_start = working_week_start; // Ensure checkout has same working_week_start
           
-          // FIXED: ALWAYS use the shift type from check-in for consistency
-          // This ensures evening check-in + later night checkout are both treated as evening shift
-          const shiftType = openCheckIn.shift_type || determineShiftType(openCheckIn.timestamp);
+          // Determine shift type
+          const shiftType = isCrossDay && getHours(openCheckIn.timestamp) >= 20 ? 
+                           'night' : 
+                           openCheckIn.shift_type || determineShiftType(openCheckIn.timestamp);
           
           // Calculate hours
           const hoursWorked = calculatePayableHours(
@@ -702,79 +700,120 @@ export const processExcelData = async (data: any[]): Promise<EmployeeRecord[]> =
       const unprocessedRecords = dateRecords.filter(r => !r.processed);
       
       if (unprocessedRecords.length > 0) {
-        // FIXED: Determine shift type from the earliest check-in for the whole day
-        const firstCheckIn = unprocessedRecords.filter(r => r.status === 'check_in')
-                            .sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime())[0];
-                            
-        // Use the shift type from the earliest check-in for all records this day
-        const dayShiftType = firstCheckIn ? 
-                          (firstCheckIn.shift_type || determineShiftType(firstCheckIn.timestamp)) :
-                          null;
-                          
-        // FIXED: Use this day shift type for everything - don't split by individual shift_types
-        // Get all check-ins and check-outs for the day
-        const sortedCheckIns = unprocessedRecords.filter(r => r.status === 'check_in')
-                              .sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
-                              
-        const sortedCheckOuts = unprocessedRecords.filter(r => r.status === 'check_out')
-                               .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
-                               
-        // Use the earliest check-in and latest check-out
-        const earliestCheckIn = sortedCheckIns.length > 0 ? sortedCheckIns[0] : null;
-        const latestCheckOut = sortedCheckOuts.length > 0 ? sortedCheckOuts[0] : null;
+        // Group records by shift_type
+        const recordsByShiftType: Record<string, any[]> = {};
         
-        // Calculate hours if we have both check-in and check-out
-        const hoursWorked = (earliestCheckIn && latestCheckOut) ? 
-                          calculatePayableHours(earliestCheckIn.timestamp, latestCheckOut.timestamp, dayShiftType as any) : 0;
-        
-        // Store original check-in and check-out times as display values
-        const checkInDisplayTime = earliestCheckIn ? format(earliestCheckIn.timestamp, 'HH:mm') : 'Missing';
-        const checkOutDisplayTime = latestCheckOut ? format(latestCheckOut.timestamp, 'HH:mm') : 'Missing';
-        
-        // FIXED: Determine the working_week_start properly
-        let working_week_start = dateStr;
-        
-        // If this is a night shift checkout in early morning, link to previous day
-        if (dayShiftType === 'night' && latestCheckOut && !earliestCheckIn && getHours(latestCheckOut.timestamp) < 12) {
-          // For night shift checkouts, set working_week_start to previous day
-          working_week_start = format(subDays(new Date(dateStr), 1), 'yyyy-MM-dd');
-        } else if (earliestCheckIn && earliestCheckIn.working_week_start) {
-          // Use check-in's working_week_start if available
-          working_week_start = earliestCheckIn.working_week_start;
-        } else if (latestCheckOut && latestCheckOut.working_week_start) {
-          // Use check-out's working_week_start if available
-          working_week_start = latestCheckOut.working_week_start;
-        }
-        
-        // Create daily record using the day's shift type
-        employeeData.dailyRecords.set(dateStr, {
-          date: dateStr,
-          firstCheckIn: earliestCheckIn ? earliestCheckIn.timestamp : null,
-          lastCheckOut: latestCheckOut ? latestCheckOut.timestamp : null,
-          hoursWorked: hoursWorked,
-          approved: false,
-          shiftType: dayShiftType as any,
-          notes: unprocessedRecords.some(r => r.mislabeled) ? 'Contains corrected records' : '',
-          missingCheckIn: !earliestCheckIn,
-          missingCheckOut: !latestCheckOut,
-          isLate: earliestCheckIn ? isLateCheckIn(earliestCheckIn.timestamp, dayShiftType as any) : false,
-          earlyLeave: latestCheckOut ? isEarlyLeave(latestCheckOut.timestamp, dayShiftType as any) : false,
-          excessiveOvertime: (earliestCheckIn && latestCheckOut) ? 
-                           isExcessiveOvertime(latestCheckOut.timestamp, dayShiftType as any) : false,
-          penaltyMinutes: 0,
-          correctedRecords: unprocessedRecords.some(r => r.mislabeled),
-          allTimeRecords: dateRecords,
-          hasMultipleRecords: dateRecords.length > 1,
-          working_week_start: working_week_start, // Set working_week_start for proper grouping
-          // Store actual timestamp values for display
-          displayCheckIn: checkInDisplayTime,
-          displayCheckOut: checkOutDisplayTime
+        unprocessedRecords.forEach(record => {
+          const shiftType = record.shift_type || 'unknown';
+          if (!recordsByShiftType[shiftType]) {
+            recordsByShiftType[shiftType] = [];
+          }
+          recordsByShiftType[shiftType].push(record);
         });
         
-        // Mark all unprocessed records for this day as processed
-        for (const record of unprocessedRecords) {
-          record.processed = true;
-        }
+        // Process each shift type separately
+        Object.entries(recordsByShiftType).forEach(([shiftType, shiftRecords]) => {
+          // FIXED: Sort check-ins by timestamp (earliest first)
+          const sortedCheckIns = shiftRecords.filter(r => r.status === 'check_in').sort((a, b) => 
+            a.timestamp.getTime() - b.timestamp.getTime()
+          );
+          
+          // FIXED: Sort check-outs by timestamp (latest first)
+          // We want the latest checkout for the shift (e.g. 16:57 not 07:01)
+          const sortedCheckOuts = shiftRecords.filter(r => r.status === 'check_out').sort((a, b) => 
+            b.timestamp.getTime() - a.timestamp.getTime()
+          );
+          
+          // Use earliest check-in and latest check-out
+          const earliestCheckIn = sortedCheckIns.length > 0 ? sortedCheckIns[0] : null;
+          const latestCheckOut = sortedCheckOuts.length > 0 ? sortedCheckOuts[0] : null;
+          
+          // Flag: Calculate exact hours if both check-in and check-out are available
+          let exactHours = 0;
+          let hasExcessiveHours = false;
+          
+          if (earliestCheckIn && latestCheckOut) {
+            const checkInTime = new Date(earliestCheckIn.timestamp);
+            const checkOutTime = new Date(latestCheckOut.timestamp);
+            const diffMs = checkOutTime.getTime() - checkInTime.getTime();
+            exactHours = diffMs / (1000 * 60 * 60); // Convert ms to hours
+            hasExcessiveHours = exactHours > 12;
+          }
+          
+          // Determine if this might be a canteen shift with an evening checkout
+          // FIXED: Handle the case where a canteen shift has a checkout in the "evening" shift time range
+          let isCanteenWithEveningCheckout = false;
+          if (shiftType === 'canteen' && latestCheckOut) {
+            const checkOutHour = latestCheckOut.timestamp.getHours();
+            // If checkout is after typical canteen end time (4PM/5PM) and in evening range
+            isCanteenWithEveningCheckout = checkOutHour >= 16 && checkOutHour < 20;
+          }
+          
+          // Flag: Count records to check if it's a single datapoint or has 3 records but not night shift
+          const recordCount = shiftRecords.length;
+          const hasSingleDatapoint = recordCount === 1;
+          const hasThreeDatapointsNotNight = recordCount === 3 && shiftType !== 'night';
+          
+          // Only add a record if there's a check-in or checkout
+          if (earliestCheckIn || latestCheckOut) {
+            // Store original check-in and check-out times as display values
+            const checkInDisplayTime = earliestCheckIn ? format(earliestCheckIn.timestamp, 'HH:mm') : 'Missing';
+            const checkOutDisplayTime = latestCheckOut ? format(latestCheckOut.timestamp, 'HH:mm') : 'Missing';
+            
+            // FIXED: Determine working_week_start properly
+            let working_week_start = dateStr;
+            
+            // If this is a night shift checkout in early morning, link to previous day
+            if (shiftType === 'night' && latestCheckOut && !earliestCheckIn && getHours(latestCheckOut.timestamp) < 12) {
+              // For night shift checkouts, set working_week_start to previous day
+              working_week_start = format(subDays(new Date(dateStr), 1), 'yyyy-MM-dd');
+            } else if (earliestCheckIn && earliestCheckIn.working_week_start) {
+              // Use check-in's working_week_start if available
+              working_week_start = earliestCheckIn.working_week_start;
+            } else if (latestCheckOut && latestCheckOut.working_week_start) {
+              // Use check-out's working_week_start if available
+              working_week_start = latestCheckOut.working_week_start;
+            }
+            
+            // Create daily record - include canteen flag for special handling
+            const dailyRecord = {
+              date: dateStr,
+              firstCheckIn: earliestCheckIn ? earliestCheckIn.timestamp : null,
+              lastCheckOut: latestCheckOut ? latestCheckOut.timestamp : null,
+              hoursWorked: exactHours > 0 ? calculatePayableHours(
+                earliestCheckIn?.timestamp || new Date(), 
+                latestCheckOut?.timestamp || new Date(), 
+                shiftType as any
+              ) : 0,
+              approved: false,
+              shiftType: shiftType as any,
+              notes: shiftRecords.some(r => r.mislabeled) ? 'Contains corrected records' : 
+                     (isCanteenWithEveningCheckout ? 'Canteen shift with evening checkout' : ''),
+              missingCheckIn: !earliestCheckIn,
+              missingCheckOut: !latestCheckOut,
+              isLate: earliestCheckIn ? isLateCheckIn(earliestCheckIn.timestamp, shiftType as any) : false,
+              earlyLeave: latestCheckOut ? isEarlyLeave(latestCheckOut.timestamp, shiftType as any) : false,
+              excessiveOvertime: hasExcessiveHours,
+              penaltyMinutes: 0,
+              correctedRecords: shiftRecords.some(r => r.mislabeled),
+              allTimeRecords: dateRecords,
+              hasMultipleRecords: dateRecords.length > 1,
+              working_week_start: working_week_start, // Set working_week_start for proper grouping
+              // Store actual timestamp values for display
+              displayCheckIn: checkInDisplayTime,
+              displayCheckOut: checkOutDisplayTime,
+              // Add flag for canteen shifts with evening checkout
+              isCanteenWithEveningCheckout
+            };
+            
+            employeeData.dailyRecords.set(dateStr, dailyRecord);
+            
+            // Mark records as processed
+            shiftRecords.forEach(record => {
+              record.processed = true;
+            });
+          }
+        });
       }
     }
     
