@@ -25,7 +25,7 @@ export const determineShiftType = (
   
   // Night shift: 9:00 PM - 4:29 AM
   // Check this first since it spans midnight
-  if (hour >= 20 || hour < 4 || (hour === 4 && minute < 30)) {
+  if (hour >= 21 || hour < 4 || (hour === 4 && minute < 30)) {
     return 'night';
   }
   
@@ -51,7 +51,7 @@ export const determineShiftType = (
   }
   
   // Evening shift: 1:00 PM - 8:59 PM
-  if (hour >= 13 && hour < 20) {
+  if (hour >= 13 && hour < 21) {
     return 'evening';
   }
   
@@ -461,7 +461,7 @@ export const isLikelyNightShiftWorker = (records: TimeRecord[]): boolean => {
     if (record.status !== 'check_in') return false;
     
     const hour = record.timestamp.getHours();
-    return (hour >= 20) || (hour >= 0 && hour < 4); // 8 PM - 4 AM
+    return (hour >= 21) || (hour >= 0 && hour < 4); // UPDATED: Changed from 20 to 21 (9 PM - 4 AM)
   }).length;
   
   // Count total check-ins
@@ -530,8 +530,8 @@ export const shouldHandleAsPossibleNightShift = (timestamp: Date): boolean => {
     return true;
   }
   
-  // Late evening times (8 PM to midnight) are commonly associated with night shifts
-  if (hour >= 20) {
+  // Late evening times (9 PM to midnight) are commonly associated with night shifts
+  if (hour >= 21) {
     return true;
   }
   
@@ -541,7 +541,7 @@ export const shouldHandleAsPossibleNightShift = (timestamp: Date): boolean => {
 // Check if a timestamp is likely a night shift check-in
 export const isNightShiftCheckIn = (timestamp: Date): boolean => {
   const hour = timestamp.getHours();
-  return hour >= 20 && hour <= 23; // Between 8 PM and 11 PM
+  return hour >= 21 && hour <= 23; // Between 9 PM and 11 PM
 };
 
 // Check if a timestamp is likely a night shift check-out
@@ -555,8 +555,8 @@ export const isNightShiftPattern = (checkInTime: Date, checkOutTime: Date): bool
   const checkInHour = checkInTime.getHours();
   const checkOutHour = checkOutTime.getHours();
   
-  // Night shift pattern: check-in in evening (8-11 PM), check-out in early morning (5-8 AM)
-  return (checkInHour >= 20 && checkInHour <= 23) && 
+  // Night shift pattern: check-in in evening (9-11 PM), check-out in early morning (5-8 AM)
+  return (checkInHour >= 21 && checkInHour <= 23) && 
          (checkOutHour >= 5 && checkOutHour <= 8);
 };
 
@@ -565,9 +565,9 @@ export const isLikelyFromNightShift = (record: any): boolean => {
   const timestamp = record.timestamp;
   const hour = getHours(timestamp);
   
-  // Night shifts typically check in between 20:00-22:00 and out between 05:00-07:00
+  // Night shifts typically check in between 21:00-22:00 and out between 05:00-07:00
   if (record.status === 'check_in') {
-    return hour >= 20 && hour <= 22;
+    return hour >= 21 && hour <= 22;
   } else if (record.status === 'check_out') {
     return hour >= 5 && hour <= 7;
   }
@@ -587,7 +587,7 @@ export const findNightShiftPair = (records: any[]): { checkIn: any | null, check
   // Find potential check-ins (evening hours)
   for (const record of sortedRecords) {
     const hour = getHours(record.timestamp);
-    if (hour >= 20 && hour <= 22) {
+    if (hour >= 21 && hour <= 22) {
       if (record.status === 'check_in') {
         nightCheckIn = record;
         break;

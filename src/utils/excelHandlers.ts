@@ -102,7 +102,7 @@ const resolveDuplicates = (records: TimeRecord[]): TimeRecord[] => {
       // Look for night shift check-in on current date (evening)
       const nightCheckIn = currentDateRecords.find(r => {
         const hour = r.timestamp.getHours();
-        return hour >= 20 && hour <= 23;
+        return hour >= 21 && hour <= 23; // Updated to use 21:00 (9 PM) as the threshold
       });
       
       // Look for night shift check-out on next date (morning)
@@ -330,6 +330,10 @@ export const processExcelData = async (data: any[]): Promise<EmployeeRecord[]> =
     const processedDates = new Set<string>();
     const dates = Array.from(recordsByDate.keys()).sort();
     
+    // Process night shifts spanning days - This is the key improvement
+    const NIGHT_START = 21; // 9 PM
+    const NIGHT_END = 6;    // 6 AM
+    
     for (let i = 0; i < dates.length - 1; i++) {
       const currentDate = dates[i];
       const nextDate = dates[i + 1];
@@ -340,63 +344,68 @@ export const processExcelData = async (data: any[]): Promise<EmployeeRecord[]> =
       const currentDateRecords = recordsByDate.get(currentDate) || [];
       const nextDateRecords = recordsByDate.get(nextDate) || [];
       
-      // Look for night shift pattern: evening check-in followed by morning check-out
-      const eveningCheckIns = currentDateRecords.filter(r => 
-        r.status === 'check_in' && getHours(r.timestamp) >= 20 && getHours(r.timestamp) <= 23
+      // 1) Find all late-PM check-ins
+      const nightCheckIns = currentDateRecords.filter(r => 
+        r.status === 'check_in' && getHours(r.timestamp) >= NIGHT_START
       );
+      if (nightCheckIns.length === 0) continue;
       
+      // 2) Look for early-AM check-outs the next day
       const morningCheckOuts = nextDateRecords.filter(r => 
-        r.status === 'check_out' && getHours(r.timestamp) >= 5 && getHours(r.timestamp) <= 7
+        r.status === 'check_out' && getHours(r.timestamp) <= NIGHT_END
       );
+      if (morningCheckOuts.length === 0) continue;
       
-      if (eveningCheckIns.length > 0 && morningCheckOuts.length > 0) {
-        // We have a night shift that spans days
-        const checkIn = eveningCheckIns[0]; // Use first evening check-in
-        const checkOut = morningCheckOuts[0]; // Use first morning check-out
-        
-        // Calculate hours for night shift
-        const hoursWorked = calculateNightShiftHours(checkIn.timestamp, checkOut.timestamp);
-        
-        // Store original check-in and check-out times as display values
-        const checkInDisplayTime = format(checkIn.timestamp, 'HH:mm');
-        const checkOutDisplayTime = format(checkOut.timestamp, 'HH:mm');
-        
-        // Create daily record for the current date
-        employeeData.dailyRecords.set(currentDate, {
-          date: currentDate,
-          firstCheckIn: checkIn.timestamp,
-          lastCheckOut: checkOut.timestamp,
-          hoursWorked: hoursWorked,
-          approved: false,
-          shiftType: 'night',
-          notes: 'Night shift (spans to next day)',
-          missingCheckIn: false,
-          missingCheckOut: false,
-          isLate: isLateCheckIn(checkIn.timestamp, 'night'),
-          earlyLeave: isEarlyLeave(checkOut.timestamp, 'night'),
-          excessiveOvertime: isExcessiveOvertime(checkOut.timestamp, 'night'),
-          penaltyMinutes: 0,
-          correctedRecords: checkIn.mislabeled || checkOut.mislabeled,
-          allTimeRecords: [...currentDateRecords, ...morningCheckOuts], // Include all relevant records
-          hasMultipleRecords: true,
-          isCrossDay: true,
-          checkOutNextDay: true,
-          working_week_start: currentDate, // Set working_week_start for proper grouping
-          // Store the actual timestamp values for correct display
-          displayCheckIn: checkInDisplayTime,
-          displayCheckOut: checkOutDisplayTime
-        });
-        
-        // Mark dates as processed
-        processedDates.add(currentDate);
-        
-        // Don't fully process the next date, we'll process remaining records later
-        // Just mark the specific checkout as processed
-        checkIn.processed = true;
-        checkOut.processed = true;
-        
-        console.log(`Processed night shift spanning ${currentDate} to ${nextDate}`);
-      }
+      // 3) Pick the latest check-in and earliest check-out
+      const checkIn = nightCheckIns.sort((a, b) => 
+        b.timestamp.getTime() - a.timestamp.getTime()
+      )[0]; // Latest check-in
+      
+      const checkOut = morningCheckOuts.sort((a, b) => 
+        a.timestamp.getTime() - b.timestamp.getTime()
+      )[0]; // Earliest check-out
+      
+      // Calculate hours for night shift
+      const hoursWorked = calculatePayableHours(checkIn.timestamp, checkOut.timestamp, 'night');
+      
+      // Store original check-in and check-out times as display values
+      const checkInDisplayTime = format(checkIn.timestamp, 'HH:mm');
+      const checkOutDisplayTime = format(checkOut.timestamp, 'HH:mm');
+      
+      // Create daily record for the current date (check-in date)
+      employeeData.dailyRecords.set(currentDate, {
+        date: currentDate,
+        firstCheckIn: checkIn.timestamp,
+        lastCheckOut: checkOut.timestamp,
+        hoursWorked: hoursWorked,
+        approved: false,
+        shiftType: 'night',
+        notes: 'Night shift (spans to next day)',
+        missingCheckIn: false,
+        missingCheckOut: false,
+        isLate: isLateCheckIn(checkIn.timestamp, 'night'),
+        earlyLeave: isEarlyLeave(checkOut.timestamp, 'night'),
+        excessiveOvertime: isExcessiveOvertime(checkOut.timestamp, 'night'),
+        penaltyMinutes: 0,
+        correctedRecords: checkIn.mislabeled || checkOut.mislabeled,
+        allTimeRecords: [...currentDateRecords, ...morningCheckOuts], // Include all relevant records
+        hasMultipleRecords: true,
+        isCrossDay: true,
+        checkOutNextDay: true,
+        working_week_start: currentDate, // Set working_week_start for proper grouping
+        // Store the actual timestamp values for correct display
+        displayCheckIn: checkInDisplayTime,
+        displayCheckOut: checkOutDisplayTime
+      });
+      
+      // Mark records as processed
+      checkIn.processed = true;
+      checkOut.processed = true;
+      
+      // Mark current date as processed
+      processedDates.add(currentDate);
+      
+      console.log(`Processed night shift spanning ${currentDate} to ${nextDate}`);
     }
     
     // Now process remaining records
@@ -462,7 +471,7 @@ export const processExcelData = async (data: any[]): Promise<EmployeeRecord[]> =
           const isCrossDay = checkInDate !== checkOutDate;
           
           // Determine shift type
-          const shiftType = isCrossDay && getHours(openCheckIn.timestamp) >= 20 ? 
+          const shiftType = isCrossDay && getHours(openCheckIn.timestamp) >= NIGHT_START ? 
                            'night' : 
                            openCheckIn.shift_type || determineShiftType(openCheckIn.timestamp);
           
@@ -535,7 +544,7 @@ export const processExcelData = async (data: any[]): Promise<EmployeeRecord[]> =
             
             // Look for evening check-in on previous day
             const prevEveningCheckIn = prevDayRecords.find(r => 
-              r.status === 'check_in' && getHours(r.timestamp) >= 20
+              r.status === 'check_in' && getHours(r.timestamp) >= NIGHT_START
             );
             
             if (prevEveningCheckIn) {

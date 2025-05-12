@@ -422,12 +422,19 @@ export const saveRecordsToDatabase = async (employeeRecords: EmployeeRecord[]): 
           // Use date-fns format directly with the Date object
           const checkOutTimestamp = format(day.lastCheckOut, "yyyy-MM-dd'T'HH:mm:ss");
           
+          // For night shifts, ensure working_week_start is set to the check-in date
+          let working_week_start = day.date;
+          if (day.shiftType === 'night' && getHours(day.lastCheckOut) < 12) {
+            // Check-out is in early morning hours, use check-in date as working_week_start
+            working_week_start = day.date;
+          }
+          
           // Check if check-out record already exists
           const existingCheckOutId = await checkExistingTimeRecord(
             employeeId,
             day.shiftType || '',
             'check_out',
-            day.date
+            working_week_start
           );
 
           const checkOutData = {
@@ -446,7 +453,7 @@ export const saveRecordsToDatabase = async (employeeRecords: EmployeeRecord[]): 
             corrected_records: day.correctedRecords || false,
             mislabeled: false,
             is_manual_entry: false, // Mark as non-manual entry since it's from Excel
-            working_week_start: day.date
+            working_week_start: working_week_start // Use consistent working_week_start
           };
 
           // Use the safe upsert function
