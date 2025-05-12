@@ -84,7 +84,7 @@ const TimeRecordsTable: React.FC<TimeRecordsTableProps> = ({
       }
       
       // FIXED: ALWAYS use working_week_start for consistent grouping
-      const dateKey = record.working_week_start || '';
+      let dateKey = record.working_week_start || '';
       
       // If working_week_start is not available, extract from timestamp
       if (!dateKey) {
