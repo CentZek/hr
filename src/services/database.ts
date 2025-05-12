@@ -340,7 +340,7 @@ export const saveRecordsToDatabase = async (employeeRecords: EmployeeRecord[]): 
             shift_type: 'off_day',
             notes: 'OFF-DAY',
             is_manual_entry: true,
-            exact_hours: a0,
+            exact_hours: 0,
             working_week_start: day.date // Set working_week_start for proper grouping
           };
 
