@@ -1,6 +1,6 @@
 import React from 'react';
 import { DailyRecord } from '../types';
-import { Clock, Calendar, AlertTriangle, CheckCircle, AlertCircle } from 'lucide-react';
+import { Clock, Calendar, AlertTriangle, CheckCircle, AlertCircle, Calendar as Calendar2 } from 'lucide-react';
 
 interface EmployeeSummaryProps {
   days: DailyRecord[];

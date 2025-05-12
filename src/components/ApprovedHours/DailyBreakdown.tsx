@@ -279,7 +279,7 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records, dou
             }
             
             // Calculate double-time hours if applicable
-            const doubleTimeHours = isDoubleTime ? hours * 2 : hours;
+            const doubleTimeHours = isDoubleTime ? hours : 0;
             
             // Determine if there's a penalty
             const hasPenalty = checkIn && checkIn.deduction_minutes > 0;
@@ -314,9 +314,9 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records, dou
                     )}
                   </div>
                   
-                  <div className="grid grid-cols-2 gap-3 text-sm">
+                  <div className="grid grid-cols-2 gap-3 mb-2">
                     <div>
-                      <span className="text-xs text-gray-500">Check In:</span>
+                      <span className="text-xs text-gray-500">Check In</span>
                       <div className={`text-sm mt-1 ${checkIn?.is_late ? 'text-amber-600' : 'text-gray-700'}`}>
                         {checkIn ? (
                           <>
@@ -330,7 +330,7 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records, dou
                     </div>
                     
                     <div>
-                      <span className="text-xs text-gray-500">Check Out:</span>
+                      <span className="text-xs text-gray-500">Check Out</span>
                       <div className={`text-sm mt-1 ${checkOut?.early_leave ? 'text-amber-600' : 'text-gray-700'}`}>
                         {checkOut ? (
                           <>
@@ -343,10 +343,10 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records, dou
                       </div>
                     </div>
                   </div>
-                  
-                  <div className="mt-2 flex flex-wrap gap-2">
+
+                  <div className="flex flex-wrap gap-2">
                     {shiftType && (
-                      <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${
+                      <span className={`px-2 py-1 text-xs font-medium rounded-full ${
                         shiftType === 'morning' ? 'bg-blue-100 text-blue-800' : 
                         shiftType === 'evening' ? 'bg-orange-100 text-orange-800' : 
                         shiftType === 'night' ? 'bg-purple-100 text-purple-800' :
@@ -422,7 +422,7 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records, dou
                 </div>
                 <div className="text-gray-700">
                   {shiftType && (
-                    <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${
+                    <span className={`px-2 py-1 text-xs font-medium rounded-full ${
                       shiftType === 'morning' ? 'bg-blue-100 text-blue-800' : 
                       shiftType === 'evening' ? 'bg-orange-100 text-orange-800' : 
                       shiftType === 'night' ? 'bg-purple-100 text-purple-800' :
@@ -430,12 +430,12 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records, dou
                       'bg-gray-100 text-gray-800'
                     }`}>
                       {shiftType === 'canteen' 
-                        ? (checkIn && new Date(checkIn.timestamp).getHours() === 7 ? 'Canteen (07:00)' : 'Canteen (08:00)') :
+                        ? (checkIn && new Date(checkIn.timestamp).getHours() === 7 ? 'Canteen (07:00-16:00)' : 'Canteen (08:00-17:00)') :
                         shiftType.charAt(0).toUpperCase() + shiftType.slice(1)}
                     </span>
                   )}
                 </div>
-                <div className="font-medium text-gray-800 flex items-center">
+                <div className="font-medium flex items-center">
                   {hours.toFixed(2)}
                   {isSignificantOvertime && 
                     <Clock className="w-3 h-3 ml-1 text-blue-500" title="Overtime hours" />
