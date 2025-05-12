@@ -89,7 +89,7 @@ const EmployeeShiftRequest: React.FC<EmployeeShiftRequestProps> = ({ onShiftAppr
         shift.shift_type
       );
       
-      // FIXED: Use date-fns format instead of toISOString to create proper local timestamps
+      // Format dates directly into the expected timestamp format
       const checkInTimestamp = format(checkIn, "yyyy-MM-dd'T'HH:mm:ss");
       const checkOutTimestamp = format(checkOut, "yyyy-MM-dd'T'HH:mm:ss");
       

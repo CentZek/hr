@@ -99,8 +99,7 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records }) =
       }
       
       // For Excel imports or records without display values, use the actual timestamp
-      // FIXED: Handle timezone properly by creating a direct date object
-      const date = new Date(timestamp);
+      const date = parseISO(timestamp);
       return format(date, 'HH:mm');
     } catch (err) {
       console.error("Error formatting time:", err);

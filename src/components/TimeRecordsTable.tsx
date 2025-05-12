@@ -236,11 +236,10 @@ const TimeRecordsTable: React.FC<TimeRecordsTableProps> = ({
     }
     
     // For non-manual entries (Excel imports), use the actual timestamp from the database
-    // FIXED: Create a Date object directly to avoid timezone issues
     const timestamp = new Date(record.timestamp);
     
     // Format with 24-hour format
-    return format(timestamp, 'HH:mm');
+    return formatTime24H(timestamp);
   };
   
   const formatTimeDisplay = (timestamp: string | null): string => {
@@ -248,10 +247,9 @@ const TimeRecordsTable: React.FC<TimeRecordsTableProps> = ({
     
     try {
       // Get the timestamp and ensure it's treated consistently
-      // FIXED: Create a Date object directly to avoid timezone issues
-      const date = new Date(timestamp);
+      const date = parseISO(timestamp);
       
-      // Format as local time, not UTC - this fixes the time differences
+      // IMPORTANT: Format as local time, not UTC - this fixes the time differences
       return format(date, 'HH:mm');
     } catch (err) {
       console.error("Error formatting time:", err);
