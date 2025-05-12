@@ -463,46 +463,67 @@ export const processExcelData = async (data: any[]): Promise<EmployeeRecord[]> =
         continue;
       }
       
+      // FIXED: Logic to prevent replacing an earlier check-in with a later one if they're close together
       if (record.status === 'check_in') {
-        // If we already have an open check-in, close it first
         if (openCheckIn) {
-          // Handle orphaned check-in (mark as missing check-out)
-          const openCheckInDate = format(openCheckIn.timestamp, 'yyyy-MM-dd');
-          const openDateRecords = recordsByDate.get(openCheckInDate) || [];
+          // Compare timestamps and only replace if the new one is significantly different
+          const minutesApart = differenceInMinutes(record.timestamp, openCheckIn.timestamp);
           
-          // Store original check-in time as display value
-          const checkInDisplayTime = format(openCheckIn.timestamp, 'HH:mm');
-          
-          // FIXED: Use openCheckIn's working_week_start if available
-          const working_week_start = openCheckIn.working_week_start || openCheckInDate;
-          
-          employeeData.dailyRecords.set(openCheckInDate, {
-            date: openCheckInDate,
-            firstCheckIn: openCheckIn.timestamp,
-            lastCheckOut: null,
-            hoursWorked: 0,
-            approved: false,
-            shiftType: openCheckIn.shift_type || determineShiftType(openCheckIn.timestamp),
-            notes: 'Missing check-out',
-            missingCheckIn: false,
-            missingCheckOut: true,
-            isLate: isLateCheckIn(openCheckIn.timestamp, openCheckIn.shift_type as any),
-            earlyLeave: false,
-            excessiveOvertime: false,
-            penaltyMinutes: 0,
-            correctedRecords: openCheckIn.mislabeled,
-            allTimeRecords: openDateRecords,
-            hasMultipleRecords: openDateRecords.length > 1,
-            working_week_start: working_week_start, // Set working_week_start for proper grouping
-            displayCheckIn: checkInDisplayTime, // Store actual timestamp for display
-            displayCheckOut: 'Missing'
-          });
-          
-          openCheckIn.processed = true;
+          // If the records are close together (within 30 minutes)
+          if (minutesApart < 30) {
+            // For close-together check-ins, KEEP THE EARLIEST ONE
+            if (record.timestamp < openCheckIn.timestamp) {
+              // If this one is earlier, mark current openCheckIn as processed
+              openCheckIn.processed = true;
+              // Replace with the earlier one
+              openCheckIn = record;
+            } else {
+              // Current open check-in is earlier, mark the new one as processed and skip
+              record.processed = true;
+              continue;
+            }
+          } else {
+            // If they're far apart, handle the first one as orphaned
+            // Handle orphaned check-in (mark as missing check-out)
+            const openCheckInDate = format(openCheckIn.timestamp, 'yyyy-MM-dd');
+            const openDateRecords = recordsByDate.get(openCheckInDate) || [];
+            
+            // Store original check-in time as display value
+            const checkInDisplayTime = format(openCheckIn.timestamp, 'HH:mm');
+            
+            // FIXED: Use openCheckIn's working_week_start if available
+            const working_week_start = openCheckIn.working_week_start || openCheckInDate;
+            
+            employeeData.dailyRecords.set(openCheckInDate, {
+              date: openCheckInDate,
+              firstCheckIn: openCheckIn.timestamp,
+              lastCheckOut: null,
+              hoursWorked: 0,
+              approved: false,
+              shiftType: openCheckIn.shift_type || determineShiftType(openCheckIn.timestamp),
+              notes: 'Missing check-out',
+              missingCheckIn: false,
+              missingCheckOut: true,
+              isLate: isLateCheckIn(openCheckIn.timestamp, openCheckIn.shift_type as any),
+              earlyLeave: false,
+              excessiveOvertime: false,
+              penaltyMinutes: 0,
+              correctedRecords: openCheckIn.mislabeled,
+              allTimeRecords: openDateRecords,
+              hasMultipleRecords: openDateRecords.length > 1,
+              working_week_start: working_week_start, // Set working_week_start for proper grouping
+              displayCheckIn: checkInDisplayTime, // Store actual timestamp for display
+              displayCheckOut: 'Missing'
+            });
+            
+            openCheckIn.processed = true;
+            // Start a new checkout with this record
+            openCheckIn = record;
+          }
+        } else {
+          // No open check-in, use this one
+          openCheckIn = record;
         }
-        
-        // Start a new open check-in
-        openCheckIn = record;
       }
       else if (record.status === 'check_out') {
         if (openCheckIn) {
@@ -759,7 +780,11 @@ export const processExcelData = async (data: any[]): Promise<EmployeeRecord[]> =
               date: dateStr,
               firstCheckIn: earliestCheckIn ? earliestCheckIn.timestamp : null,
               lastCheckOut: latestCheckOut ? latestCheckOut.timestamp : null,
-              hoursWorked: exactHours > 0 ? exactHours : 0,
+              hoursWorked: exactHours > 0 ? calculatePayableHours(
+                earliestCheckIn?.timestamp || new Date(), 
+                latestCheckOut?.timestamp || new Date(), 
+                shiftType as any
+              ) : 0,
               approved: false,
               shiftType: shiftType as any,
               notes: shiftRecords.some(r => r.mislabeled) ? 'Contains corrected records' : 
