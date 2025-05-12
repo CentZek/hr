@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { format, subMonths, isSameDay, startOfMonth, endOfMonth } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
-import { Clock, ArrowLeft, Download, Users, Calendar, Filter, Trash2, Home, Calendar as Calendar2 } from 'lucide-react';
+import { Clock, ArrowLeft, Download, Users, Calendar, Filter, Trash2, Home, Calendar as Calendar2, User } from 'lucide-react';
 import toast, { Toaster } from 'react-hot-toast';
 import { fetchApprovedHours, fetchEmployeeDetails, deleteAllTimeRecords } from '../services/database';
 import { exportApprovedHoursToExcel } from '../utils/excelHandlers';
@@ -16,9 +16,11 @@ const ApprovedHoursPage: React.FC = () => {
   const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(true);
   const [employees, setEmployees] = useState<any[]>([]);
+  const [allEmployees, setAllEmployees] = useState<any[]>([]);
   const [expandedEmployee, setExpandedEmployee] = useState<string | null>(null);
   const [dailyRecords, setDailyRecords] = useState<any[]>([]);
   const [filterMonth, setFilterMonth] = useState<string>("all");
+  const [filterEmployee, setFilterEmployee] = useState<string>("all");
   const [dailyRecordsLoading, setDailyRecordsLoading] = useState(false);
   const [totalHours, setTotalHours] = useState(0);
   const [totalEmployees, setTotalEmployees] = useState(0);
@@ -77,7 +79,16 @@ const ApprovedHoursPage: React.FC = () => {
       setIsLoading(true);
       try {
         const { data, totalHoursSum } = await fetchApprovedHours(filterMonth === "all" ? "" : filterMonth);
-        setEmployees(data);
+        setAllEmployees(data); // Store all employees
+        
+        // Filter employees if a specific employee is selected
+        if (filterEmployee !== "all") {
+          const filteredData = data.filter((emp) => emp.id === filterEmployee);
+          setEmployees(filteredData);
+        } else {
+          setEmployees(data);
+        }
+        
         setTotalEmployees(data.length);
         
         // Calculate total regular hours and total double-time hours
@@ -115,6 +126,15 @@ const ApprovedHoursPage: React.FC = () => {
           employee.double_time_hours = employeeDoubleTime;
         });
         
+        // If filtering by employee, only count their hours
+        if (filterEmployee !== "all") {
+          const selectedEmployee = data.find(emp => emp.id === filterEmployee);
+          if (selectedEmployee) {
+            regularHours = selectedEmployee.total_hours || 0;
+            doubleTimeHours = selectedEmployee.double_time_hours || 0;
+          }
+        }
+        
         setTotalHours(regularHours);
         setTotalDoubleTimeHours(doubleTimeHours);
         setTotalPayableHours(regularHours + doubleTimeHours);
@@ -127,7 +147,7 @@ const ApprovedHoursPage: React.FC = () => {
     };
 
     loadApprovedHours();
-  }, [filterMonth, doubleDays]);
+  }, [filterMonth, doubleDays, filterEmployee]);
 
   // Handle employee expansion
   const handleEmployeeExpand = async (employeeId: string) => {
@@ -191,6 +211,7 @@ const ApprovedHoursPage: React.FC = () => {
         
         // Refresh the data
         const { data, totalHoursSum } = await fetchApprovedHours(filterMonth === "all" ? "" : filterMonth);
+        setAllEmployees(data || []);
         setEmployees(data || []);
         setTotalHours(totalHoursSum || 0);
         setTotalEmployees(data?.length || 0);
@@ -248,6 +269,20 @@ const ApprovedHoursPage: React.FC = () => {
     } catch (error) {
       console.error('Error refreshing data after calendar update:', error);
       toast.error('Failed to refresh data');
+    }
+  };
+
+  // Handle employee filter change
+  const handleEmployeeFilterChange = (employeeId: string) => {
+    setFilterEmployee(employeeId);
+    setExpandedEmployee(null);
+    setDailyRecords([]);
+    
+    // If a specific employee is selected, preemptively expand their details
+    if (employeeId !== "all") {
+      setTimeout(() => {
+        handleEmployeeExpand(employeeId);
+      }, 100);
     }
   };
 
@@ -325,6 +360,26 @@ const ApprovedHoursPage: React.FC = () => {
 
               {/* Filter and Export */}
               <div className="flex gap-2 flex-wrap">
+                {/* Employee Filter */}
+                <div className="flex items-center gap-2">
+                  <User className="w-4 h-4 text-gray-500" />
+                  <select
+                    value={filterEmployee}
+                    onChange={(e) => handleEmployeeFilterChange(e.target.value)}
+                    className="border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  >
+                    <option value="all">All Employees</option>
+                    {allEmployees
+                      .sort((a, b) => a.name.localeCompare(b.name)) // Sort alphabetically
+                      .map((employee) => (
+                        <option key={employee.id} value={employee.id}>
+                          {employee.name}
+                        </option>
+                      ))}
+                  </select>
+                </div>
+                
+                {/* Month Filter */}
                 <div className="flex items-center gap-2">
                   <Filter className="w-4 h-4 text-gray-500" />
                   <select
@@ -402,7 +457,9 @@ const ApprovedHoursPage: React.FC = () => {
                     <Calendar className="w-10 h-10 mx-auto text-gray-300 mb-2" />
                     <h3 className="text-gray-500 font-medium">No approved hours found</h3>
                     <p className="text-sm text-gray-400 mt-1">
-                      Try selecting a different month or approve time records from the Face ID data page.
+                      {filterEmployee !== "all" 
+                        ? "No records found for the selected employee and time period."
+                        : "Try selecting a different month or approve time records from the Face ID data page."}
                     </p>
                     <button
                       onClick={() => navigate('/hr')}

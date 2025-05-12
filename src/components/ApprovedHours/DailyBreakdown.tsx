@@ -160,7 +160,7 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records, dou
                     {format(new Date(date), 'EEE, MMM d, yyyy')}
                     {isDoubleTime && (
                       <span className="ml-2 inline-flex items-center justify-center px-2 py-0.5 bg-amber-100 text-amber-800 rounded-full text-xs">
-                        <span className="font-bold mr-0.5">2×</span> Double
+                        <span className="font-bold mr-0.5">2×</span> Double-Time
                       </span>
                     )}
                   </div>
@@ -172,7 +172,7 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records, dou
                   <span className="text-red-500 font-medium">OFF-DAY</span>
                 </div>
                 <div className="text-gray-700">
-                  <span className="px-2 py-0.5 text-xs font-medium rounded-full bg-red-100 text-red-800">
+                  <span className="px-2 py-1 text-xs font-medium rounded-full bg-red-100 text-red-800">
                     OFF-DAY
                   </span>
                 </div>
@@ -354,7 +354,7 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records, dou
                         'bg-gray-100 text-gray-800'
                       }`}>
                         {shiftType === 'canteen' 
-                          ? (checkIn && new Date(checkIn.timestamp).getHours() === 7 ? 'Canteen (07:00)' : 'Canteen (08:00)') :
+                          ? (checkIn && new Date(checkIn.timestamp).getHours() === 7 ? 'Canteen (07:00-16:00)' : 'Canteen (08:00-17:00)') :
                           shiftType.charAt(0).toUpperCase() + shiftType.slice(1)}
                       </span>
                     )}
@@ -403,7 +403,7 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records, dou
                 <div>
                   {checkIn ? (
                     <div className={`flex items-center ${checkIn.is_late ? 'text-amber-600' : 'text-gray-700'}`}>
-                      {checkIn.is_late && <AlertTriangle className="w-3 h-3 mr-1 text-amber-500" />}
+                      {checkIn.is_late && <AlertTriangle className="w-4 h-4 mr-1 text-amber-500" />}
                       {checkInDisplay}
                     </div>
                   ) : (
@@ -413,7 +413,7 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records, dou
                 <div>
                   {checkOut ? (
                     <div className={`flex items-center ${checkOut.early_leave ? 'text-amber-600' : 'text-gray-700'}`}>
-                      {checkOut.early_leave && <AlertTriangle className="w-3 h-3 mr-1 text-amber-500" />}
+                      {checkOut.early_leave && <AlertTriangle className="w-4 h-4 mr-1 text-amber-500" />}
                       {checkOutDisplay}
                     </div>
                   ) : (
@@ -438,7 +438,7 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records, dou
                 <div className="font-medium flex items-center">
                   {hours.toFixed(2)}
                   {isSignificantOvertime && 
-                    <Clock className="w-3 h-3 ml-1 text-blue-500" title="Overtime hours" />
+                    <Clock className="w-4 h-4 ml-1 text-blue-500" title="Overtime hours" />
                   }
                   {hasPenalty && (
                     <span className="ml-1 text-xs text-red-600">
