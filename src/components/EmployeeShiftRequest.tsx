@@ -124,116 +124,111 @@ const EmployeeShiftRequest: React.FC<EmployeeShiftRequestProps> = ({ onShiftAppr
       
       console.log('Processing shift with:', { dateStr, startTime, endTime, shiftType: shift.shift_type });
       
-      // Handle night shift that crosses to next day using our helper function
-      try {
-        const { checkIn: checkInDate, checkOut: checkOutDate } = parseShiftTimes(
-          dateStr,
-          startTime,
-          endTime,
-          shift.shift_type
-        );
+      // Use our helper function to properly parse shift times and handle night shift logic
+      const { checkIn, checkOut } = parseShiftTimes(
+        dateStr,
+        startTime,
+        endTime,
+        shift.shift_type
+      );
         
-        // Validate the parsed dates
-        if (!isValid(checkInDate) || !isValid(checkOutDate)) {
-          throw new Error('Invalid date after parsing shift times');
-        }
-        
-        // FIXED: Use local date-time strings instead of UTC timestamps
-        let checkInTimestamp, checkOutTimestamp;
-        
-        // For night shifts, handle the day boundary properly
-        if (shift.shift_type === 'night') {
-          // The check-in day
-          const checkInDateStr = format(checkInDate, 'yyyy-MM-dd');
-          checkInTimestamp = `${checkInDateStr}T${startTime}:00`;
-          
-          // The check-out is next day for night shifts
-          const nextDay = addDays(new Date(dateStr), 1);
-          const checkOutDateStr = format(nextDay, 'yyyy-MM-dd');
-          checkOutTimestamp = `${checkOutDateStr}T${endTime}:00`;
-        } else {
-          // For normal shifts, both are on the same day
-          checkInTimestamp = `${dateStr}T${startTime}:00`;
-          checkOutTimestamp = `${dateStr}T${endTime}:00`;
-        }
-        
-        // Calculate hours worked for consistency
-        const hoursWorked = 9.0; // Standard hours for all shift types
-        const hoursNote = `hours:${hoursWorked.toFixed(2)}`;
-
-        // Get standard display times for check-in and check-out based on shift type
-        const displayTimes = DISPLAY_SHIFT_TIMES[shift.shift_type as keyof typeof DISPLAY_SHIFT_TIMES];
-        const displayCheckIn = displayTimes?.startTime || startTime;
-        const displayCheckOut = displayTimes?.endTime || endTime;
-
-        // Create time records
-        const records = [
-          {
-            employee_id: shift.employee_id,
-            timestamp: checkInTimestamp,
-            status: 'check_in',
-            shift_type: shift.shift_type,
-            notes: `Employee submitted shift - HR approved; ${hoursNote}`,
-            is_manual_entry: true,
-            exact_hours: hoursWorked,
-            is_late: false,
-            early_leave: false,
-            deduction_minutes: 0,
-            display_check_in: displayCheckIn,
-            display_check_out: displayCheckOut,
-            working_week_start: dateStr // Add working_week_start for proper grouping
-          },
-          {
-            employee_id: shift.employee_id,
-            timestamp: checkOutTimestamp, // FIXED: Now using checkOutTimestamp instead of checkInTimestamp
-            status: 'check_out',
-            shift_type: shift.shift_type,
-            notes: `Employee submitted shift - HR approved; ${hoursNote}`,
-            is_manual_entry: true,
-            exact_hours: hoursWorked,
-            is_late: false,
-            early_leave: false,
-            deduction_minutes: 0,
-            display_check_in: displayCheckIn,
-            display_check_out: displayCheckOut,
-            working_week_start: dateStr // Same working_week_start for both records
-          }
-        ];
-        
-        const { error: insertError } = await supabase.from('time_records').insert(records);
-        if (insertError) throw insertError;
-        
-        // Remove the shift from the list
-        setEmployeeShiftRequests(prev => prev.filter(s => s.id !== shift.id));
-        
-        // FIXED: Get fresh records from the database instead of creating manually
-        const freshRecords = await fetchManualTimeRecords(50);
-        
-        // Call callback if provided
-        if (onShiftApproved) {
-          const employeeData = {
-            id: shift.employee_id,
-            name: shift.employees.name,
-            employeeNumber: shift.employees.employee_number,
-            employee_number: shift.employees.employee_number
-          };
-          
-          onShiftApproved(employeeData, {
-            ...shift,
-            date: dateStr,
-            start_time: startTime,
-            end_time: endTime,
-            checkInDate,
-            checkOutDate,
-            hoursWorked
-          });
-        }
-        
-        toast.success(`Approved shift for ${shift.employees.name}`);
-      } catch (parseError) {
-        console.error('Error parsing shift times:', parseError);
-        throw new Error(`Failed to parse shift times: ${parseError.message}`);
+      // Validate the parsed dates
+      if (!isValid(checkIn) || !isValid(checkOut)) {
+        throw new Error('Invalid date after parsing shift times');
       }
+      
+      // Format timestamps for database records
+      let checkInTimestamp, checkOutTimestamp;
+      
+      // For night shifts, handle the day boundary properly
+      if (shift.shift_type === 'night') {
+        // The check-in day
+        const checkInDateStr = format(checkIn, 'yyyy-MM-dd');
+        checkInTimestamp = `${checkInDateStr}T${startTime}:00`;
+        
+        // The check-out is next day for night shifts
+        const nextDay = addDays(new Date(dateStr), 1);
+        const checkOutDateStr = format(nextDay, 'yyyy-MM-dd');
+        checkOutTimestamp = `${checkOutDateStr}T${endTime}:00`;
+      } else {
+        // For normal shifts, both are on the same day
+        checkInTimestamp = `${dateStr}T${startTime}:00`;
+        checkOutTimestamp = `${dateStr}T${endTime}:00`;
+      }
+      
+      // Calculate hours worked for consistency
+      const hoursWorked = 9.0; // Standard hours for all shift types
+      const hoursNote = `hours:${hoursWorked.toFixed(2)}`;
+
+      // Get standard display times for check-in and check-out based on shift type
+      const displayTimes = DISPLAY_SHIFT_TIMES[shift.shift_type as keyof typeof DISPLAY_SHIFT_TIMES];
+      const displayCheckIn = displayTimes?.startTime || startTime;
+      const displayCheckOut = displayTimes?.endTime || endTime;
+
+      // Create time records
+      const records = [
+        {
+          employee_id: shift.employee_id,
+          timestamp: checkInTimestamp,
+          status: 'check_in',
+          shift_type: shift.shift_type,
+          notes: `Employee submitted shift - HR approved; ${hoursNote}`,
+          is_manual_entry: true,
+          exact_hours: hoursWorked,
+          is_late: false,
+          early_leave: false,
+          deduction_minutes: 0,
+          display_check_in: displayCheckIn,
+          display_check_out: displayCheckOut,
+          working_week_start: dateStr // Add working_week_start for proper grouping
+        },
+        {
+          employee_id: shift.employee_id,
+          timestamp: checkOutTimestamp,
+          status: 'check_out',
+          shift_type: shift.shift_type,
+          notes: `Employee submitted shift - HR approved; ${hoursNote}`,
+          is_manual_entry: true,
+          exact_hours: hoursWorked,
+          is_late: false,
+          early_leave: false,
+          deduction_minutes: 0,
+          display_check_in: displayCheckIn,
+          display_check_out: displayCheckOut,
+          working_week_start: dateStr // Same working_week_start for both records
+        }
+      ];
+      
+      const { error: insertError } = await supabase.from('time_records').insert(records);
+      if (insertError) throw insertError;
+      
+      // Remove the shift from the list
+      setEmployeeShiftRequests(prev => prev.filter(s => s.id !== shift.id));
+      
+      // Get fresh records from the database
+      const freshRecords = await fetchManualTimeRecords(50);
+      
+      // Call callback if provided
+      if (onShiftApproved) {
+        const employeeData = {
+          id: shift.employee_id,
+          name: shift.employees.name,
+          employeeNumber: shift.employees.employee_number,
+          employee_number: shift.employees.employee_number
+        };
+        
+        onShiftApproved(employeeData, {
+          ...shift,
+          date: dateStr,
+          start_time: startTime,
+          end_time: endTime,
+          checkInDate: checkIn,
+          checkOutDate: checkOut,
+          hoursWorked
+        });
+      }
+      
+      toast.success(`Approved shift for ${shift.employees.name}`);
     } catch (error) {
       console.error('Error approving employee shift:', error);
       toast.error('Failed to approve shift');
