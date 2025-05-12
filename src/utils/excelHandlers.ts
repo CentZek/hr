@@ -178,11 +178,15 @@ const resolveDuplicates = (records: TimeRecord[]): TimeRecord[] => {
         next.originalStatus = 'check_in';
         next.notes = 'Fixed mislabeled: Changed from check-in to check-out (duplicate check-in pattern)';
       } else if (curr.status === 'check_out') {
-        // Two consecutive check-outs: convert first to check-in
-        curr.status = 'check_in';
-        curr.mislabeled = true;
-        curr.originalStatus = 'check_out';
-        curr.notes = 'Fixed mislabeled: Changed from check-out to check-in (duplicate check-out pattern)';
+        // Two consecutive check-outs: only convert if both are night shift records
+        // FIXED: Only treat consecutive check-outs as mislabeled if both are night shift records
+        if (curr.shift_type === 'night' && next.shift_type === 'night') {
+          curr.status = 'check_in';
+          curr.mislabeled = true;
+          curr.originalStatus = 'check_out';
+          curr.notes = 'Fixed mislabeled: Changed from check-out to check-in (duplicate check-out pattern)';
+        }
+        // If these are from different shift types (e.g., night and canteen), leave them alone
       }
     }
     
