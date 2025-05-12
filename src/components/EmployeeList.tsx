@@ -7,6 +7,7 @@ import TimeEditModal from './TimeEditModal';
 import EmployeeSummary from './EmployeeSummary';
 import { formatTime24H } from '../utils/dateTimeHelper';
 import { calculatePayableHours, determineShiftType } from '../utils/shiftCalculations';
+import ConfirmDialog from './ConfirmDialog';
 
 interface EmployeeListProps {
   employeeRecords: EmployeeRecord[];
@@ -27,6 +28,11 @@ const EmployeeList: React.FC<EmployeeListProps> = ({
   const [selectedEmployee, setSelectedEmployee] = useState<number | null>(null);
   const [selectedDay, setSelectedDay] = useState<number | null>(null);
   const [expandedRawData, setExpandedRawData] = useState<{empIndex: number, dayIndex: number} | null>(null);
+  
+  // State for approve all for employee confirmation
+  const [approveConfirmOpen, setApproveConfirmOpen] = useState(false);
+  const [employeeToApprove, setEmployeeToApprove] = useState<number | null>(null);
+  const [isApproving, setIsApproving] = useState(false);
 
   const openPenaltyModal = (empIndex: number, dayIndex: number) => {
     setSelectedEmployee(empIndex);
@@ -45,6 +51,30 @@ const EmployeeList: React.FC<EmployeeListProps> = ({
       setExpandedRawData(null);
     } else {
       setExpandedRawData({empIndex, dayIndex});
+    }
+  };
+  
+  // Open confirmation dialog before approving all for an employee
+  const confirmApproveAllForEmployee = (empIndex: number, e: React.MouseEvent) => {
+    e.stopPropagation(); // Prevent the click from toggling the employee expanded state
+    setEmployeeToApprove(empIndex);
+    setApproveConfirmOpen(true);
+  };
+  
+  // Handle confirm approve all for employee
+  const handleConfirmApproveAllForEmployee = () => {
+    if (employeeToApprove !== null) {
+      setIsApproving(true);
+      
+      // Apply the approval
+      handleApproveAllForEmployee(employeeToApprove);
+      
+      // Reset state
+      setTimeout(() => {
+        setIsApproving(false);
+        setApproveConfirmOpen(false);
+        setEmployeeToApprove(null);
+      }, 500);
     }
   };
 
@@ -174,7 +204,7 @@ const EmployeeList: React.FC<EmployeeListProps> = ({
       >
         <div className="flex justify-between items-start mb-2">
           <div>
-            <div className="text-gray-900 font-medium text-wrap-balance">
+            <div className="font-medium text-gray-800 text-wrap-balance">
               {format(new Date(day.date), 'MM/dd/yyyy')}
               {isManualEntry && <span className="ml-1 text-xs px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded-full">Manual</span>}
               {wasCorrected && <span className="ml-1 text-xs px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded-full" title="Original C/In or C/Out was corrected">Fixed</span>}
@@ -287,7 +317,10 @@ const EmployeeList: React.FC<EmployeeListProps> = ({
                   <p className="text-xs text-gray-500">Employee No: {employee.employeeNumber} • {employee.days.length} days</p>
                 </div>
               </div>
-              <button onClick={(e) => {e.stopPropagation(); handleApproveAllForEmployee(empIndex);}} className="px-2 py-1 text-xs font-medium rounded bg-green-50 text-green-700 hover:bg-green-100">
+              <button 
+                onClick={(e) => confirmApproveAllForEmployee(empIndex, e)} 
+                className="px-2 py-1 text-xs font-medium rounded bg-green-50 text-green-700 hover:bg-green-100"
+              >
                 Approve All
               </button>
             </div>
@@ -486,6 +519,24 @@ const EmployeeList: React.FC<EmployeeListProps> = ({
           }}
         />
       )}
+      
+      {/* Approve All Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={approveConfirmOpen}
+        onClose={() => setApproveConfirmOpen(false)}
+        onConfirm={handleConfirmApproveAllForEmployee}
+        title="Approve All Records for Employee"
+        message={employeeToApprove !== null 
+          ? `Are you sure you want to approve all records for ${employeeRecords[employeeToApprove]?.name}? This will mark all of this employee's records as approved.`
+          : "Are you sure you want to approve all records for this employee?"
+        }
+        isProcessing={isApproving}
+        confirmButtonText="Yes, Approve All"
+        cancelButtonText="Cancel"
+        type="warning"
+        confirmButtonColor="bg-green-600 hover:bg-green-700"
+        icon={<CheckCircle className="w-5 h-5 mr-2 text-white" />}
+      />
     </div>
   );
 };

@@ -26,6 +26,7 @@ import UserCredentialsModal from '../components/UserCredentialsModal';
 import EmployeeShiftRequest from '../components/EmployeeShiftRequest';
 import TimeRecordsTable from '../components/TimeRecordsTable';
 import HolidayCalendar from '../components/HolidayCalendar';
+import ConfirmDialog from '../components/ConfirmDialog';
 
 // Import context
 import { useAppContext } from '../context/AppContext';
@@ -55,6 +56,10 @@ function HrPage() {
   const [isManualEntryOpen, setIsManualEntryOpen] = useState(false);
   const [isUserCredentialsOpen, setIsUserCredentialsOpen] = useState(false);
   const [recentManualEntry, setRecentManualEntry] = useState<any>(null);
+  
+  // Confirm dialog state for Approve All
+  const [showApproveAllConfirm, setShowApproveAllConfirm] = useState(false);
+  const [isApprovingAll, setIsApprovingAll] = useState(false);
 
   // Check if screen is mobile
   useEffect(() => {
@@ -301,7 +306,15 @@ function HrPage() {
     toast.success(`All records approved for ${employeeRecords[employeeIndex].name}`);
   };
 
+  // Function to show approve all confirmation dialog
+  const showApproveAllConfirmation = () => {
+    setShowApproveAllConfirm(true);
+  };
+  
   const handleApproveAll = () => {
+    setIsApprovingAll(true);
+    
+    // Approve all records
     setEmployeeRecords(prev => 
       prev.map(employee => ({
         ...employee,
@@ -311,7 +324,13 @@ function HrPage() {
         }))
       }))
     );
-    toast.success('All records approved');
+    
+    // Complete approval process
+    setTimeout(() => {
+      setIsApprovingAll(false);
+      setShowApproveAllConfirm(false);
+      toast.success('All records approved');
+    }, 500);
   };
 
   const handleReset = () => {
@@ -837,7 +856,7 @@ function HrPage() {
                       </button>
                       
                       <button
-                        onClick={handleApproveAll}
+                        onClick={showApproveAllConfirmation}
                         className="flex-1 inline-flex items-center justify-center px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white text-sm rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
                       >
                         <CheckCircle className="w-4 h-4 mr-1" />
@@ -887,7 +906,7 @@ function HrPage() {
                     </button>
                     
                     <button
-                      onClick={handleApproveAll}
+                      onClick={showApproveAllConfirmation}
                       className="hidden sm:inline-flex items-center px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white text-sm rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
                     >
                       <CheckCircle className="w-4 h-4 mr-1" />
@@ -930,6 +949,21 @@ function HrPage() {
       <UserCredentialsModal
         isOpen={isUserCredentialsOpen}
         onClose={() => setIsUserCredentialsOpen(false)}
+      />
+      
+      {/* Approve All Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={showApproveAllConfirm}
+        onClose={() => setShowApproveAllConfirm(false)}
+        onConfirm={handleApproveAll}
+        title="Approve All Records"
+        message="Are you sure you want to approve ALL records for ALL employees? This action will mark every record as approved and ready for saving to the database."
+        isProcessing={isApprovingAll}
+        confirmButtonText="Yes, Approve All"
+        cancelButtonText="Cancel"
+        type="warning"
+        confirmButtonColor="bg-green-600 hover:bg-green-700"
+        icon={<CheckCircle className="w-5 h-5 mr-2" />}
       />
       
       <Toaster position="top-right" />
