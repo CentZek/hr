@@ -1,8 +1,9 @@
 import { supabase } from '../lib/supabase';
-import { format, parseISO, startOfMonth, endOfMonth, addDays, isValid, subDays } from 'date-fns';
+import { format, parseISO, startOfMonth, endOfMonth, addDays, isValid, subDays, isFriday } from 'date-fns';
 import { EmployeeRecord, DailyRecord } from '../types';
 import toast from 'react-hot-toast';
 import { parseShiftTimes } from '../utils/dateTimeHelper';
+import { isDoubleTimeDay, getDoubleTimeDays } from '../services/holidayService';
 
 // Fetch approved hours summary
 export const fetchApprovedHours = async (monthFilter: string = ''): Promise<{
@@ -63,7 +64,9 @@ export const fetchApprovedHours = async (monthFilter: string = ''): Promise<{
           name: record.employees.name,
           employee_number: record.employees.employee_number,
           total_days: new Set(),
-          total_hours: 0
+          total_hours: 0,
+          working_week_dates: new Set(), // Track all working week dates for double-time calculations
+          hours_by_date: {} // Track hours by date for double-time calculations
         });
       }
       
@@ -75,11 +78,27 @@ export const fetchApprovedHours = async (monthFilter: string = ''): Promise<{
         // Use working_week_start if available, otherwise use timestamp date
         if (record.working_week_start) {
           employee.total_days.add(record.working_week_start);
+          employee.working_week_dates.add(record.working_week_start);
+          
+          // Store hours by date
+          if (!employee.hours_by_date[record.working_week_start]) {
+            employee.hours_by_date[record.working_week_start] = hours;
+          } else {
+            employee.hours_by_date[record.working_week_start] += hours;
+          }
         } else {
           // Use the UTC date portion so nothing shifts under local timezones
           const utc = parseISO(record.timestamp);
           const date = utc.toISOString().slice(0,10); // "YYYY-MM-DD"
           employee.total_days.add(date);
+          employee.working_week_dates.add(date);
+          
+          // Store hours by date
+          if (!employee.hours_by_date[date]) {
+            employee.hours_by_date[date] = hours;
+          } else {
+            employee.hours_by_date[date] += hours;
+          }
         }
       }
     });
@@ -114,7 +133,9 @@ export const fetchApprovedHours = async (monthFilter: string = ''): Promise<{
           name: record.employees.name,
           employee_number: record.employees.employee_number,
           total_days: new Set(),
-          total_hours: 0
+          total_hours: 0,
+          working_week_dates: new Set(),
+          hours_by_date: {}
         });
       }
       
@@ -123,20 +144,49 @@ export const fetchApprovedHours = async (monthFilter: string = ''): Promise<{
       // Add date to set of days for OFF-DAY
       if (record.working_week_start) {
         employee.total_days.add(record.working_week_start);
+        employee.working_week_dates.add(record.working_week_start);
       } else if (record.timestamp && isValid(new Date(record.timestamp))) {
         // Use the UTC date portion so nothing shifts under local timezones
         const utc = parseISO(record.timestamp);
         const date = utc.toISOString().slice(0,10); // "YYYY-MM-DD"
         employee.total_days.add(date);
+        employee.working_week_dates.add(date);
       }
     });
     
-    // Convert to array and calculate days
-    const result = Array.from(employeeSummary.values()).map(emp => ({
-      ...emp,
-      total_days: emp.total_days.size,
-      total_hours: parseFloat(emp.total_hours.toFixed(2))
-    }));
+    // Calculate double-time hours for each employee
+    const startDate = monthFilter 
+      ? format(startOfMonth(new Date(parseInt(monthFilter.split('-')[0]), parseInt(monthFilter.split('-')[1]) - 1, 1)), 'yyyy-MM-dd')
+      : format(subDays(new Date(), 365), 'yyyy-MM-dd'); // Default to last 365 days
+      
+    const endDate = monthFilter
+      ? format(endOfMonth(new Date(parseInt(monthFilter.split('-')[0]), parseInt(monthFilter.split('-')[1]) - 1, 1)), 'yyyy-MM-dd')
+      : format(addDays(new Date(), 30), 'yyyy-MM-dd'); // Default to 30 days in the future
+    
+    // Get all double-time days in the date range
+    const doubleDays = await getDoubleTimeDays(startDate, endDate);
+    
+    // Convert to array and calculate days and double-time hours
+    const result = Array.from(employeeSummary.values()).map(emp => {
+      // Calculate double-time hours
+      let doubleTimeHours = 0;
+      const workingDates = Array.from(emp.working_week_dates);
+      
+      workingDates.forEach(date => {
+        if (doubleDays.includes(date)) {
+          const dateHours = emp.hours_by_date[date] || 0;
+          doubleTimeHours += dateHours;
+        }
+      });
+      
+      return {
+        ...emp,
+        total_days: emp.total_days.size,
+        total_hours: parseFloat(emp.total_hours.toFixed(2)),
+        double_time_hours: parseFloat(doubleTimeHours.toFixed(2)),
+        working_week_dates: Array.from(emp.working_week_dates)
+      };
+    });
     
     // Sort by name
     result.sort((a, b) => a.name.localeCompare(b.name));
@@ -319,6 +369,23 @@ export const saveRecordsToDatabase = async (employeeRecords: EmployeeRecord[]): 
   let errorCount = 0;
   const errorDetails: { employeeName: string; date: string; error: string }[] = [];
   
+  // Get double-time days for the date range
+  const allDates: string[] = [];
+  employeeRecords.forEach(employee => {
+    employee.days.filter(day => day.approved).forEach(day => {
+      allDates.push(day.date);
+    });
+  });
+  
+  // Sort and get min/max dates
+  allDates.sort();
+  const startDate = allDates[0] || format(new Date(), 'yyyy-MM-dd');
+  const endDate = allDates[allDates.length - 1] || format(new Date(), 'yyyy-MM-dd');
+  
+  // Get all double-time days in this date range
+  const doubleDays = await getDoubleTimeDays(startDate, endDate);
+  console.log('Double-time days in range:', doubleDays);
+  
   // Process each employee's approved days
   for (const employee of employeeRecords) {
     const approvedDays = employee.days.filter(day => day.approved);
@@ -371,6 +438,9 @@ export const saveRecordsToDatabase = async (employeeRecords: EmployeeRecord[]): 
         // Get employee ID
         const employeeId = await getEmployeeId(employee.employeeNumber);
         
+        // Check if this is a double-time day
+        const isDoubleTime = doubleDays.includes(day.date);
+        
         // Add check-in record if available
         if (day.firstCheckIn) {
           // Store original check-in time as display value
@@ -386,6 +456,12 @@ export const saveRecordsToDatabase = async (employeeRecords: EmployeeRecord[]): 
             'check_in',
             day.date
           );
+          
+          // Add double-time indicator to notes if applicable
+          let notes = day.notes ? `${day.notes}; hours:${day.hoursWorked.toFixed(2)}` : `hours:${day.hoursWorked.toFixed(2)}`;
+          if (isDoubleTime) {
+            notes = `${notes}; double-time:true`;
+          }
 
           const checkInData = {
             employee_id: employeeId,
@@ -395,7 +471,7 @@ export const saveRecordsToDatabase = async (employeeRecords: EmployeeRecord[]): 
             is_late: day.isLate,
             early_leave: false,
             deduction_minutes: day.penaltyMinutes,
-            notes: day.notes ? `${day.notes}; hours:${day.hoursWorked.toFixed(2)}` : `hours:${day.hoursWorked.toFixed(2)}`,
+            notes: notes,
             exact_hours: day.hoursWorked,
             display_check_in: checkInDisplayTime, // Store the actual time for display
             display_check_out: day.lastCheckOut ? format(day.lastCheckOut, 'HH:mm') : 'Missing',
@@ -429,6 +505,12 @@ export const saveRecordsToDatabase = async (employeeRecords: EmployeeRecord[]): 
             'check_out',
             day.date
           );
+          
+          // Add double-time indicator to notes if applicable
+          let notes = day.notes ? `${day.notes}; hours:${day.hoursWorked.toFixed(2)}` : `hours:${day.hoursWorked.toFixed(2)}`;
+          if (isDoubleTime) {
+            notes = `${notes}; double-time:true`;
+          }
 
           const checkOutData = {
             employee_id: employeeId,
@@ -438,7 +520,7 @@ export const saveRecordsToDatabase = async (employeeRecords: EmployeeRecord[]): 
             is_late: false,
             early_leave: day.earlyLeave,
             deduction_minutes: day.penaltyMinutes,
-            notes: day.notes ? `${day.notes}; hours:${day.hoursWorked.toFixed(2)}` : `hours:${day.hoursWorked.toFixed(2)}`,
+            notes: notes,
             exact_hours: day.hoursWorked,
             display_check_in: day.firstCheckIn ? format(day.firstCheckIn, 'HH:mm') : 'Missing',
             display_check_out: checkOutDisplayTime, // Store the actual time for display

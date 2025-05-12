@@ -1,5 +1,5 @@
 import { read, utils, writeFile } from 'xlsx';
-import { format, parse, isValid, addDays, subDays, eachDayOfInterval, differenceInMinutes, differenceInHours, differenceInCalendarDays, getHours, isSameDay } from 'date-fns';
+import { format, parse, isValid, addDays, subDays, eachDayOfInterval, differenceInMinutes, differenceInHours, differenceInCalendarDays, getHours, isSameDay, isFriday, parseISO } from 'date-fns';
 import { TimeRecord, EmployeeRecord, DailyRecord } from '../types';
 import { 
   determineShiftType, 
@@ -858,31 +858,55 @@ export const exportToExcel = (employeeRecords: EmployeeRecord[]): void => {
 export const exportApprovedHoursToExcel = (data: { 
   summary: any[], 
   details: any[], 
-  filterMonth: string 
+  filterMonth: string,
+  doubleDays?: string[] 
 }): void => {
   // Create worksheets for summary and details
   const summaryData = [
-    ['Employee Number', 'Name', 'Total Days', 'Total Hours', 'Average Hours/Day']
+    ['Employee Number', 'Name', 'Total Days', 'Regular Hours', 'Double-Time Hours', 'Total Payable Hours']
   ];
   
   const detailsData = [
-    ['Employee Number', 'Name', 'Date', 'Check In', 'Check Out', 'Hours', 'Status', 'Notes', 'Corrected Records']
+    ['Employee Number', 'Name', 'Date', 'Check In', 'Check Out', 'Regular Hours', 'Double-Time', 'Payable Hours', 'Status', 'Notes']
   ];
   
+  // Get double days for calculations
+  const doubleDays = data.doubleDays || [];
+
   // Add summary data
   data.summary.forEach(emp => {
+    // Calculate double-time hours if needed
+    let doubleTimeHours = emp.double_time_hours || 0;
+    
+    // If double_time_hours isn't directly provided, estimate it
+    if (!emp.double_time_hours && emp.working_week_dates) {
+      doubleTimeHours = emp.working_week_dates
+        .filter((date: string) => doubleDays.includes(date))
+        .reduce((total: number, date: string) => {
+          return total + (emp.hours_by_date?.[date] || 0);
+        }, 0);
+    }
+    
+    // Calculate total payable hours (regular hours + double-time bonus)
+    const totalPayableHours = emp.total_hours + doubleTimeHours;
+    
     summaryData.push([
       emp.employee_number,
       emp.name,
       emp.total_days,
       emp.total_hours.toFixed(2),
-      (emp.total_days > 0 ? (emp.total_hours / emp.total_days).toFixed(2) : '0.00')
+      doubleTimeHours.toFixed(2),
+      totalPayableHours.toFixed(2)
     ]);
   });
   
   // Add details data
   data.details.forEach(record => {
+    if (record.status === 'off_day') return; // Skip off-days in detail view
+    
     const timestamp = new Date(record.timestamp);
+    const dateStr = format(timestamp, 'yyyy-MM-dd');
+    const isDoubleTime = doubleDays.includes(record.working_week_start || dateStr);
     
     // For Excel exports, we want to show the actual timestamp, not the standardized time
     let displayTime;
@@ -896,16 +920,20 @@ export const exportApprovedHoursToExcel = (data: {
       displayTime = format(timestamp, 'HH:mm');
     }
     
+    const regularHours = parseFloat(record.exact_hours) || 0;
+    const payableHours = isDoubleTime ? regularHours * 2 : regularHours;
+    
     detailsData.push([
       record.employees?.employee_number || '',
       record.employees?.name || '',
       format(timestamp, 'yyyy-MM-dd'),
       record.status === 'check_in' ? displayTime : '',
       record.status === 'check_out' ? displayTime : '',
-      record.exact_hours?.toFixed(2) || '0.00',
+      regularHours.toFixed(2),
+      isDoubleTime ? 'Yes (2×)' : 'No',
+      payableHours.toFixed(2),
       record.status,
-      record.notes?.replace(/hours:\d+\.\d+;?\s*/, '') || '',
-      record.mislabeled ? 'Yes' : 'No'
+      record.notes?.replace(/hours:\d+\.\d+;?\s*/, '') || ''
     ]);
   });
   
@@ -919,6 +947,23 @@ export const exportApprovedHoursToExcel = (data: {
   // Add Details sheet
   const wsDetails = utils.aoa_to_sheet(detailsData);
   utils.book_append_sheet(wb, wsDetails, 'Details');
+  
+  // Add Double-Time Days sheet
+  const doubleTimeDaysData = [
+    ['Date', 'Day of Week', 'Type']
+  ];
+  
+  doubleDays.sort().forEach(dateStr => {
+    const date = parseISO(dateStr);
+    doubleTimeDaysData.push([
+      dateStr,
+      format(date, 'EEEE'),
+      isFriday(date) ? 'Friday' : 'Holiday'
+    ]);
+  });
+  
+  const wsDoubleDays = utils.aoa_to_sheet(doubleTimeDaysData);
+  utils.book_append_sheet(wb, wsDoubleDays, 'Double-Time Days');
   
   // Generate filename with month if specified
   const monthStr = data.filterMonth === 'all' ? 'all_time' : data.filterMonth;

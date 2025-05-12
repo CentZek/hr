@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Upload, Clock, AlertCircle, CheckCircle, Download, RefreshCw, PlusCircle, Database, KeyRound, Home, AlertTriangle } from 'lucide-react';
+import { Upload, Clock, AlertCircle, CheckCircle, Download, RefreshCw, PlusCircle, Database, KeyRound, Home, Calendar, AlertTriangle } from 'lucide-react';
 import toast, { Toaster } from 'react-hot-toast';
 
 // Import types
@@ -15,6 +15,7 @@ import { addManualEntryToRecords, calculateStats, processRecordsAfterSave } from
 import { saveRecordsToDatabase, fetchManualTimeRecords, fetchPendingEmployeeShifts } from '../services/database';
 import { runAllMigrations, checkSupabaseConnection } from '../services/migrationService';
 import { supabase } from '../lib/supabase';
+import { fetchHolidays } from '../services/holidayService';
 
 // Import components
 import NavigationTabs from '../components/NavigationTabs';
@@ -24,6 +25,7 @@ import ManualEntryModal from '../components/ManualEntryModal';
 import UserCredentialsModal from '../components/UserCredentialsModal';
 import EmployeeShiftRequest from '../components/EmployeeShiftRequest';
 import TimeRecordsTable from '../components/TimeRecordsTable';
+import HolidayCalendar from '../components/HolidayCalendar';
 
 // Import context
 import { useAppContext } from '../context/AppContext';
@@ -47,6 +49,7 @@ function HrPage() {
   const [savingErrors, setSavingErrors] = useState<{employeeName: string, date: string, error: string}[]>([]);
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const [isMobile, setIsMobile] = useState(false);
+  const [showHolidayCalendar, setShowHolidayCalendar] = useState(false);
   
   // Modal states
   const [isManualEntryOpen, setIsManualEntryOpen] = useState(false);
@@ -565,6 +568,16 @@ function HrPage() {
     }
   }, [recentManualEntry]);
 
+  // Handle holiday calendar toggle
+  const handleToggleHolidayCalendar = () => {
+    setShowHolidayCalendar(!showHolidayCalendar);
+  };
+
+  // Handle holiday update
+  const handleHolidaysUpdated = () => {
+    toast.success('Holiday settings updated successfully');
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Navigation tabs */}
@@ -598,6 +611,20 @@ function HrPage() {
                   <KeyRound className="w-4 h-4 mr-1" />
                   <span className="hidden sm:inline">Manage User Credentials</span>
                   <span className="sm:hidden">Users</span>
+                </button>
+                <button
+                  onClick={handleToggleHolidayCalendar}
+                  className={`font-medium flex items-center ${
+                    showHolidayCalendar 
+                      ? 'text-amber-600 hover:text-amber-800' 
+                      : 'text-amber-500 hover:text-amber-700'
+                  }`}
+                >
+                  <Calendar className="w-4 h-4 mr-1" />
+                  <span className="hidden sm:inline">
+                    {showHolidayCalendar ? 'Hide Holiday Calendar' : 'Double-Time Calendar'}
+                  </span>
+                  <span className="sm:hidden">Calendar</span>
                 </button>
                 <button
                   onClick={handleRunMigrations}
@@ -644,6 +671,13 @@ function HrPage() {
                 </div>
               </div>
             )}
+            
+            {/* Holiday Calendar (when shown) */}
+            {showHolidayCalendar && (
+              <div className="mb-4">
+                <HolidayCalendar onHolidaysUpdated={handleHolidaysUpdated} />
+              </div>
+            )}
 
             {/* Info box */}
             <div className="bg-pink-50 border border-pink-100 rounded-md p-4 flex items-start">
@@ -656,6 +690,10 @@ function HrPage() {
                   <li><strong>Night shift:</strong> 09:00 PM - 06:00 AM (allowed check-out from 05:30 AM)</li>
                 </ul>
                 <p className="mt-2"><strong>Note:</strong> Check-ins between 4:30 AM and 5:00 AM are considered part of the morning shift.</p>
+                <p className="mt-2 text-amber-700 font-medium flex items-center">
+                  <Calendar className="w-4 h-4 mr-1" />
+                  All <span className="mx-1 font-bold">Fridays</span> and <span className="mx-1 font-bold">holidays</span> are double-time days. Use the Calendar button to manage holidays.
+                </p>
               </div>
             </div>
 

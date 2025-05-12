@@ -1,16 +1,27 @@
 import React from 'react';
 import { format, differenceInMinutes, parseISO } from 'date-fns';
-import { AlertTriangle, CheckCircle, Clock } from 'lucide-react';
+import { AlertTriangle, CheckCircle, Clock, Calendar2 } from 'lucide-react';
 import { DISPLAY_SHIFT_TIMES } from '../../types';
 import { formatTime24H, formatRecordTime } from '../../utils/dateTimeHelper';
 import { getEveningShiftCheckoutDisplay } from '../../utils/shiftCalculations';
 
+interface reqPayload {
+  name: string;
+}
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization",
+};
+
 interface DailyBreakdownProps {
   isLoading: boolean;
   records: any[];
+  doubleDays?: string[];
 }
 
-const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records }) => {
+const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records, doubleDays = [] }) => {
   // Group records by date for better display
   const recordsByDate = records.reduce((acc: any, record: any) => {
     // FIXED: Always use working_week_start as the key for grouping
@@ -66,6 +77,11 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records }) =
     }
   };
 
+  // Check if a date is a double-time day (Friday or holiday)
+  const isDoubleTimeDay = (dateStr: string): boolean => {
+    return doubleDays.includes(dateStr);
+  };
+
   if (isLoading) {
     return (
       <div className="bg-gray-50 p-4 text-center">
@@ -87,12 +103,13 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records }) =
     <div className="bg-gray-50 px-4 py-2">
       <div className="bg-white rounded-md border border-gray-200 divide-y divide-gray-100">
         {/* Header */}
-        <div className="hidden sm:grid sm:grid-cols-7 gap-2 p-3 text-xs font-medium text-gray-600 bg-gray-50 rounded-t-md">
+        <div className="hidden sm:grid sm:grid-cols-8 gap-2 p-3 text-xs font-medium text-gray-600 bg-gray-50 rounded-t-md">
           <div className="col-span-2">Date</div>
           <div>Check In</div>
           <div>Check Out</div>
           <div>Shift Type</div>
           <div>Hours</div>
+          <div>Double-Time</div>
           <div>Status</div>
         </div>
 
@@ -105,6 +122,7 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records }) =
         {Object.entries(recordsByDate).map(([date, dayRecords]: [string, any[]]) => {
           // Check if this is an off day
           const isOffDay = dayRecords.some(r => r.status === 'off_day');
+          const isDoubleTime = isDoubleTimeDay(date);
           
           if (isOffDay) {
             // Display off day record
@@ -114,8 +132,13 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records }) =
             if (typeof window !== 'undefined' && window.innerWidth < 640) {
               return (
                 <div key={date} className="p-3 border-b border-gray-100 last:border-0">
-                  <div className="font-medium text-gray-800 mb-2">
-                    {format(new Date(date), 'EEE, MMM d, yyyy')}
+                  <div className="font-medium text-gray-800 mb-2 flex items-center justify-between">
+                    <div>{format(new Date(date), 'EEE, MMM d, yyyy')}</div>
+                    {isDoubleTime && (
+                      <span className="inline-flex items-center justify-center px-2 py-0.5 bg-amber-100 text-amber-800 rounded-full text-xs font-medium">
+                        <span className="font-bold mr-1">2×</span> Double-Time
+                      </span>
+                    )}
                   </div>
                   <div className="grid grid-cols-2 gap-3 text-sm">
                     <div>
@@ -139,10 +162,15 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records }) =
             
             // Desktop view
             return (
-              <div key={date} className="grid grid-cols-7 gap-2 p-3 text-sm">
+              <div key={date} className={`grid grid-cols-8 gap-2 p-3 text-sm ${isDoubleTime ? 'bg-amber-50' : ''}`}>
                 <div className="col-span-2">
-                  <div className="font-medium text-gray-800">
+                  <div className="font-medium text-gray-800 flex items-center">
                     {format(new Date(date), 'EEE, MMM d, yyyy')}
+                    {isDoubleTime && (
+                      <span className="ml-2 inline-flex items-center justify-center px-2 py-0.5 bg-amber-100 text-amber-800 rounded-full text-xs">
+                        <span className="font-bold mr-0.5">2×</span> Double
+                      </span>
+                    )}
                   </div>
                 </div>
                 <div>
@@ -155,6 +183,9 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records }) =
                   <span className="px-2 py-0.5 text-xs font-medium rounded-full bg-red-100 text-red-800">
                     OFF-DAY
                   </span>
+                </div>
+                <div className="font-medium text-gray-800">
+                  0.00
                 </div>
                 <div className="font-medium text-gray-800">
                   0.00
@@ -255,6 +286,9 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records }) =
               hours = parseFloat(hours.toFixed(2));
             }
             
+            // Calculate double-time hours if applicable
+            const doubleTimeHours = isDoubleTime ? hours * 2 : hours;
+            
             // Determine if there's a penalty
             const hasPenalty = checkIn && checkIn.deduction_minutes > 0;
 
@@ -276,9 +310,16 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records }) =
             // Mobile view
             if (typeof window !== 'undefined' && window.innerWidth < 640) {
               return (
-                <div key={shiftKey} className="p-3 border-b border-gray-100 last:border-0">
-                  <div className="font-medium text-gray-800 mb-2">
-                    {format(new Date(date), 'EEE, MMM d, yyyy')}
+                <div key={shiftKey} className={`p-3 border-b border-gray-100 last:border-0 ${isDoubleTime ? 'bg-amber-50' : ''}`}>
+                  <div className="flex justify-between items-start mb-2">
+                    <div className="font-medium text-gray-800">
+                      {format(new Date(date), 'EEE, MMM d, yyyy')}
+                    </div>
+                    {isDoubleTime && (
+                      <span className="inline-flex items-center justify-center px-2 py-0.5 bg-amber-100 text-amber-800 rounded-full text-xs font-medium">
+                        <span className="font-bold mr-1">2×</span> Double-Time
+                      </span>
+                    )}
                   </div>
                   
                   <div className="grid grid-cols-2 gap-3 text-sm">
@@ -338,6 +379,13 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records }) =
                       )}
                     </span>
                     
+                    {isDoubleTime && (
+                      <span className="font-medium text-amber-800 flex items-center px-2 py-0.5 bg-amber-100 rounded-full text-xs">
+                        <span className="font-bold mr-1">2×</span>
+                        {doubleTimeHours.toFixed(2)} hrs
+                      </span>
+                    )}
+                    
                     <span className="flex items-center text-green-600 px-2 py-0.5 bg-green-50 rounded-full text-xs">
                       <CheckCircle className="w-3 h-3 mr-1" />
                       <span>Approved</span>
@@ -349,10 +397,15 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records }) =
             
             // Desktop view
             return (
-              <div key={shiftKey} className="grid grid-cols-7 gap-2 p-3 text-sm">
+              <div key={shiftKey} className={`grid grid-cols-8 gap-2 p-3 text-sm ${isDoubleTime ? 'bg-amber-50' : ''}`}>
                 <div className="col-span-2">
-                  <div className="font-medium text-gray-800">
+                  <div className="font-medium text-gray-800 flex items-center">
                     {format(new Date(date), 'EEE, MMM d, yyyy')}
+                    {isDoubleTime && (
+                      <span className="ml-2 inline-flex items-center justify-center px-2 py-0.5 bg-amber-100 text-amber-800 rounded-full text-xs">
+                        <span className="font-bold mr-0.5">2×</span> Double-Time
+                      </span>
+                    )}
                   </div>
                 </div>
                 <div>
@@ -399,6 +452,16 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records }) =
                     <span className="ml-1 text-xs text-red-600">
                       (-{(checkIn.deduction_minutes / 60).toFixed(2)}h)
                     </span>
+                  )}
+                </div>
+                <div className="font-medium flex items-center">
+                  {isDoubleTime ? (
+                    <span className="inline-flex items-center text-amber-800">
+                      <span className="font-bold mr-1">2×</span>
+                      {doubleTimeHours.toFixed(2)}
+                    </span>
+                  ) : (
+                    <span className="text-gray-400">—</span>
                   )}
                 </div>
                 <div>

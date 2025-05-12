@@ -1,5 +1,5 @@
 import React from 'react';
-import { ChevronDown, ChevronRight } from 'lucide-react';
+import { ChevronDown, ChevronRight, Calendar2 } from 'lucide-react';
 
 interface EmployeeHoursSummaryProps {
   employee: {
@@ -8,6 +8,7 @@ interface EmployeeHoursSummaryProps {
     employee_number: string;
     total_days: number;
     total_hours: number;
+    double_time_hours?: number;
   };
   isExpanded: boolean;
   onExpand: () => void;
@@ -21,6 +22,12 @@ const EmployeeHoursSummary: React.FC<EmployeeHoursSummaryProps> = ({
   const avgHoursPerDay = employee.total_hours > 0 && employee.total_days > 0 
     ? parseFloat((employee.total_hours / employee.total_days).toFixed(2))
     : 0;
+    
+  // Calculate double-time hours (if available)
+  const doubleTimeHours = employee.double_time_hours || 0;
+  
+  // Calculate total payable hours (regular + double-time)
+  const totalPayableHours = employee.total_hours + doubleTimeHours;
 
   return (
     <div 
@@ -49,6 +56,13 @@ const EmployeeHoursSummary: React.FC<EmployeeHoursSummaryProps> = ({
           <div className="px-2 py-1 bg-purple-50 text-purple-700 rounded text-xs">
             Hours: <span className="font-medium">{employee.total_hours.toFixed(2)}</span>
           </div>
+          {doubleTimeHours > 0 && (
+            <div className="px-2 py-1 bg-amber-50 text-amber-700 rounded text-xs flex items-center">
+              <Calendar2 className="w-3 h-3 mr-1" />
+              <span className="font-bold text-xs">2×:</span>
+              <span className="font-medium ml-1">{doubleTimeHours.toFixed(2)}</span>
+            </div>
+          )}
           <div className="px-2 py-1 bg-green-50 text-green-700 rounded text-xs">
             Avg: <span className="font-medium">{avgHoursPerDay.toFixed(2)}/day</span>
           </div>
@@ -69,7 +83,15 @@ const EmployeeHoursSummary: React.FC<EmployeeHoursSummaryProps> = ({
         </div>
       </div>
       <div className="hidden sm:flex sm:items-center font-medium text-gray-800">{employee.total_days}</div>
-      <div className="hidden sm:flex sm:items-center font-medium text-gray-800">{employee.total_hours.toFixed(2)}</div>
+      <div className="hidden sm:flex sm:items-center">
+        <span className="font-medium text-gray-800">{employee.total_hours.toFixed(2)}</span>
+        {doubleTimeHours > 0 && (
+          <div className="ml-2 px-2 py-0.5 bg-amber-100 text-amber-800 rounded-full text-xs flex items-center">
+            <span className="font-bold text-xs mr-1">2×:</span>
+            {doubleTimeHours.toFixed(2)}
+          </div>
+        )}
+      </div>
       <div className="hidden sm:flex sm:items-center text-gray-700">{avgHoursPerDay.toFixed(2)}</div>
       <div className="hidden sm:flex sm:items-center">
         <button 
