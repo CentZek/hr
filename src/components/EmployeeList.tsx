@@ -33,6 +33,11 @@ const EmployeeList: React.FC<EmployeeListProps> = ({
   const [approveConfirmOpen, setApproveConfirmOpen] = useState(false);
   const [employeeToApprove, setEmployeeToApprove] = useState<number | null>(null);
   const [isApproving, setIsApproving] = useState(false);
+  
+  // State for approve single day confirmation
+  const [approveItemConfirmOpen, setApproveItemConfirmOpen] = useState(false);
+  const [itemToApprove, setItemToApprove] = useState<{empIndex: number, dayIndex: number} | null>(null);
+  const [isApprovingItem, setIsApprovingItem] = useState(false);
 
   const openPenaltyModal = (empIndex: number, dayIndex: number) => {
     setSelectedEmployee(empIndex);
@@ -75,6 +80,30 @@ const EmployeeList: React.FC<EmployeeListProps> = ({
         setApproveConfirmOpen(false);
         setEmployeeToApprove(null);
       }, 500);
+    }
+  };
+  
+  // Open confirmation dialog before approving a single day
+  const confirmApproveDay = (empIndex: number, dayIndex: number, e: React.MouseEvent) => {
+    e.stopPropagation(); // Prevent any parent click handlers
+    setItemToApprove({empIndex, dayIndex});
+    setApproveItemConfirmOpen(true);
+  };
+  
+  // Handle confirm approve single day
+  const handleConfirmApproveDay = () => {
+    if (itemToApprove !== null) {
+      setIsApprovingItem(true);
+      
+      // Apply the approval
+      handleToggleApproveDay(itemToApprove.empIndex, itemToApprove.dayIndex);
+      
+      // Reset state
+      setTimeout(() => {
+        setIsApprovingItem(false);
+        setApproveItemConfirmOpen(false);
+        setItemToApprove(null);
+      }, 300);
     }
   };
 
@@ -225,8 +254,15 @@ const EmployeeList: React.FC<EmployeeListProps> = ({
             <button onClick={() => openPenaltyModal(empIndex, dayIndex)} className={`p-1 rounded-full text-gray-600 hover:bg-gray-100 ${isOffDay ? 'opacity-50 cursor-not-allowed' : ''}`} disabled={isOffDay}>
               <AlertTriangle className="w-5 h-5" />
             </button>
-            <button onClick={() => handleToggleApproveDay(empIndex, dayIndex)} className={`p-1 rounded-full ${day.approved ? 'text-green-600 hover:bg-green-100' : 'text-gray-400 hover:bg-gray-100'}`}>
-              {day.approved ? <CheckCircle className="w-5 h-5" /> : <XCircle className="w-5 h-5" />}
+            <button 
+              onClick={(e) => confirmApproveDay(empIndex, dayIndex, e)}
+              className={`p-1 rounded-full ${day.approved ? 'text-green-600 hover:bg-green-100' : 'text-gray-600 hover:bg-gray-100'}`}
+              title={day.approved ? "Unapprove" : "Approve"}
+            >
+              {day.approved ? 
+                <CheckCircle className="w-5 h-5" /> : 
+                <CheckCircle className="w-5 h-5 text-gray-400" />
+              }
             </button>
           </div>
         </div>
@@ -465,8 +501,12 @@ const EmployeeList: React.FC<EmployeeListProps> = ({
                             <button onClick={() => openPenaltyModal(empIndex, dayIndex)} className={`p-1 rounded-full text-gray-600 hover:bg-gray-100 ${isOffDay ? 'opacity-50 cursor-not-allowed' : ''}`} title="Apply Penalty" disabled={isOffDay}>
                               <AlertTriangle className="w-5 h-5" />
                             </button>
-                            <button onClick={() => handleToggleApproveDay(empIndex, dayIndex)} className={`p-1 rounded-full ${day.approved ? 'text-green-600 hover:bg-green-100' : 'text-gray-400 hover:bg-gray-100'}`} title={day.approved ? "Unapprove" : "Approve"}>
-                              {day.approved ? <CheckCircle className="w-5 h-5" /> : <XCircle className="w-5 h-5" />}
+                            <button 
+                              onClick={(e) => confirmApproveDay(empIndex, dayIndex, e)} 
+                              className={`p-1 rounded-full ${day.approved ? 'text-green-600 hover:bg-green-100' : 'text-gray-500 hover:bg-gray-100'}`} 
+                              title={day.approved ? "Unapprove" : "Approve"}
+                            >
+                              <CheckCircle className={`w-5 h-5 ${day.approved ? '' : 'text-gray-400'}`} />
                             </button>
                           </div>
                         </div>
@@ -535,6 +575,32 @@ const EmployeeList: React.FC<EmployeeListProps> = ({
         cancelButtonText="Cancel"
         type="warning"
         confirmButtonColor="bg-green-600 hover:bg-green-700"
+        icon={<CheckCircle className="w-5 h-5 mr-2 text-white" />}
+      />
+      
+      {/* Approve Single Day Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={approveItemConfirmOpen}
+        onClose={() => setApproveItemConfirmOpen(false)}
+        onConfirm={handleConfirmApproveDay}
+        title={itemToApprove && employeeRecords[itemToApprove.empIndex]?.days[itemToApprove.dayIndex]?.approved 
+          ? "Unapprove Record" 
+          : "Approve Record"}
+        message={itemToApprove && employeeRecords[itemToApprove.empIndex]?.days[itemToApprove.dayIndex]?.approved 
+          ? "Are you sure you want to unapprove this record? It will be removed from the approved list."
+          : "Are you sure you want to approve this record? It will be added to the approved records list."
+        }
+        isProcessing={isApprovingItem}
+        confirmButtonText={itemToApprove && employeeRecords[itemToApprove.empIndex]?.days[itemToApprove.dayIndex]?.approved 
+          ? "Yes, Unapprove" 
+          : "Yes, Approve"}
+        cancelButtonText="Cancel"
+        type={itemToApprove && employeeRecords[itemToApprove.empIndex]?.days[itemToApprove.dayIndex]?.approved 
+          ? "warning" 
+          : "info"}
+        confirmButtonColor={itemToApprove && employeeRecords[itemToApprove.empIndex]?.days[itemToApprove.dayIndex]?.approved 
+          ? "bg-amber-600 hover:bg-amber-700" 
+          : "bg-green-600 hover:bg-green-700"}
         icon={<CheckCircle className="w-5 h-5 mr-2 text-white" />}
       />
     </div>
