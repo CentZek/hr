@@ -74,12 +74,8 @@ export const getEmployeeShifts = async (employeeId: string) => {
 const convertTimeRecordsToShifts = (timeRecords: any[], employeeId: string) => {
   // Group records by date
   const recordsByDate = timeRecords.reduce((acc: Record<string, any[]>, record) => {
-    // Use the UTC date portion for consistency across timezones
-    const utc = parseISO(record.timestamp);
-    const date = utc.toISOString().slice(0,10);  // "YYYY-MM-DD"
-    
-    // For check-outs after midnight, use working_week_start if available
-    if (record.status === 'check_out' && record.working_week_start) {
+    // Use working_week_start if available for proper grouping
+    if (record.working_week_start) {
       const workDate = record.working_week_start;
       if (!acc[workDate]) {
         acc[workDate] = [];
@@ -88,7 +84,28 @@ const convertTimeRecordsToShifts = (timeRecords: any[], employeeId: string) => {
       return acc;
     }
     
-    // If not a check-out with working_week_start, use the date
+    // If no working_week_start, use the timestamp date
+    const utc = parseISO(record.timestamp);
+    const date = utc.toISOString().slice(0,10);  // "YYYY-MM-DD"
+    
+    // For check-outs after midnight, adjust date if needed
+    if (record.status === 'check_out' && record.shift_type === 'night') {
+      const hour = utc.getHours();
+      if (hour < 12) {
+        // This is likely a night shift check-out, associate with previous day
+        const prevDate = new Date(utc);
+        prevDate.setDate(prevDate.getDate() - 1);
+        const prevDateStr = prevDate.toISOString().slice(0,10);
+        
+        if (!acc[prevDateStr]) {
+          acc[prevDateStr] = [];
+        }
+        acc[prevDateStr].push(record);
+        return acc;
+      }
+    }
+    
+    // Otherwise use the date directly
     if (!acc[date]) {
       acc[date] = [];
     }
@@ -138,7 +155,8 @@ const convertTimeRecordsToShifts = (timeRecords: any[], employeeId: string) => {
       penalty_minutes: checkIn.deduction_minutes || 0,
       hr_notes: checkIn.is_late ? 'Check-in was late' : 
                 checkOut.early_leave ? 'Left early' : '',
-      is_approved_record: true // Flag to indicate this is from approved time records
+      is_approved_record: true, // Flag to indicate this is from approved time records
+      working_week_start: checkIn.working_week_start || date // Include working_week_start for consistency
     });
   });
 
@@ -170,11 +188,16 @@ export const addEmployeeShift = async (shiftData: any) => {
       shiftData.date
     );
     
+    // Determine working_week_start based on shift type
+    // For night shifts that cross day boundary, use the check-in date
+    const workingWeekStart = shiftData.date;
+    
     // Create shift with standardized times
     const shiftToSave = {
       ...shiftData,
       start_time: startTime,
-      end_time: endTime
+      end_time: endTime,
+      working_week_start: workingWeekStart
     };
     
     const { data, error } = await supabase
@@ -353,98 +376,5 @@ export const saveUserCredentials = async (employeeId: string, username: string, 
   } catch (error) {
     console.error('Error saving user credentials:', error);
     throw error;
-  }
-};
-
-// Add a migration to initialize credentials from existing employees
-export const initializeAllUserCredentials = async () => {
-  try {
-    // Fetch all employees
-    const { data: employees, error: fetchError } = await supabase
-      .from('employees')
-      .select('id, name, employee_number');
-      
-    if (fetchError) throw fetchError;
-    
-    if (!employees || employees.length === 0) {
-      return { success: true, count: 0 };
-    }
-    
-    // Get existing credentials to avoid duplicates
-    const { data: existingCreds, error: credsError } = await supabase
-      .from('user_credentials')
-      .select('employee_id, username');
-      
-    if (credsError) throw credsError;
-    
-    // Create maps for quick lookups
-    const existingEmployeeMap = new Map();
-    const existingUsernameSet = new Set();
-    
-    if (existingCreds) {
-      existingCreds.forEach(cred => {
-        existingEmployeeMap.set(cred.employee_id, true);
-        existingUsernameSet.add(cred.username.toLowerCase());
-      });
-    }
-    
-    // Generate credentials for employees without them
-    const insertData = [];
-    
-    for (const emp of employees) {
-      // Skip if employee already has credentials
-      if (existingEmployeeMap.has(emp.id)) continue;
-      
-      // Create a unique username
-      let baseUsername = `${emp.name}_${emp.employee_number}`;
-      let username = baseUsername;
-      let counter = 1;
-      
-      // Check if username is unique
-      while (existingUsernameSet.has(username.toLowerCase())) {
-        username = `${emp.name}_${counter}`;
-        counter++;
-        
-        // Safety check
-        if (counter > 100) {
-          console.warn(`Could not generate unique username for employee ${emp.id}`);
-          continue;
-        }
-      }
-      
-      // Add username to set and to insert batch
-      existingUsernameSet.add(username.toLowerCase());
-      insertData.push({
-        employee_id: emp.id,
-        username: username,
-        password: emp.employee_number
-      });
-    }
-    
-    if (insertData.length === 0) {
-      return { success: true, count: 0 };
-    }
-    
-    // Insert credentials one by one to avoid batch errors
-    let successCount = 0;
-    
-    for (const cred of insertData) {
-      try {
-        const { error } = await supabase
-          .from('user_credentials')
-          .insert([cred]);
-          
-        if (!error) {
-          successCount++;
-        }
-      } catch (err) {
-        console.error(`Error inserting credential for employee ${cred.employee_id}:`, err);
-      }
-    }
-    
-    return { success: true, count: successCount };
-  } catch (error) {
-    console.error('Error initializing user credentials:', error);
-    return { success: false, error };
   }
 };

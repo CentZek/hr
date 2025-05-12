@@ -13,8 +13,8 @@ import { addManualEntryToRecords, calculateStats, processRecordsAfterSave } from
 
 // Import services
 import { saveRecordsToDatabase, fetchManualTimeRecords, fetchPendingEmployeeShifts } from '../services/database';
-import { runAllMigrations } from '../services/migrationService';
-import { supabase, checkSupabaseConnection } from '../lib/supabase';
+import { runAllMigrations, checkSupabaseConnection } from '../services/migrationService';
+import { supabase } from '../lib/supabase';
 
 // Import components
 import NavigationTabs from '../components/NavigationTabs';
@@ -120,11 +120,14 @@ function HrPage() {
 
   // Refresh manual records and pending shifts after changes
   const refreshData = async () => {
+    setLoadingManualRecords(true);
     try {
       const records = await fetchManualTimeRecords(50);
       setManualRecords(records);
     } catch (error) {
       console.error('Error refreshing data:', error);
+    } finally {
+      setLoadingManualRecords(false);
     }
   };
 
@@ -368,9 +371,9 @@ function HrPage() {
       setTotalEmployees(updatedEmpCount);
       setTotalDays(updatedDaysCount);
 
-      // Refresh manually approved records
+      // FIXED: Refresh manually approved records from database instead of manually updating state
       await refreshData();
-
+      
       toast.dismiss(loadingToast);
       if (successCount > 0) {
         toast.success(`Successfully saved ${successCount} records to database`);
@@ -411,6 +414,11 @@ function HrPage() {
       return;
     }
     
+    // Prevent multiple clicks
+    if (isMigrating) {
+      return;
+    }
+    
     setIsMigrating(true);
     const loadingToast = toast.loading('Running database migrations...');
     
@@ -438,7 +446,7 @@ function HrPage() {
   };
 
   // Handle employee shift request approval
-  const handleEmployeeShiftApproved = (employeeData: any, shiftData: any) => {
+  const handleEmployeeShiftApproved = async (employeeData: any, shiftData: any) => {
     // Create a daily record in the format expected by the app
     const dailyRecord: DailyRecord = {
       date: shiftData.date,
@@ -506,8 +514,8 @@ function HrPage() {
     // Set hasUploadedFile to true to ensure proper display
     setHasUploadedFile(true);
     
-    // Refresh manual records
-    refreshData();
+    // FIXED: Refresh manual records - Get fresh data from database instead of manually updating state
+    await refreshData();
     
     // Show success message
     toast.success(`Added ${employeeData.name}'s submitted shift to the Face ID Data`);
@@ -594,7 +602,7 @@ function HrPage() {
                 <button
                   onClick={handleRunMigrations}
                   disabled={isMigrating}
-                  className="text-blue-600 hover:text-blue-800 font-medium flex items-center"
+                  className="text-blue-600 hover:text-blue-800 font-medium flex items-center disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Database className="w-4 h-4 mr-1" />
                   {isMigrating ? 

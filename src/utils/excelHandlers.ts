@@ -85,11 +85,8 @@ const resolveDuplicates = (records: TimeRecord[]): TimeRecord[] => {
   
   // Special handling for specific dates and employees that need fixed pairing
   
-  // 1. Check for special employee patterns (Dawood Fatah Nooh)
-  const employeeName = records[0].name;
-  const isNightShiftWorker = isLikelyNightShiftWorker(records) || 
-                          employeeName.includes('Dawood Fatah Nooh') ||
-                          employeeName.includes('Bahman');
+  // 1. Check for night shift worker patterns
+  const isNightShiftWorker = isLikelyNightShiftWorker(records);
   
   if (isNightShiftWorker) {
     // Process each day and its adjacent day for night shift patterns
@@ -140,54 +137,6 @@ const resolveDuplicates = (records: TimeRecord[]): TimeRecord[] => {
         morningCheckOut.isCrossDay = true;
         morningCheckOut.fromPrevDay = true;
         morningCheckOut.prevDayDate = currentDate;
-      }
-    }
-    
-    // Special handling for March 24-25 for Dawood Fatah Nooh
-    if (employeeName.includes('Dawood Fatah Nooh')) {
-      if (recordsByDate.has('2025-03-24')) {
-        const march24Records = recordsByDate.get('2025-03-24') || [];
-        const march25Records = recordsByDate.get('2025-03-25') || [];
-        
-        // Find check-in on March 24 around 8:57 PM
-        const march24CheckIn = march24Records.find(r => {
-          const hour = r.timestamp.getHours();
-          const minute = r.timestamp.getMinutes();
-          return hour === 20 && minute >= 55 && minute <= 59;
-        });
-        
-        // Find check-out on March 25 around 5:53 AM
-        const march25CheckOut = march25Records.find(r => {
-          const hour = r.timestamp.getHours();
-          const minute = r.timestamp.getMinutes();
-          return hour === 5 && minute >= 50 && minute <= 55;
-        });
-        
-        if (march24CheckIn) {
-          march24CheckIn.status = 'check_in';
-          march24CheckIn.shift_type = 'night';
-          if (march24CheckIn.originalStatus !== 'check_in') {
-            march24CheckIn.mislabeled = true;
-            march24CheckIn.originalStatus = march24CheckIn.originalStatus || 'check_out';
-          }
-          march24CheckIn.notes = 'Night shift check-in';
-          march24CheckIn.isCrossDay = true;
-          march24CheckIn.processed = false; // Ensure it's processed later
-        }
-        
-        if (march25CheckOut) {
-          march25CheckOut.status = 'check_out';
-          march25CheckOut.shift_type = 'night';
-          if (march25CheckOut.originalStatus !== 'check_out') {
-            march25CheckOut.mislabeled = true;
-            march25CheckOut.originalStatus = march25CheckOut.originalStatus || 'check_in';
-          }
-          march25CheckOut.notes = 'Night shift check-out (from March 24)';
-          march25CheckOut.isCrossDay = true;
-          march25CheckOut.fromPrevDay = true;
-          march25CheckOut.prevDayDate = '2025-03-24';
-          march25CheckOut.processed = false; // Ensure it's processed later
-        }
       }
     }
   }
@@ -408,6 +357,10 @@ export const processExcelData = async (data: any[]): Promise<EmployeeRecord[]> =
         // Calculate hours for night shift
         const hoursWorked = calculateNightShiftHours(checkIn.timestamp, checkOut.timestamp);
         
+        // Store original check-in and check-out times as display values
+        const checkInDisplayTime = format(checkIn.timestamp, 'HH:mm');
+        const checkOutDisplayTime = format(checkOut.timestamp, 'HH:mm');
+        
         // Create daily record for the current date
         employeeData.dailyRecords.set(currentDate, {
           date: currentDate,
@@ -427,7 +380,11 @@ export const processExcelData = async (data: any[]): Promise<EmployeeRecord[]> =
           allTimeRecords: [...currentDateRecords, ...morningCheckOuts], // Include all relevant records
           hasMultipleRecords: true,
           isCrossDay: true,
-          checkOutNextDay: true
+          checkOutNextDay: true,
+          working_week_start: currentDate, // Set working_week_start for proper grouping
+          // Store the actual timestamp values for correct display
+          displayCheckIn: checkInDisplayTime,
+          displayCheckOut: checkOutDisplayTime
         });
         
         // Mark dates as processed
@@ -439,66 +396,6 @@ export const processExcelData = async (data: any[]): Promise<EmployeeRecord[]> =
         checkOut.processed = true;
         
         console.log(`Processed night shift spanning ${currentDate} to ${nextDate}`);
-      }
-    }
-    
-    // Special handling for March 24-25 for Dawood Fatah Nooh
-    if (employeeName.includes('Dawood Fatah Nooh')) {
-      // Look for March 24 and 25
-      if (recordsByDate.has('2025-03-24') && recordsByDate.has('2025-03-25')) {
-        const march24Records = recordsByDate.get('2025-03-24') || [];
-        const march25Records = recordsByDate.get('2025-03-25') || [];
-        
-        // Find check-in on March 24 around 8:57 PM
-        const march24CheckIn = march24Records.find(r => {
-          const hour = r.timestamp.getHours();
-          const minute = r.timestamp.getMinutes();
-          return hour === 20 && minute >= 55 && minute <= 59;
-        });
-        
-        // Find check-out on March 25 around 5:53 AM
-        const march25CheckOut = march25Records.find(r => {
-          const hour = r.timestamp.getHours();
-          const minute = r.timestamp.getMinutes();
-          return hour === 5 && minute >= 50 && minute <= 55;
-        });
-        
-        if (march24CheckIn && march25CheckOut) {
-          // Calculate hours for night shift
-          const hoursWorked = calculateNightShiftHours(march24CheckIn.timestamp, march25CheckOut.timestamp);
-          
-          // Create daily record for March 24th
-          employeeData.dailyRecords.set('2025-03-24', {
-            date: '2025-03-24',
-            firstCheckIn: march24CheckIn.timestamp, 
-            lastCheckOut: march25CheckOut.timestamp,
-            hoursWorked: hoursWorked,
-            approved: false,
-            shiftType: 'night',
-            notes: 'Night shift (spans to March 25)',
-            missingCheckIn: false,
-            missingCheckOut: false,
-            isLate: false,
-            earlyLeave: false,
-            excessiveOvertime: false,
-            penaltyMinutes: 0,
-            correctedRecords: march24CheckIn.mislabeled || march25CheckOut.mislabeled,
-            allTimeRecords: [...march24Records, march25CheckOut], // Include all relevant records
-            hasMultipleRecords: true,
-            isCrossDay: true,
-            checkOutNextDay: true
-          });
-          
-          // Mark records as processed
-          march24CheckIn.processed = true;
-          march25CheckOut.processed = true;
-          
-          // Mark dates as processed
-          processedDates.add('2025-03-24');
-          // Don't mark March 25 as fully processed since it might have its own check-in/check-out pair
-          
-          console.log(`Processed special night shift for Dawood on March 24-25`);
-        }
       }
     }
     
@@ -526,6 +423,9 @@ export const processExcelData = async (data: any[]): Promise<EmployeeRecord[]> =
           const openCheckInDate = format(openCheckIn.timestamp, 'yyyy-MM-dd');
           const openDateRecords = recordsByDate.get(openCheckInDate) || [];
           
+          // Store original check-in time as display value
+          const checkInDisplayTime = format(openCheckIn.timestamp, 'HH:mm');
+          
           employeeData.dailyRecords.set(openCheckInDate, {
             date: openCheckInDate,
             firstCheckIn: openCheckIn.timestamp,
@@ -542,7 +442,10 @@ export const processExcelData = async (data: any[]): Promise<EmployeeRecord[]> =
             penaltyMinutes: 0,
             correctedRecords: openCheckIn.mislabeled,
             allTimeRecords: openDateRecords,
-            hasMultipleRecords: openDateRecords.length > 1
+            hasMultipleRecords: openDateRecords.length > 1,
+            working_week_start: openCheckInDate, // Set working_week_start for proper grouping
+            displayCheckIn: checkInDisplayTime, // Store actual timestamp for display
+            displayCheckOut: 'Missing'
           });
           
           openCheckIn.processed = true;
@@ -573,6 +476,10 @@ export const processExcelData = async (data: any[]): Promise<EmployeeRecord[]> =
           // Collect all records for this day
           const allDayRecords = recordsByDate.get(checkInDate) || [];
           
+          // Store original check-in and check-out times as display values
+          const checkInDisplayTime = format(openCheckIn.timestamp, 'HH:mm');
+          const checkOutDisplayTime = format(record.timestamp, 'HH:mm');
+          
           // Create daily record
           employeeData.dailyRecords.set(checkInDate, {
             date: checkInDate,
@@ -592,7 +499,10 @@ export const processExcelData = async (data: any[]): Promise<EmployeeRecord[]> =
             allTimeRecords: [...allDayRecords, ...(isCrossDay ? [record] : [])],
             hasMultipleRecords: allDayRecords.length > 2 || isCrossDay,
             isCrossDay,
-            checkOutNextDay: isCrossDay
+            checkOutNextDay: isCrossDay,
+            working_week_start: checkInDate, // Set working_week_start for proper grouping
+            displayCheckIn: checkInDisplayTime, // Store actual timestamp for display
+            displayCheckOut: checkOutDisplayTime // Store actual timestamp for display
           });
           
           // Mark as processed
@@ -635,6 +545,9 @@ export const processExcelData = async (data: any[]): Promise<EmployeeRecord[]> =
             }
           }
           
+          // Store original check-out time as display value
+          const checkOutDisplayTime = format(record.timestamp, 'HH:mm');
+          
           // Create record with missing check-in
           employeeData.dailyRecords.set(checkOutDate, {
             date: checkOutDate,
@@ -652,7 +565,10 @@ export const processExcelData = async (data: any[]): Promise<EmployeeRecord[]> =
             penaltyMinutes: 0,
             correctedRecords: record.mislabeled,
             allTimeRecords: dateRecords,
-            hasMultipleRecords: dateRecords.length > 1
+            hasMultipleRecords: dateRecords.length > 1,
+            working_week_start: checkOutDate, // Set working_week_start for proper grouping
+            displayCheckIn: 'Missing', 
+            displayCheckOut: checkOutDisplayTime // Store actual timestamp for display
           });
           
           record.processed = true;
@@ -664,6 +580,9 @@ export const processExcelData = async (data: any[]): Promise<EmployeeRecord[]> =
     if (openCheckIn && !openCheckIn.processed) {
       const checkInDate = format(openCheckIn.timestamp, 'yyyy-MM-dd');
       const dateRecords = recordsByDate.get(checkInDate) || [];
+      
+      // Store original check-in time as display value
+      const checkInDisplayTime = format(openCheckIn.timestamp, 'HH:mm');
       
       employeeData.dailyRecords.set(checkInDate, {
         date: checkInDate,
@@ -681,7 +600,10 @@ export const processExcelData = async (data: any[]): Promise<EmployeeRecord[]> =
         penaltyMinutes: 0,
         correctedRecords: openCheckIn.mislabeled,
         allTimeRecords: dateRecords,
-        hasMultipleRecords: dateRecords.length > 1
+        hasMultipleRecords: dateRecords.length > 1,
+        working_week_start: checkInDate, // Set working_week_start for proper grouping
+        displayCheckIn: checkInDisplayTime, // Store actual timestamp for display
+        displayCheckOut: 'Missing'
       });
       
       openCheckIn.processed = true;
@@ -719,6 +641,10 @@ export const processExcelData = async (data: any[]): Promise<EmployeeRecord[]> =
         const hoursWorked = (firstCheckIn && lastCheckOut) ? 
                       calculatePayableHours(firstCheckIn.timestamp, lastCheckOut.timestamp, shiftType as any) : 0;
         
+        // Store original check-in and check-out times as display values
+        const checkInDisplayTime = firstCheckIn ? format(firstCheckIn.timestamp, 'HH:mm') : 'Missing';
+        const checkOutDisplayTime = lastCheckOut ? format(lastCheckOut.timestamp, 'HH:mm') : 'Missing';
+        
         // Create daily record
         employeeData.dailyRecords.set(dateStr, {
           date: dateStr,
@@ -737,7 +663,11 @@ export const processExcelData = async (data: any[]): Promise<EmployeeRecord[]> =
           penaltyMinutes: 0,
           correctedRecords: unprocessedRecords.some(r => r.mislabeled),
           allTimeRecords: dateRecords,
-          hasMultipleRecords: dateRecords.length > 1
+          hasMultipleRecords: dateRecords.length > 1,
+          working_week_start: dateStr, // Set working_week_start for proper grouping
+          // Store actual timestamp values for display
+          displayCheckIn: checkInDisplayTime,
+          displayCheckOut: checkOutDisplayTime
         });
         
         // Mark records as processed
@@ -816,7 +746,10 @@ const addOffDaysToEmployeeRecords = (dailyRecords: Map<string, DailyRecord>, rec
         excessiveOvertime: false,
         penaltyMinutes: 0,
         allTimeRecords: dateRecords,
-        hasMultipleRecords: dateRecords.length > 0
+        hasMultipleRecords: dateRecords.length > 0,
+        working_week_start: dateStr, // Set working_week_start for proper grouping
+        displayCheckIn: 'OFF-DAY', 
+        displayCheckOut: 'OFF-DAY'
       });
     }
   }
@@ -900,8 +833,17 @@ export const exportApprovedHoursToExcel = (data: {
   data.details.forEach(record => {
     const timestamp = new Date(record.timestamp);
     
-    // Use our helper to get consistent 24-hour time display
-    const displayTime = formatTime24H(timestamp);
+    // For Excel exports, we want to show the actual timestamp, not the standardized time
+    let displayTime;
+    if (!record.is_manual_entry && record.display_time) {
+      displayTime = record.display_time;
+    } else if (!record.is_manual_entry && record.display_check_in && record.status === 'check_in') {
+      displayTime = record.display_check_in;
+    } else if (!record.is_manual_entry && record.display_check_out && record.status === 'check_out') {
+      displayTime = record.display_check_out;
+    } else {
+      displayTime = format(timestamp, 'HH:mm');
+    }
     
     detailsData.push([
       record.employees?.employee_number || '',

@@ -56,6 +56,54 @@ export function formatTimeString(timeStr: string): string {
 }
 
 /**
+ * Format time from a time record, preferring display values for non-manual entries
+ * @param record The time record object
+ * @param field Which field to format ('check_in' or 'check_out')
+ * @returns Formatted time string
+ */
+export function formatRecordTime(record: any, field: 'check_in' | 'check_out'): string {
+  // For Excel-imported data, prefer the display value
+  if (!record.is_manual_entry && record[`display_${field}`] && record[`display_${field}`] !== 'Missing') {
+    return record[`display_${field}`];
+  }
+  
+  // For manual entries, use the standard display logic
+  if (record.is_manual_entry) {
+    // Check if the record has a display value to use
+    if (record[`display_${field}`] && record[`display_${field}`] !== 'Missing') {
+      return record[`display_${field}`];
+    }
+    
+    // If we have a shift type, use standard times
+    if (record.shift_type) {
+      const displayTimes = {
+        morning: { check_in: '05:00', check_out: '14:00' },
+        evening: { check_in: '13:00', check_out: '22:00' },
+        night: { check_in: '21:00', check_out: '06:00' },
+        canteen: { check_in: '07:00', check_out: '16:00' }
+      };
+      
+      const shiftType = record.shift_type;
+      if (displayTimes[shiftType as keyof typeof displayTimes]) {
+        return displayTimes[shiftType as keyof typeof displayTimes][field];
+      }
+    }
+  }
+  
+  // Fallback to the actual timestamp if available
+  if (record.timestamp) {
+    try {
+      const date = parseISO(record.timestamp);
+      return format(date, 'HH:mm');
+    } catch (err) {
+      console.error("Error formatting time record:", err);
+    }
+  }
+  
+  return 'Missing';
+}
+
+/**
  * Parse shift times with proper day rollover for night shifts
  * Used for both manual entries and employee-submitted shifts
  * @param dateStr The base date in YYYY-MM-DD format

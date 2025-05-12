@@ -1,5 +1,5 @@
 import { supabase } from '../lib/supabase';
-import { format, parseISO, startOfMonth, endOfMonth, addDays, isValid } from 'date-fns';
+import { format, parseISO, startOfMonth, endOfMonth, addDays, isValid, subDays } from 'date-fns';
 import { EmployeeRecord, DailyRecord } from '../types';
 import toast from 'react-hot-toast';
 import { parseShiftTimes } from '../utils/dateTimeHelper';
@@ -18,13 +18,14 @@ export const fetchApprovedHours = async (monthFilter: string = ''): Promise<{
         timestamp,
         status,
         exact_hours,
+        working_week_start,
         employees (
           id,
           name,
           employee_number
         )
       `)
-      .eq('status', 'check_in')  // Only count check-in records
+      .in('status', ['check_in', 'off_day'])  // Include both check-in and off-day records
       .not('exact_hours', 'is', null);
     
     // Apply month filter if provided
@@ -71,20 +72,26 @@ export const fetchApprovedHours = async (monthFilter: string = ''): Promise<{
       
       // Add date to set of days - Only if timestamp is valid
       if (record.timestamp && isValid(new Date(record.timestamp))) {
-        // Use the UTC date portion so nothing shifts under local timezones
-        const utc = parseISO(record.timestamp);
-        const date = utc.toISOString().slice(0,10); // "YYYY-MM-DD"
-        employee.total_days.add(date);
+        // Use working_week_start if available, otherwise use timestamp date
+        if (record.working_week_start) {
+          employee.total_days.add(record.working_week_start);
+        } else {
+          // Use the UTC date portion so nothing shifts under local timezones
+          const utc = parseISO(record.timestamp);
+          const date = utc.toISOString().slice(0,10); // "YYYY-MM-DD"
+          employee.total_days.add(date);
+        }
       }
     });
     
-    // Handle OFF-DAY records separately (they don't have check-in status)
+    // Add OFF-DAY records separately
     const { data: offDayData, error: offDayError } = await supabase
       .from('time_records')
       .select(`
         employee_id,
         timestamp,
         status,
+        working_week_start,
         employees (
           id,
           name,
@@ -114,7 +121,9 @@ export const fetchApprovedHours = async (monthFilter: string = ''): Promise<{
       const employee = employeeSummary.get(employeeId);
       
       // Add date to set of days for OFF-DAY
-      if (record.timestamp && isValid(new Date(record.timestamp))) {
+      if (record.working_week_start) {
+        employee.total_days.add(record.working_week_start);
+      } else if (record.timestamp && isValid(new Date(record.timestamp))) {
         // Use the UTC date portion so nothing shifts under local timezones
         const utc = parseISO(record.timestamp);
         const date = utc.toISOString().slice(0,10); // "YYYY-MM-DD"
@@ -165,6 +174,7 @@ export const fetchEmployeeDetails = async (employeeId: string, monthFilter: stri
         display_check_out,
         mislabeled,
         working_week_start,
+        is_manual_entry,
         employees (
           name,
           employee_number
@@ -195,6 +205,110 @@ export const fetchEmployeeDetails = async (employeeId: string, monthFilter: stri
   }
 };
 
+// Check if a time record exists before inserting
+export const checkExistingTimeRecord = async (
+  employeeId: string, 
+  shiftType: string, 
+  status: string, 
+  workingWeekStart: string
+): Promise<string | null> => {
+  try {
+    // Log the search parameters for debugging
+    console.log('Checking for existing record with:', {
+      employeeId,
+      shiftType,
+      status,
+      workingWeekStart,
+      is_manual_entry: true
+    });
+
+    const { data, error } = await supabase
+      .from('time_records')
+      .select('id')
+      .eq('employee_id', employeeId)
+      .eq('shift_type', shiftType)
+      .eq('status', status) // IMPORTANT: Filter by status to prevent mix-ups
+      .eq('working_week_start', workingWeekStart)
+      .eq('is_manual_entry', true)
+      .maybeSingle();
+
+    if (error) throw error;
+    
+    if (data) {
+      console.log('Found existing record with ID:', data.id);
+    } else {
+      console.log('No existing record found');
+    }
+    
+    return data ? data.id : null;
+  } catch (error) {
+    console.error('Error checking existing time record:', error);
+    return null;
+  }
+};
+
+// Safely insert or update time record
+export const safeUpsertTimeRecord = async (recordData: any, existingId: string | null = null): Promise<boolean> => {
+  try {
+    // If we have an existing ID, update the record
+    if (existingId) {
+      console.log('Updating existing record with ID:', existingId);
+      const { error } = await supabase
+        .from('time_records')
+        .update(recordData)
+        .eq('id', existingId);
+        
+      if (error) throw error;
+      return true;
+    } 
+    
+    // Otherwise try to insert, but be prepared to handle conflict
+    try {
+      console.log('Attempting to insert new record');
+      const { error } = await supabase
+        .from('time_records')
+        .insert([recordData]);
+        
+      if (error) {
+        // If we get a conflict error (409), try to find the record again and update it
+        if (error.code === '23505' || (error.message && error.message.includes('duplicate key value'))) {
+          console.log('Duplicate key detected, attempting to find and update record');
+          
+          // Try to find the record based on the unique constraint
+          const existingRecord = await checkExistingTimeRecord(
+            recordData.employee_id,
+            recordData.shift_type,
+            recordData.status,
+            recordData.working_week_start
+          );
+          
+          if (existingRecord) {
+            console.log('Found conflicting record, updating instead:', existingRecord);
+            const { error: updateError } = await supabase
+              .from('time_records')
+              .update(recordData)
+              .eq('id', existingRecord);
+              
+            if (updateError) throw updateError;
+            return true;
+          } else {
+            throw new Error('Could not find conflicting record for update');
+          }
+        } else {
+          throw error;
+        }
+      }
+      return true;
+    } catch (insertError) {
+      console.error('Error during insert/update operation:', insertError);
+      throw insertError;
+    }
+  } catch (error) {
+    console.error('Error in safeUpsertTimeRecord:', error);
+    return false;
+  }
+};
+
 // Save records to database
 export const saveRecordsToDatabase = async (employeeRecords: EmployeeRecord[]): Promise<{
   successCount: number;
@@ -213,22 +327,33 @@ export const saveRecordsToDatabase = async (employeeRecords: EmployeeRecord[]): 
       try {
         // Skip if this is an OFF-DAY with no hours
         if (day.notes === 'OFF-DAY' && day.hoursWorked === 0) {
-          // Create an OFF-DAY record
-          const { error } = await supabase.from('time_records').insert([
-            {
-              employee_id: await getEmployeeId(employee.employeeNumber),
-              timestamp: new Date(`${day.date}T12:00:00`).toISOString(), // Use full ISO string
-              status: 'off_day',
-              shift_type: 'off_day',
-              notes: 'OFF-DAY',
-              is_manual_entry: true,
-              exact_hours: 0,
-              working_week_start: day.date // Set working_week_start for proper grouping
-            }
-          ]);
+          // Check if OFF-DAY record already exists
+          const existingOffDayId = await checkExistingTimeRecord(
+            await getEmployeeId(employee.employeeNumber),
+            'off_day',
+            'off_day',
+            day.date
+          );
+
+          const offDayData = {
+            employee_id: await getEmployeeId(employee.employeeNumber),
+            timestamp: `${day.date}T12:00:00`, // Use local date-time string
+            status: 'off_day',
+            shift_type: 'off_day',
+            notes: 'OFF-DAY',
+            is_manual_entry: false, // Mark as non-manual entry since it's from Excel
+            exact_hours: 0,
+            working_week_start: day.date // Set working_week_start for proper grouping
+          };
+
+          // Use the safe upsert function
+          const success = await safeUpsertTimeRecord(offDayData, existingOffDayId);
           
-          if (error) throw error;
-          successCount++;
+          if (success) {
+            successCount++;
+          } else {
+            throw new Error('Failed to save OFF-DAY record');
+          }
           continue;
         }
         
@@ -246,14 +371,25 @@ export const saveRecordsToDatabase = async (employeeRecords: EmployeeRecord[]): 
         // Get employee ID
         const employeeId = await getEmployeeId(employee.employeeNumber);
         
-        // Prepare records to insert
-        const records = [];
-        
         // Add check-in record if available
         if (day.firstCheckIn) {
-          records.push({
+          // Store original check-in time as display value
+          const checkInDisplayTime = format(day.firstCheckIn, 'HH:mm');
+
+          // Use date-fns format directly with the Date object
+          const checkInTimestamp = format(day.firstCheckIn, "yyyy-MM-dd'T'HH:mm:ss");
+          
+          // Check if check-in record already exists
+          const existingCheckInId = await checkExistingTimeRecord(
+            employeeId,
+            day.shiftType || '',
+            'check_in',
+            day.date
+          );
+
+          const checkInData = {
             employee_id: employeeId,
-            timestamp: day.firstCheckIn.toISOString(), // Use full ISO string
+            timestamp: checkInTimestamp,
             status: 'check_in',
             shift_type: day.shiftType,
             is_late: day.isLate,
@@ -261,21 +397,42 @@ export const saveRecordsToDatabase = async (employeeRecords: EmployeeRecord[]): 
             deduction_minutes: day.penaltyMinutes,
             notes: day.notes ? `${day.notes}; hours:${day.hoursWorked.toFixed(2)}` : `hours:${day.hoursWorked.toFixed(2)}`,
             exact_hours: day.hoursWorked,
-            display_check_in: format(day.firstCheckIn, 'HH:mm'),
+            display_check_in: checkInDisplayTime, // Store the actual time for display
             display_check_out: day.lastCheckOut ? format(day.lastCheckOut, 'HH:mm') : 'Missing',
             is_fixed: day.correctedRecords || false,
             corrected_records: day.correctedRecords || false,
             mislabeled: false,
-            // For night shifts, set working_week_start to help with grouping
+            is_manual_entry: false, // Mark as non-manual entry since it's from Excel
             working_week_start: day.date
-          });
+          };
+
+          // Use the safe upsert function
+          const success = await safeUpsertTimeRecord(checkInData, existingCheckInId);
+          
+          if (!success) {
+            throw new Error('Failed to save check-in record');
+          }
         }
         
         // Add check-out record if available
         if (day.lastCheckOut) {
-          records.push({
+          // Store original check-out time as display value
+          const checkOutDisplayTime = format(day.lastCheckOut, 'HH:mm');
+          
+          // Use date-fns format directly with the Date object
+          const checkOutTimestamp = format(day.lastCheckOut, "yyyy-MM-dd'T'HH:mm:ss");
+          
+          // Check if check-out record already exists
+          const existingCheckOutId = await checkExistingTimeRecord(
+            employeeId,
+            day.shiftType || '',
+            'check_out',
+            day.date
+          );
+
+          const checkOutData = {
             employee_id: employeeId,
-            timestamp: day.lastCheckOut.toISOString(), // Use full ISO string
+            timestamp: checkOutTimestamp,
             status: 'check_out',
             shift_type: day.shiftType,
             is_late: false,
@@ -284,22 +441,23 @@ export const saveRecordsToDatabase = async (employeeRecords: EmployeeRecord[]): 
             notes: day.notes ? `${day.notes}; hours:${day.hoursWorked.toFixed(2)}` : `hours:${day.hoursWorked.toFixed(2)}`,
             exact_hours: day.hoursWorked,
             display_check_in: day.firstCheckIn ? format(day.firstCheckIn, 'HH:mm') : 'Missing',
-            display_check_out: format(day.lastCheckOut, 'HH:mm'),
+            display_check_out: checkOutDisplayTime, // Store the actual time for display
             is_fixed: day.correctedRecords || false,
             corrected_records: day.correctedRecords || false,
             mislabeled: false,
-            // For night shifts with early morning checkout, set working_week_start to the check-in date
-            working_week_start: day.shiftType === 'night' && day.lastCheckOut.getHours() < 12 ? day.date : day.date
-          });
+            is_manual_entry: false, // Mark as non-manual entry since it's from Excel
+            working_week_start: day.date
+          };
+
+          // Use the safe upsert function
+          const success = await safeUpsertTimeRecord(checkOutData, existingCheckOutId);
+          
+          if (!success) {
+            throw new Error('Failed to save check-out record');
+          }
         }
         
-        // Insert records
-        if (records.length > 0) {
-          const { error } = await supabase.from('time_records').insert(records);
-          
-          if (error) throw error;
-          successCount++;
-        }
+        successCount++;
       } catch (error) {
         console.error(`Error saving record for ${employee.name} on ${day.date}:`, error);
         errorCount++;
@@ -376,18 +534,41 @@ export const fetchManualTimeRecords = async (limit: number = 50): Promise<any[]>
     
     if (error) throw error;
     
-    // Process evening shift display times to ensure they show correctly
+    // FIXED: Ensure display values are set correctly for all shift types
     const processedData = data?.map(record => {
-      // If this is an evening shift, ensure display times are correct
-      if (record.shift_type === 'evening') {
-        // Standard evening shift times
-        return {
-          ...record,
-          display_check_in: record.status === 'check_in' ? '13:00' : record.display_check_in,
-          display_check_out: record.status === 'check_out' ? '22:00' : record.display_check_out
-        };
+      // Make sure all records have properly set display values
+      let updatedRecord = { ...record };
+      
+      if (record.shift_type) {
+        const shiftType = record.shift_type;
+        
+        // Set standard display times based on shift type if missing
+        if (!record.display_check_in || record.display_check_in === 'Missing') {
+          if (shiftType === 'morning') {
+            updatedRecord.display_check_in = '05:00';
+          } else if (shiftType === 'evening') {
+            updatedRecord.display_check_in = '13:00';
+          } else if (shiftType === 'night') {
+            updatedRecord.display_check_in = '21:00';
+          } else if (shiftType === 'canteen') {
+            updatedRecord.display_check_in = record.timestamp && new Date(record.timestamp).getHours() === 7 ? '07:00' : '08:00';
+          }
+        }
+        
+        if (!record.display_check_out || record.display_check_out === 'Missing') {
+          if (shiftType === 'morning') {
+            updatedRecord.display_check_out = '14:00';
+          } else if (shiftType === 'evening') {
+            updatedRecord.display_check_out = '22:00';
+          } else if (shiftType === 'night') {
+            updatedRecord.display_check_out = '06:00';
+          } else if (shiftType === 'canteen') {
+            updatedRecord.display_check_out = record.timestamp && new Date(record.timestamp).getHours() === 7 ? '16:00' : '17:00';
+          }
+        }
       }
-      return record;
+      
+      return updatedRecord;
     }) || [];
     
     return processedData;
@@ -411,6 +592,7 @@ export const fetchPendingEmployeeShifts = async (): Promise<any[]> => {
         end_time,
         status,
         notes,
+        working_week_start,
         employees (
           name,
           employee_number
