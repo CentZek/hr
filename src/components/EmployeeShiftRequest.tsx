@@ -55,12 +55,11 @@ const EmployeeShiftRequest: React.FC<EmployeeShiftRequestProps> = ({ onShiftAppr
         .from('time_records')
         .select('id, status')
         .eq('employee_id', shift.employee_id)
-        .gte('timestamp', `${shift.date}T00:00:00`)
-        .lt('timestamp', `${shift.date}T23:59:59`);
+        .eq('working_week_start', shift.date);
         
       if (checkError) throw checkError;
       
-      // Delete any existing records for this date
+      // Delete any existing records for this date and working_week_start
       if (existingRecords && existingRecords.length > 0) {
         console.log(`Deleting ${existingRecords.length} existing records for date ${shift.date}`);
         const recordIds = existingRecords.map(record => record.id);
@@ -80,57 +79,17 @@ const EmployeeShiftRequest: React.FC<EmployeeShiftRequestProps> = ({ onShiftAppr
         
       if (updateError) throw updateError;
       
-      // Ensure date is a valid string format
-      let dateStr = format(new Date(), 'yyyy-MM-dd'); // Default to today if all else fails
-      
-      try {
-        // If shift.date is a Date object
-        if (shift.date instanceof Date && isValid(shift.date)) {
-          dateStr = format(shift.date, 'yyyy-MM-dd');
-        } 
-        // If shift.date is a string, parse it properly
-        else if (typeof shift.date === 'string') {
-          // Try parsing with parseISO first
-          const parsedDate = parseISO(shift.date);
-          if (isValid(parsedDate)) {
-            dateStr = format(parsedDate, 'yyyy-MM-dd');
-          } else {
-            // If parseISO fails, it might be in a different format
-            console.warn('Could not parse date string with parseISO:', shift.date);
-            dateStr = shift.date; // Keep original if it's already in yyyy-MM-dd format
-          }
-        }
-      } catch (e) {
-        console.error('Invalid date format:', e);
-        // Keep the default dateStr value
-      }
-      
-      // Validate startTime and endTime are properly formatted time strings
-      const validateTimeFormat = (time: string): string => {
-        // Simple regex to check if time is in format HH:MM
-        const timeRegex = /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/;
-        if (timeRegex.test(time)) {
-          return time;
-        }
-        // Default times based on shift type
-        if (shift.shift_type === 'morning') return '05:00';
-        if (shift.shift_type === 'evening') return shift.start_time ? '13:00' : '22:00';
-        if (shift.shift_type === 'night') return shift.start_time ? '21:00' : '06:00';
-        return '00:00'; // Fallback
-      };
-      
-      const startTime = validateTimeFormat(shift.start_time || '');
-      const endTime = validateTimeFormat(shift.end_time || '');
-      
-      console.log('Processing shift with:', { dateStr, startTime, endTime, shiftType: shift.shift_type });
-      
-      // Parse times and get proper date objects
+      // Parse shift times - get proper Date objects for check-in and check-out
       const { checkIn, checkOut } = parseShiftTimes(
-        dateStr,
-        startTime,
-        endTime,
+        shift.date,
+        shift.shift_type === 'morning' ? '05:00' : shift.shift_type === 'evening' ? '13:00' : '21:00',
+        shift.shift_type === 'morning' ? '14:00' : shift.shift_type === 'evening' ? '22:00' : '06:00',
         shift.shift_type
       );
+      
+      // Format dates directly into the expected timestamp format
+      const checkInTimestamp = format(checkIn, "yyyy-MM-dd'T'HH:mm:ss");
+      const checkOutTimestamp = format(checkOut, "yyyy-MM-dd'T'HH:mm:ss");
       
       // Calculate hours worked for consistency
       const hoursWorked = 9.0; // Standard hours for all shift types
@@ -138,39 +97,8 @@ const EmployeeShiftRequest: React.FC<EmployeeShiftRequestProps> = ({ onShiftAppr
 
       // Get standard display times for check-in and check-out based on shift type
       const displayTimes = DISPLAY_SHIFT_TIMES[shift.shift_type as keyof typeof DISPLAY_SHIFT_TIMES];
-      const displayCheckIn = displayTimes?.startTime || startTime;
-      const displayCheckOut = displayTimes?.endTime || endTime;
-
-      // Create formatted local timestamps (NOT ISO strings with Z)
-      // Use the standard pattern that matches ManualEntryModal
-      const checkInDateStr = format(checkIn, 'yyyy-MM-dd');
-      const checkInTimestamp = `${checkInDateStr}T${startTime}:00`;
-      
-      // For night shifts, use next day date for checkout
-      let checkOutDateStr;
-      if (shift.shift_type === 'night') {
-        const nextDay = new Date(checkIn);
-        nextDay.setDate(nextDay.getDate() + 1);
-        checkOutDateStr = format(nextDay, 'yyyy-MM-dd');
-      } else {
-        checkOutDateStr = format(checkOut, 'yyyy-MM-dd');
-      }
-      const checkOutTimestamp = `${checkOutDateStr}T${endTime}:00`;
-
-      // Check if records already exist with the proper status
-      const checkInExists = await checkExistingTimeRecord(
-        shift.employee_id,
-        shift.shift_type,
-        'check_in',
-        dateStr
-      );
-      
-      const checkOutExists = await checkExistingTimeRecord(
-        shift.employee_id,
-        shift.shift_type,
-        'check_out',
-        dateStr
-      );
+      const displayCheckIn = displayTimes?.startTime || shift.start_time;
+      const displayCheckOut = displayTimes?.endTime || shift.end_time;
 
       // Prepare the check-in record
       const checkInRecord = {
@@ -186,7 +114,7 @@ const EmployeeShiftRequest: React.FC<EmployeeShiftRequestProps> = ({ onShiftAppr
         deduction_minutes: 0,
         display_check_in: displayCheckIn,
         display_check_out: displayCheckOut,
-        working_week_start: dateStr // Set working_week_start for proper grouping
+        working_week_start: shift.date // Set working_week_start for proper grouping
       };
 
       // Prepare the check-out record
@@ -203,20 +131,20 @@ const EmployeeShiftRequest: React.FC<EmployeeShiftRequestProps> = ({ onShiftAppr
         deduction_minutes: 0,
         display_check_in: displayCheckIn,
         display_check_out: displayCheckOut,
-        working_week_start: dateStr // Same working_week_start for both records
+        working_week_start: shift.date // Same working_week_start for both records
       };
 
-      // Use safe upsert for each record
-      const checkInSuccess = await safeUpsertTimeRecord(checkInRecord, checkInExists);
-      if (!checkInSuccess) throw new Error('Failed to save check-in record');
-      
-      const checkOutSuccess = await safeUpsertTimeRecord(checkOutRecord, checkOutExists);
-      if (!checkOutSuccess) throw new Error('Failed to save check-out record');
+      // Insert both records together to maintain atomicity
+      const { error: insertError } = await supabase
+        .from('time_records')
+        .insert([checkInRecord, checkOutRecord]);
+        
+      if (insertError) throw insertError;
       
       // Remove the shift from the list
       setEmployeeShiftRequests(prev => prev.filter(s => s.id !== shift.id));
       
-      // FIXED: Get fresh records from the database
+      // Get fresh records from the database
       const freshRecords = await fetchManualTimeRecords(50);
       
       // Call callback if provided
@@ -230,9 +158,9 @@ const EmployeeShiftRequest: React.FC<EmployeeShiftRequestProps> = ({ onShiftAppr
         
         onShiftApproved(employeeData, {
           ...shift,
-          date: dateStr,
-          start_time: startTime,
-          end_time: endTime,
+          date: shift.date,
+          start_time: shift.start_time || displayCheckIn,
+          end_time: shift.end_time || displayCheckOut,
           checkInDate: checkIn,
           checkOutDate: checkOut,
           hoursWorked
