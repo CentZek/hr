@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { format, parseISO } from 'date-fns';
-import { Clock, AlertTriangle, CheckCircle } from 'lucide-react';
+import { Clock, AlertTriangle, CheckCircle, AlertCircle } from 'lucide-react';
 import { DISPLAY_SHIFT_TIMES } from '../types';
 import { formatTime24H, formatRecordTime } from '../utils/dateTimeHelper';
 
@@ -166,6 +166,23 @@ const TimeRecordsTable: React.FC<TimeRecordsTableProps> = ({
           const earliestCheckIn = sortedCheckIns.length > 0 ? sortedCheckIns[0] : null;
           const latestCheckOut = sortedCheckOuts.length > 0 ? sortedCheckOuts[0] : null;
           
+          // Flag: Calculate exact hours if both check-in and check-out are available
+          let exactHours = 0;
+          let hasExcessiveHours = false;
+          
+          if (earliestCheckIn && latestCheckOut) {
+            const checkInTime = new Date(earliestCheckIn.timestamp);
+            const checkOutTime = new Date(latestCheckOut.timestamp);
+            const diffMs = checkOutTime.getTime() - checkInTime.getTime();
+            exactHours = diffMs / (1000 * 60 * 60); // Convert ms to hours
+            hasExcessiveHours = exactHours > 12;
+          }
+          
+          // Flag: Count records to check if it's a single datapoint or has 3 records but not night shift
+          const recordCount = shiftRecords.length;
+          const hasSingleDatapoint = recordCount === 1;
+          const hasThreeDatapointsNotNight = recordCount === 3 && shiftType !== 'night';
+          
           // Only add a record if there's a check-in or checkout
           if (earliestCheckIn || latestCheckOut) {
             result.push({
@@ -175,7 +192,13 @@ const TimeRecordsTable: React.FC<TimeRecordsTableProps> = ({
               employeeNumber: (earliestCheckIn || latestCheckOut)?.employees?.employee_number || 'Unknown',
               checkIn: earliestCheckIn,
               checkOut: latestCheckOut,
-              shiftType: shiftType
+              shiftType: shiftType,
+              // Add flags
+              hasSingleDatapoint,
+              hasThreeDatapointsNotNight,
+              hasExcessiveHours,
+              exactHours,
+              recordCount
             });
           }
         });
@@ -229,7 +252,13 @@ const TimeRecordsTable: React.FC<TimeRecordsTableProps> = ({
         
         <div className="overflow-y-auto max-h-90vh px-4 py-2 space-y-3">
           {processedRecords.map((record, index) => (
-            <div key={index} className="p-3 border border-gray-200 rounded-md">
+            <div key={index} className={`p-3 border border-gray-200 rounded-md ${
+              // Apply background color for flags
+              record.hasSingleDatapoint ? 'border-l-4 border-l-red-500' : 
+              record.hasThreeDatapointsNotNight ? 'border-l-4 border-l-orange-500' : 
+              record.hasExcessiveHours ? 'border-l-4 border-l-purple-500' : 
+              ''
+            }`}>
               <div className="flex justify-between items-start mb-2">
                 <h4 className="font-medium text-gray-800 text-wrap-balance">{record.employeeName}</h4>
                 <span className="text-xs text-gray-500">#{record.employeeNumber}</span>
@@ -237,6 +266,25 @@ const TimeRecordsTable: React.FC<TimeRecordsTableProps> = ({
               
               <div className="text-xs text-gray-500 mb-2">
                 {format(new Date(record.date), 'EEE, MMM d, yyyy')}
+                
+                {/* Flag indicators */}
+                <div className="flex flex-wrap gap-1 mt-1">
+                  {record.hasSingleDatapoint && (
+                    <span className="px-1 py-0.5 text-xs bg-red-100 text-red-800 rounded">
+                      <AlertCircle className="inline-block w-3 h-3 mr-1" />Only 1 record
+                    </span>
+                  )}
+                  {record.hasThreeDatapointsNotNight && (
+                    <span className="px-1 py-0.5 text-xs bg-orange-100 text-orange-800 rounded">
+                      <AlertTriangle className="inline-block w-3 h-3 mr-1" />3 records (non-night)
+                    </span>
+                  )}
+                  {record.hasExcessiveHours && (
+                    <span className="px-1 py-0.5 text-xs bg-purple-100 text-purple-800 rounded">
+                      <Clock className="inline-block w-3 h-3 mr-1" />{record.exactHours.toFixed(1)}+ hours
+                    </span>
+                  )}
+                </div>
               </div>
               
               {record.isOffDay ? (
@@ -296,6 +344,11 @@ const TimeRecordsTable: React.FC<TimeRecordsTableProps> = ({
                             : 'Unknown'}
                       </span>
                     )}
+                    
+                    {/* Record count badge */}
+                    <span className="px-2 py-1 text-xs font-medium rounded-full bg-gray-100 text-gray-800">
+                      {record.recordCount} record{record.recordCount !== 1 ? 's' : ''}
+                    </span>
                   </div>
                   
                   {(record.checkIn?.notes || record.checkOut?.notes) && (
@@ -343,6 +396,9 @@ const TimeRecordsTable: React.FC<TimeRecordsTableProps> = ({
               </th>
               <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Notes
+              </th>
+              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Flags
               </th>
             </tr>
           </thead>
@@ -420,6 +476,31 @@ const TimeRecordsTable: React.FC<TimeRecordsTableProps> = ({
                   ) : (
                     <span className="text-gray-400">—</span>
                   )}
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm">
+                  <div className="space-y-1">
+                    {record.hasSingleDatapoint && (
+                      <span className="inline-flex items-center px-2 py-1 text-xs font-medium rounded bg-red-100 text-red-800">
+                        <AlertCircle className="w-3 h-3 mr-1" />
+                        Only 1 record
+                      </span>
+                    )}
+                    {record.hasThreeDatapointsNotNight && (
+                      <span className="inline-flex items-center px-2 py-1 text-xs font-medium rounded bg-orange-100 text-orange-800">
+                        <AlertTriangle className="w-3 h-3 mr-1" />
+                        3 records (non-night)
+                      </span>
+                    )}
+                    {record.hasExcessiveHours && (
+                      <span className="inline-flex items-center px-2 py-1 text-xs font-medium rounded bg-purple-100 text-purple-800">
+                        <Clock className="w-3 h-3 mr-1" />
+                        {record.exactHours.toFixed(1)}+ hours
+                      </span>
+                    )}
+                    {!record.hasSingleDatapoint && !record.hasThreeDatapointsNotNight && !record.hasExcessiveHours && (
+                      <span className="text-gray-400">—</span>
+                    )}
+                  </div>
                 </td>
               </tr>
             ))}

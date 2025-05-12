@@ -137,6 +137,10 @@ const resolveDuplicates = (records: TimeRecord[]): TimeRecord[] => {
         morningCheckOut.isCrossDay = true;
         morningCheckOut.fromPrevDay = true;
         morningCheckOut.prevDayDate = currentDate;
+
+        // FIXED: Add working_week_start to link night shift records across days
+        nightCheckIn.working_week_start = currentDate;
+        morningCheckOut.working_week_start = currentDate; // Use check-in date
       }
     }
   }
@@ -249,6 +253,18 @@ export const processExcelData = async (data: any[]): Promise<EmployeeRecord[]> =
     // Extract C/In or C/Out from Status field directly
     const recordStatus = status.toLowerCase().includes('in') ? 'check_in' : 'check_out';
     
+    // Determine shift type immediately to use for setting working_week_start correctly
+    const shiftType = determineShiftType(timestamp);
+
+    // FIXED: Set working_week_start based on the shift type and record status
+    let working_week_start = format(timestamp, 'yyyy-MM-dd');
+    
+    // For night shifts, make sure check-out records are linked to their check-in day
+    if (shiftType === 'night' && recordStatus === 'check_out' && getHours(timestamp) < 12) {
+      // For night shift check-outs in early morning, use previous day
+      working_week_start = format(subDays(timestamp, 1), 'yyyy-MM-dd');
+    }
+    
     // Add to our collection, preserving original order in file
     timeRecords.push({
       department,
@@ -258,8 +274,9 @@ export const processExcelData = async (data: any[]): Promise<EmployeeRecord[]> =
       status: recordStatus,
       originalIndex: i,
       processed: false,
-      shift_type: determineShiftType(timestamp),
-      originalStatus: recordStatus
+      shift_type: shiftType,
+      originalStatus: recordStatus,
+      working_week_start // FIXED: Include working_week_start in the record
     });
   }
   
@@ -361,6 +378,11 @@ export const processExcelData = async (data: any[]): Promise<EmployeeRecord[]> =
         const checkInDisplayTime = format(checkIn.timestamp, 'HH:mm');
         const checkOutDisplayTime = format(checkOut.timestamp, 'HH:mm');
         
+        // FIXED: Set working_week_start for both records to link them properly
+        const working_week_start = currentDate;
+        checkIn.working_week_start = working_week_start;
+        checkOut.working_week_start = working_week_start;
+        
         // Create daily record for the current date
         employeeData.dailyRecords.set(currentDate, {
           date: currentDate,
@@ -426,6 +448,9 @@ export const processExcelData = async (data: any[]): Promise<EmployeeRecord[]> =
           // Store original check-in time as display value
           const checkInDisplayTime = format(openCheckIn.timestamp, 'HH:mm');
           
+          // FIXED: Use openCheckIn's working_week_start if available
+          const working_week_start = openCheckIn.working_week_start || openCheckInDate;
+          
           employeeData.dailyRecords.set(openCheckInDate, {
             date: openCheckInDate,
             firstCheckIn: openCheckIn.timestamp,
@@ -443,7 +468,7 @@ export const processExcelData = async (data: any[]): Promise<EmployeeRecord[]> =
             correctedRecords: openCheckIn.mislabeled,
             allTimeRecords: openDateRecords,
             hasMultipleRecords: openDateRecords.length > 1,
-            working_week_start: openCheckInDate, // Set working_week_start for proper grouping
+            working_week_start: working_week_start, // Set working_week_start for proper grouping
             displayCheckIn: checkInDisplayTime, // Store actual timestamp for display
             displayCheckOut: 'Missing'
           });
@@ -460,6 +485,10 @@ export const processExcelData = async (data: any[]): Promise<EmployeeRecord[]> =
           const checkInDate = format(openCheckIn.timestamp, 'yyyy-MM-dd');
           const checkOutDate = format(record.timestamp, 'yyyy-MM-dd');
           const isCrossDay = checkInDate !== checkOutDate;
+          
+          // FIXED: Set working_week_start based on the check-in date
+          const working_week_start = openCheckIn.working_week_start || checkInDate;
+          record.working_week_start = working_week_start; // Ensure checkout has same working_week_start
           
           // Determine shift type
           const shiftType = isCrossDay && getHours(openCheckIn.timestamp) >= 20 ? 
@@ -500,7 +529,7 @@ export const processExcelData = async (data: any[]): Promise<EmployeeRecord[]> =
             hasMultipleRecords: allDayRecords.length > 2 || isCrossDay,
             isCrossDay,
             checkOutNextDay: isCrossDay,
-            working_week_start: checkInDate, // Set working_week_start for proper grouping
+            working_week_start: working_week_start, // Set working_week_start for proper grouping
             displayCheckIn: checkInDisplayTime, // Store actual timestamp for display
             displayCheckOut: checkOutDisplayTime // Store actual timestamp for display
           });
@@ -541,6 +570,10 @@ export const processExcelData = async (data: any[]): Promise<EmployeeRecord[]> =
             if (prevEveningCheckIn) {
               // We have a cross-day night shift - already processed above
               record.processed = true;
+              
+              // FIXED: Set working_week_start to previous day
+              record.working_week_start = prevDay;
+              
               continue;
             }
           }
@@ -566,7 +599,7 @@ export const processExcelData = async (data: any[]): Promise<EmployeeRecord[]> =
             correctedRecords: record.mislabeled,
             allTimeRecords: dateRecords,
             hasMultipleRecords: dateRecords.length > 1,
-            working_week_start: checkOutDate, // Set working_week_start for proper grouping
+            working_week_start: record.working_week_start || checkOutDate, // Use record's working_week_start or checkout date
             displayCheckIn: 'Missing', 
             displayCheckOut: checkOutDisplayTime // Store actual timestamp for display
           });
@@ -583,6 +616,9 @@ export const processExcelData = async (data: any[]): Promise<EmployeeRecord[]> =
       
       // Store original check-in time as display value
       const checkInDisplayTime = format(openCheckIn.timestamp, 'HH:mm');
+      
+      // FIXED: Use openCheckIn's working_week_start if available
+      const working_week_start = openCheckIn.working_week_start || checkInDate;
       
       employeeData.dailyRecords.set(checkInDate, {
         date: checkInDate,
@@ -601,7 +637,7 @@ export const processExcelData = async (data: any[]): Promise<EmployeeRecord[]> =
         correctedRecords: openCheckIn.mislabeled,
         allTimeRecords: dateRecords,
         hasMultipleRecords: dateRecords.length > 1,
-        working_week_start: checkInDate, // Set working_week_start for proper grouping
+        working_week_start: working_week_start, // Set working_week_start for proper grouping
         displayCheckIn: checkInDisplayTime, // Store actual timestamp for display
         displayCheckOut: 'Missing'
       });
@@ -645,6 +681,21 @@ export const processExcelData = async (data: any[]): Promise<EmployeeRecord[]> =
         const checkInDisplayTime = firstCheckIn ? format(firstCheckIn.timestamp, 'HH:mm') : 'Missing';
         const checkOutDisplayTime = lastCheckOut ? format(lastCheckOut.timestamp, 'HH:mm') : 'Missing';
         
+        // FIXED: Determine the working_week_start properly
+        let working_week_start = dateStr;
+        
+        // If this is a night shift checkout in early morning, link to previous day
+        if (shiftType === 'night' && lastCheckOut && !firstCheckIn && getHours(lastCheckOut.timestamp) < 12) {
+          // For night shift checkouts, set working_week_start to previous day
+          working_week_start = format(subDays(new Date(dateStr), 1), 'yyyy-MM-dd');
+        } else if (firstCheckIn && firstCheckIn.working_week_start) {
+          // Use check-in's working_week_start if available
+          working_week_start = firstCheckIn.working_week_start;
+        } else if (lastCheckOut && lastCheckOut.working_week_start) {
+          // Use check-out's working_week_start if available
+          working_week_start = lastCheckOut.working_week_start;
+        }
+        
         // Create daily record
         employeeData.dailyRecords.set(dateStr, {
           date: dateStr,
@@ -664,7 +715,7 @@ export const processExcelData = async (data: any[]): Promise<EmployeeRecord[]> =
           correctedRecords: unprocessedRecords.some(r => r.mislabeled),
           allTimeRecords: dateRecords,
           hasMultipleRecords: dateRecords.length > 1,
-          working_week_start: dateStr, // Set working_week_start for proper grouping
+          working_week_start: working_week_start, // Set working_week_start for proper grouping
           // Store actual timestamp values for display
           displayCheckIn: checkInDisplayTime,
           displayCheckOut: checkOutDisplayTime
