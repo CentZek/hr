@@ -37,13 +37,6 @@ const TimeRecordsTable: React.FC<TimeRecordsTableProps> = ({
 }) => {
   const [isMobile, setIsMobile] = useState(false);
 
-  // Helper function to determine if a timestamp should be handled as a possible night shift
-  const shouldHandleAsPossibleNightShift = (timestamp: Date): boolean => {
-    const hourUTC = new Date(timestamp).getUTCHours();
-    // Early morning hours (midnight to 8 AM) could be night shift check-outs
-    return hourUTC >= 0 && hourUTC < 8;
-  };
-
   // Check if we're on mobile
   useEffect(() => {
     const checkIfMobile = () => {
@@ -90,41 +83,14 @@ const TimeRecordsTable: React.FC<TimeRecordsTableProps> = ({
         return;
       }
       
-      // FIXED: Use working_week_start for consistent grouping
-      let dateKey = record.working_week_start || '';
+      // FIXED: ALWAYS use working_week_start for consistent grouping
+      const dateKey = record.working_week_start || '';
       
       // If working_week_start is not available, extract from timestamp
       if (!dateKey) {
         // Use the UTC date portion so nothing shifts under local timezones
         const utc = parseISO(record.timestamp);
         dateKey = utc.toISOString().slice(0,10);  // "YYYY-MM-DD"
-        
-        // For check-outs after midnight, use working_week_start if available
-        if (record.status === 'check_out' && record.shift_type === 'night') {
-          const hour = utc.getHours();
-          if (hour < 12) {
-            // This is likely a night shift check-out, associate with previous day
-            const prevDate = new Date(record.timestamp);
-            prevDate.setDate(prevDate.getDate() - 1);
-            const prevDateStr = prevDate.toISOString().slice(0,10);  // "YYYY-MM-DD"
-            
-            if (!groups[prevDateStr]) {
-              groups[prevDateStr] = {};
-            }
-            
-            const employeeId = record.employee_id;
-            
-            if (!groups[prevDateStr][employeeId]) {
-              groups[prevDateStr][employeeId] = [];
-            }
-            
-            groups[prevDateStr][employeeId].push({
-              ...record,
-              date: prevDateStr
-            });
-            return;
-          }
-        }
       }
 
       if (!groups[dateKey]) {
@@ -173,30 +139,47 @@ const TimeRecordsTable: React.FC<TimeRecordsTableProps> = ({
           return;
         }
         
-        // Sort check-in records by timestamp (earliest first)
-        const sortedCheckIns = records.filter(r => r.status === 'check_in').sort((a, b) => 
-          new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
-        );
+        // Group records by shift_type
+        const recordsByShiftType: Record<string, any[]> = {};
         
-        // Sort check-out records by timestamp (earliest first)
-        const sortedCheckOuts = records.filter(r => r.status === 'check_out').sort((a, b) => 
-          new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
-        );
-        
-        // Use earliest check-in and earliest check-out
-        const earliestCheckIn = sortedCheckIns.length > 0 ? sortedCheckIns[0] : null;
-        const earliestCheckOut = sortedCheckOuts.length > 0 ? sortedCheckOuts[0] : null;
-        
-        // Add both records
-        result.push({
-          date,
-          employeeId,
-          employeeName: (earliestCheckIn || earliestCheckOut)?.employees?.name || 'Unknown',
-          employeeNumber: (earliestCheckIn || earliestCheckOut)?.employees?.employee_number || 'Unknown',
-          checkIn: earliestCheckIn,
-          checkOut: earliestCheckOut,
-          shiftType: (earliestCheckIn || earliestCheckOut)?.shift_type || 'unknown'
+        records.forEach(record => {
+          const shiftType = record.shift_type || 'unknown';
+          if (!recordsByShiftType[shiftType]) {
+            recordsByShiftType[shiftType] = [];
+          }
+          recordsByShiftType[shiftType].push(record);
         });
+        
+        // Process each shift type separately
+        Object.entries(recordsByShiftType).forEach(([shiftType, shiftRecords]) => {
+          // Sort check-in records by timestamp (earliest first)
+          const sortedCheckIns = shiftRecords.filter(r => r.status === 'check_in').sort((a, b) => 
+            new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+          );
+          
+          // Sort check-out records by timestamp (latest first) - we want the latest checkout
+          const sortedCheckOuts = shiftRecords.filter(r => r.status === 'check_out').sort((a, b) => 
+            new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+          );
+          
+          // Use earliest check-in and latest check-out
+          const earliestCheckIn = sortedCheckIns.length > 0 ? sortedCheckIns[0] : null;
+          const latestCheckOut = sortedCheckOuts.length > 0 ? sortedCheckOuts[0] : null;
+          
+          // Only add a record if there's a check-in or checkout
+          if (earliestCheckIn || latestCheckOut) {
+            result.push({
+              date,
+              employeeId,
+              employeeName: (earliestCheckIn || latestCheckOut)?.employees?.name || 'Unknown',
+              employeeNumber: (earliestCheckIn || latestCheckOut)?.employees?.employee_number || 'Unknown',
+              checkIn: earliestCheckIn,
+              checkOut: latestCheckOut,
+              shiftType: shiftType
+            });
+          }
+        });
+        
         processedDates.add(date);
       });
     });
@@ -204,27 +187,12 @@ const TimeRecordsTable: React.FC<TimeRecordsTableProps> = ({
     return result;
   }, [groupedRecords]);
 
-  // Get time in 24-hour format
+  // Get time in 24-hour format using our helper function
   const getActualTime = (record: any) => {
     if (!record) return '—';
     
-    // Use our new helper function for consistent time display
+    // Use our helper function for consistent time display
     return formatRecordTime(record, record.status === 'check_in' ? 'check_in' : 'check_out');
-  };
-  
-  const formatTimeDisplay = (timestamp: string | null): string => {
-    if (!timestamp) return '—';
-    
-    try {
-      // Get the timestamp and ensure it's treated consistently
-      const date = parseISO(timestamp);
-      
-      // IMPORTANT: Format as local time, not UTC - this fixes the time differences
-      return format(date, 'HH:mm');
-    } catch (err) {
-      console.error("Error formatting time:", err);
-      return '—';
-    }
   };
   
   if (isLoading) {

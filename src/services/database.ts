@@ -376,7 +376,7 @@ export const saveRecordsToDatabase = async (employeeRecords: EmployeeRecord[]): 
           // Store original check-in time as display value
           const checkInDisplayTime = format(day.firstCheckIn, 'HH:mm');
 
-          // Format timestamp - this ensures consistent local timezone handling
+          // Use date-fns format directly with the Date object
           const checkInTimestamp = format(day.firstCheckIn, "yyyy-MM-dd'T'HH:mm:ss");
           
           // Check if check-in record already exists
@@ -419,7 +419,7 @@ export const saveRecordsToDatabase = async (employeeRecords: EmployeeRecord[]): 
           // Store original check-out time as display value
           const checkOutDisplayTime = format(day.lastCheckOut, 'HH:mm');
           
-          // Format timestamp - this ensures consistent local timezone handling
+          // Use date-fns format directly with the Date object
           const checkOutTimestamp = format(day.lastCheckOut, "yyyy-MM-dd'T'HH:mm:ss");
           
           // Check if check-out record already exists
@@ -446,7 +446,7 @@ export const saveRecordsToDatabase = async (employeeRecords: EmployeeRecord[]): 
             corrected_records: day.correctedRecords || false,
             mislabeled: false,
             is_manual_entry: false, // Mark as non-manual entry since it's from Excel
-            working_week_start: day.shiftType === 'night' && day.lastCheckOut.getHours() < 12 ? day.date : day.date
+            working_week_start: day.date
           };
 
           // Use the safe upsert function

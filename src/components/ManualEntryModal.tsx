@@ -134,24 +134,9 @@ const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
       // Use our helper function to properly handle day rollover
       const { checkIn, checkOut } = parseShiftTimes(shift.date, startTime, endTime, shift.shift_type);
       
-      // FIXED: Use local date-time strings instead of UTC timestamps
-      let checkInTimestamp, checkOutTimestamp;
-      
-      // For night shifts, handle the day boundary properly
-      if (shift.shift_type === 'night') {
-        // The check-in day
-        const checkInDateStr = format(checkIn, 'yyyy-MM-dd');
-        checkInTimestamp = `${checkInDateStr}T${startTime}:00`;
-        
-        // The check-out is next day for night shifts
-        const nextDay = addDays(new Date(shift.date), 1);
-        const checkOutDateStr = format(nextDay, 'yyyy-MM-dd');
-        checkOutTimestamp = `${checkOutDateStr}T${endTime}:00`;
-      } else {
-        // For normal shifts, both are on the same day
-        checkInTimestamp = `${shift.date}T${startTime}:00`;
-        checkOutTimestamp = `${shift.date}T${endTime}:00`;
-      }
+      // FIXED: Use format directly on the Date objects
+      const checkInTimestamp = format(checkIn, "yyyy-MM-dd'T'HH:mm:ss");
+      const checkOutTimestamp = format(checkOut, "yyyy-MM-dd'T'HH:mm:ss");
       
       // Prepare time records data
       const checkInData = {
@@ -287,7 +272,8 @@ const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
           end_time: times.end,
           shift_type: shiftType,
           status: 'pending',
-          notes: notes || 'Manual entry by HR'
+          notes: notes || 'Manual entry by HR',
+          working_week_start: selectedDate
         });
 
       // Parse dates properly with the helper function to handle day rollover
@@ -298,24 +284,9 @@ const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
         shiftType
       );
 
-      // FIXED: Use local date-time strings instead of UTC timestamps
-      let checkInTimestamp, checkOutTimestamp;
-      
-      // For night shifts, handle the day boundary properly
-      if (shiftType === 'night') {
-        // The check-in day
-        const checkInDateStr = format(checkIn, 'yyyy-MM-dd');
-        checkInTimestamp = `${checkInDateStr}T${times.start}:00`;
-        
-        // The check-out is next day for night shifts
-        const nextDay = addDays(new Date(selectedDate), 1);
-        const checkOutDateStr = format(nextDay, 'yyyy-MM-dd');
-        checkOutTimestamp = `${checkOutDateStr}T${times.end}:00`;
-      } else {
-        // For normal shifts, both are on the same day
-        checkInTimestamp = `${selectedDate}T${times.start}:00`;
-        checkOutTimestamp = `${selectedDate}T${times.end}:00`;
-      }
+      // FIXED: Use format directly on the Date objects
+      const checkInTimestamp = format(checkIn, "yyyy-MM-dd'T'HH:mm:ss");
+      const checkOutTimestamp = format(checkOut, "yyyy-MM-dd'T'HH:mm:ss");
 
       // Prepare time records for check-in and check-out
       const checkInData = {
