@@ -12,14 +12,14 @@ export const determineShiftType = (
   const minute = checkInTime.getMinutes();
   
   // CANTEEN SHIFT DETECTION - Must come first!
-  // FIXED: Correctly detect canteen shifts based on proper time ranges
-  // 7AM canteen shift: check-in between 6:20 and 7:20
-  if ((hour === 6 && minute >= 20) || (hour === 7 && minute <= 20)) {
+  // Changed: Check for canteen shift only between 6:00-7:00 and 6:00-8:00
+  // Check for 7 AM canteen shift (allow 6:00-7:00)
+  if ((hour === 6) || (hour === 7 && minute === 0)) {
     return 'canteen';
   }
   
-  // 8AM canteen shift: check-in between 7:20 and 8:40
-  if ((hour === 7 && minute > 20) || (hour === 8 && minute <= 40)) {
+  // Check for 8 AM canteen shift (allow 6:00-8:00)
+  if ((hour === 6 || hour === 7) || (hour === 8 && minute === 0)) {
     return 'canteen';
   }
   
@@ -68,14 +68,13 @@ export const isLateCheckIn = (checkIn: Date, shiftType: 'morning' | 'evening' | 
   
   // Specific handling for canteen shift - need to determine if 7AM or 8AM canteen staff
   if (shiftType === 'canteen') {
-    // FIXED: Correctly check lateness based on canteen shift start time
-    // For 7AM canteen shift
-    if ((hour === 6 && minute >= 20) || (hour === 7 && minute <= 20)) {
-      return hour === 7 && minute > LATE_THRESHOLDS.canteen;
+    // 7AM staff
+    if (hour === 7) {
+      return minute > LATE_THRESHOLDS.canteen;
     }
-    // For 8AM canteen shift
-    else if ((hour === 7 && minute > 20) || (hour === 8 && minute <= 40)) {
-      return hour === 8 && minute > LATE_THRESHOLDS.canteen;
+    // 8AM staff
+    else if (hour === 8) {
+      return minute > LATE_THRESHOLDS.canteen;
     }
     // If not at the exact starting hour, it's late if AFTER the expected start time
     return (hour > 7 && hour < 8) || (hour > 8); 
@@ -107,24 +106,21 @@ export const isEarlyLeave = (checkOut: Date, shiftType: 'morning' | 'evening' | 
   
   // Specific handling for canteen shifts
   if (shiftType === 'canteen') {
-    // FIXED: Correctly check early leave based on canteen shift end time
-    // Check which canteen shift based on hour
-    const is7AMShift = hour < 16 || (hour === 16 && minute < 30);
-    
-    if (is7AMShift) {
-      // 7AM canteen shift: ends at 16:00 (4 PM)
-      // Early leave is before 15:30 (3:30 PM)
-      if (hour < 15 || (hour === 15 && minute < 30)) {
-        return true;
-      }
-    } else {
-      // 8AM canteen shift: ends at 17:00 (5 PM)
-      // Early leave is before 16:30 (4:30 PM)
-      if (hour < 16 || (hour === 16 && minute < 30)) {
-        return true;
-      }
+    // Check if this is a 7AM canteen shift
+    if (hour < 15) {
+      // Before 3 PM is definitely early
+      return true;
+    }
+    // 7AM canteen staff: 3:30 PM is the allowed early leave time
+    else if (hour === 15) {
+      return minute < 30; // Before 3:30 PM is early
+    }
+    // For late canteen shift (8AM-5PM)
+    else if (hour === 16) {
+      return minute < 30; // Before 4:30 PM is early
     }
     
+    // After 4:30 PM is not early for 7AM staff, after 5:30 PM not early for 8AM staff
     return false;
   }
   
@@ -229,13 +225,9 @@ export const calculatePayableHours = (
     let earlyLeaveMinute = 0;
     
     if (shiftType === 'canteen') {
-      // FIXED: Properly determine early leave time based on canteen shift type
-      // Check if this is a 7AM shift (check-in between 6:20-7:20) or 8AM shift (check-in between 7:20-8:40)
+      // Check if this is a 7AM shift or 8AM shift
       const checkInHour = checkInTime.getHours();
-      const checkInMinute = checkInTime.getMinutes();
-      const is7AMShift = (checkInHour === 6 && checkInMinute >= 20) || (checkInHour === 7 && checkInMinute <= 20);
-      
-      if (is7AMShift) {
+      if (checkInHour <= 7) {
         // 7AM shift
         earlyLeaveHour = 15; // 3 PM
         earlyLeaveMinute = 30; // 3:30 PM
@@ -443,13 +435,8 @@ export const isExcessiveOvertime = (checkOut: Date, shiftType: 'morning' | 'even
   if (shiftType === 'canteen') {
     const hour = checkOut.getHours();
     
-    // FIXED: Properly determine excessive overtime based on canteen shift type
-    // For 7AM shift (6:20-7:20), excessive overtime is after 5 PM (17:00)
-    // For 8AM shift (7:20-8:40), excessive overtime is after 6 PM (18:00)
-    const checkInHour = checkOut.getHours(); // We don't have check-in time here, so estimate based on checkout
-    
-    // Using 17:00 (5 PM) as threshold for 7AM shift and 18:00 (6 PM) for 8AM shift
-    // Since we don't have check-in time, use a reasonable threshold for both
+    // If checkout is after 5:30 PM for 7AM shift, or after 6:30 PM for 8AM shift
+    // For simplicity, we'll consider after 6 PM as excessive for all canteen shifts
     if (hour >= 18) { // After 6 PM
       return true;
     }

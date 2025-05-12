@@ -63,9 +63,7 @@ const EmployeeList: React.FC<EmployeeListProps> = ({
     
     let name = shiftType.charAt(0).toUpperCase() + shiftType.slice(1);
     if (shiftType === 'canteen' && checkInHour !== undefined) {
-      // FIXED: Correctly determine canteen shift display based on actual check-in time
-      const is7AMShift = checkInHour === 6 || (checkInHour === 7 && checkInHour < 20);
-      name = is7AMShift ? 'Canteen (07:00-16:00)' : 'Canteen (08:00-17:00)';
+      name = checkInHour === 7 ? 'Canteen (07:00-16:00)' : 'Canteen (08:00-17:00)';
     }
     
     return { color: colors[shiftType] || 'bg-gray-100 text-gray-800', name };
@@ -138,7 +136,6 @@ const EmployeeList: React.FC<EmployeeListProps> = ({
 
   const renderMobileDay = (day: DailyRecord, dayIndex: number, empIndex: number, employee: EmployeeRecord) => {
     const checkInHour = day.firstCheckIn?.getHours();
-    const checkInMinute = day.firstCheckIn?.getMinutes();
     const shiftDisplay = getShiftTypeDisplay(day.shiftType, checkInHour);
     const isOffDay = day.notes === 'OFF-DAY';
     const isManualEntry = day.notes === 'Manual entry';
@@ -317,7 +314,6 @@ const EmployeeList: React.FC<EmployeeListProps> = ({
                     const isManualEntry = day.notes === 'Manual entry' || day.notes?.includes('Employee submitted');
                     const isOffDay = day.notes === 'OFF-DAY';
                     const checkInHour = day.firstCheckIn?.getHours();
-                    const checkInMinute = day.firstCheckIn?.getMinutes();
                     const shiftDisplay = getShiftTypeDisplay(isOffDay ? 'OFF-DAY' : day.shiftType, checkInHour);
                     const wasCorrected = day.correctedRecords || day.notes?.includes('Fixed mislabeled');
                     const isLateNightCheckIn = day.shiftType === 'night' && day.firstCheckIn && isLateNightShiftCheckIn(day.firstCheckIn, day.shiftType);
@@ -390,8 +386,7 @@ const EmployeeList: React.FC<EmployeeListProps> = ({
                               {checkInDisplay}
                               {day.shiftType === 'canteen' && 
                                 <span className="ml-1 text-xs bg-yellow-100 text-yellow-800 px-1 rounded">
-                                  {/* FIXED: Correctly determine canteen shift times based on check-in hour and minute */}
-                                  {(checkInHour === 6 && checkInMinute >= 20) || (checkInHour === 7 && checkInMinute <= 20) ? '07:00' : '08:00'}
+                                  {day.firstCheckIn.getHours() === 7 ? '07:00' : '08:00'}
                                 </span>}</> : 
                               (isOffDay ? 'OFF-DAY' : <span className="text-red-500">Missing</span>)}
                           </div>
