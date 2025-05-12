@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { format, parseISO, isValid, addDays } from 'date-fns';
+import { format, parseISO, isValid } from 'date-fns';
 import { Clock, AlertCircle, CheckCircle, XCircle, Info } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import toast from 'react-hot-toast';
@@ -81,20 +81,31 @@ const EmployeeShiftRequest: React.FC<EmployeeShiftRequestProps> = ({ onShiftAppr
         
       if (updateError) throw updateError;
       
+      // Parse shift times - get proper Date objects for check-in and check-out
+      const { checkIn, checkOut } = parseShiftTimes(
+        shift.date,
+        shift.shift_type === 'morning' ? '05:00' : shift.shift_type === 'evening' ? '13:00' : '21:00',
+        shift.shift_type === 'morning' ? '14:00' : shift.shift_type === 'evening' ? '22:00' : '06:00',
+        shift.shift_type
+      );
+      
+      // Format dates using date-fns to ensure consistent timezone handling
+      const checkInTimestamp = format(checkIn, "yyyy-MM-dd'T'HH:mm:ss");
+      const checkOutTimestamp = format(checkOut, "yyyy-MM-dd'T'HH:mm:ss");
+      
+      // Calculate hours worked for consistency
+      const hoursWorked = 9.0; // Standard hours for all shift types
+      const hoursNote = `hours:${hoursWorked.toFixed(2)}`;
+
       // Get standard display times for check-in and check-out based on shift type
       const displayTimes = DISPLAY_SHIFT_TIMES[shift.shift_type as keyof typeof DISPLAY_SHIFT_TIMES];
       const displayCheckIn = displayTimes?.startTime || shift.start_time;
       const displayCheckOut = displayTimes?.endTime || shift.end_time;
 
-      // Calculate hours worked for consistency
-      const hoursWorked = 9.0; // Standard hours for all shift types
-      const hoursNote = `hours:${hoursWorked.toFixed(2)}`;
-
-      // 1) Build a check-in record
+      // Prepare the check-in record
       const checkInRecord = {
         employee_id: shift.employee_id,
-        // morning/evening/night all use the shift.date for check-in
-        timestamp: `${shift.date}T${shift.start_time}:00`,
+        timestamp: checkInTimestamp,
         status: 'check_in',
         shift_type: shift.shift_type,
         notes: `Employee submitted shift - HR approved; ${hoursNote}`,
@@ -108,17 +119,10 @@ const EmployeeShiftRequest: React.FC<EmployeeShiftRequestProps> = ({ onShiftAppr
         working_week_start: shift.date // Set working_week_start for proper grouping
       };
 
-      // 2) Build a check-out record
-      // - morning & evening check-outs land on the same calendar day
-      // - only night check-outs roll into the next day
-      const checkOutDate =
-        shift.shift_type === 'night'
-          ? format(addDays(new Date(shift.date), 1), 'yyyy-MM-dd')
-          : shift.date;
-
+      // Prepare the check-out record
       const checkOutRecord = {
         employee_id: shift.employee_id,
-        timestamp: `${checkOutDate}T${shift.end_time}:00`,
+        timestamp: checkOutTimestamp,
         status: 'check_out',
         shift_type: shift.shift_type,
         notes: `Employee submitted shift - HR approved; ${hoursNote}`,
@@ -159,8 +163,8 @@ const EmployeeShiftRequest: React.FC<EmployeeShiftRequestProps> = ({ onShiftAppr
           date: shift.date,
           start_time: shift.start_time || displayCheckIn,
           end_time: shift.end_time || displayCheckOut,
-          checkInDate: new Date(`${shift.date}T${shift.start_time}`),
-          checkOutDate: new Date(`${checkOutDate}T${shift.end_time}`),
+          checkInDate: checkIn,
+          checkOutDate: checkOut,
           hoursWorked
         });
       }
