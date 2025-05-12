@@ -5,16 +5,6 @@ import { DISPLAY_SHIFT_TIMES } from '../../types';
 import { formatTime24H, formatRecordTime } from '../../utils/dateTimeHelper';
 import { getEveningShiftCheckoutDisplay } from '../../utils/shiftCalculations';
 
-interface reqPayload {
-  name: string;
-}
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization",
-};
-
 interface DailyBreakdownProps {
   isLoading: boolean;
   records: any[];
@@ -132,8 +122,10 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records, dou
             if (typeof window !== 'undefined' && window.innerWidth < 640) {
               return (
                 <div key={date} className="p-3 border-b border-gray-100 last:border-0">
-                  <div className="font-medium text-gray-800 mb-2 flex items-center justify-between">
-                    <div>{format(new Date(date), 'EEE, MMM d, yyyy')}</div>
+                  <div className="flex justify-between items-start mb-2">
+                    <div className="font-medium text-gray-800">
+                      {format(new Date(date), 'EEE, MMM d, yyyy')}
+                    </div>
                     {isDoubleTime && (
                       <span className="inline-flex items-center justify-center px-2 py-0.5 bg-amber-100 text-amber-800 rounded-full text-xs font-medium">
                         <span className="font-bold mr-1">2×</span> Double-Time

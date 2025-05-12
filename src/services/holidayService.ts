@@ -19,11 +19,11 @@ export const fetchHolidays = async (): Promise<Holiday[]> => {
 };
 
 // Add a new holiday
-export const addHoliday = async (date: string, description: string): Promise<Holiday> => {
+export const addHoliday = async (date: string): Promise<Holiday> => {
   try {
     const { data, error } = await supabase
       .from('holidays')
-      .insert([{ date, description }])
+      .insert([{ date }])
       .select()
       .single();
 
@@ -31,21 +31,6 @@ export const addHoliday = async (date: string, description: string): Promise<Hol
     return data;
   } catch (error) {
     console.error('Error adding holiday:', error);
-    throw error;
-  }
-};
-
-// Update an existing holiday
-export const updateHoliday = async (id: string, description: string): Promise<void> => {
-  try {
-    const { error } = await supabase
-      .from('holidays')
-      .update({ description })
-      .eq('id', id);
-
-    if (error) throw error;
-  } catch (error) {
-    console.error('Error updating holiday:', error);
     throw error;
   }
 };
