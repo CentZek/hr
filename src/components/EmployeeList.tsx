@@ -62,8 +62,9 @@ const EmployeeList: React.FC<EmployeeListProps> = ({
     };
     
     let name = shiftType.charAt(0).toUpperCase() + shiftType.slice(1);
-    if (shiftType === 'canteen' && checkInHour !== undefined) {
-      name = checkInHour === 7 ? 'Canteen (07:00-16:00)' : 'Canteen (08:00-17:00)';
+    if (shiftType === 'canteen') {
+      // Change from 'Canteen (07:00)' to just 'Canteen'
+      name = 'Canteen';
     }
     
     return { color: colors[shiftType] || 'bg-gray-100 text-gray-800', name };
@@ -174,7 +175,7 @@ const EmployeeList: React.FC<EmployeeListProps> = ({
       >
         <div className="flex justify-between items-start mb-2">
           <div>
-            <div className="text-gray-900 font-medium text-wrap-balance">
+            <div className="font-medium text-gray-800 text-wrap-balance">
               {format(new Date(day.date), 'MM/dd/yyyy')}
               {isManualEntry && <span className="ml-1 text-xs px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded-full">Manual</span>}
               {wasCorrected && <span className="ml-1 text-xs px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded-full" title="Original C/In or C/Out was corrected">Fixed</span>}
@@ -231,8 +232,7 @@ const EmployeeList: React.FC<EmployeeListProps> = ({
             <div className={`text-sm mt-1 ${day.missingCheckIn ? 'text-red-500' : (day.isLate || isLateNightCheckIn) ? 'text-amber-600' : 'text-gray-700'}`}>
               {day.firstCheckIn ? 
                 <>{(day.isLate || isLateNightCheckIn) && <AlertTriangle className="inline w-3 h-3 mr-1 text-amber-500" />}
-                {checkInDisplay}
-                {day.shiftType === 'canteen' && <span className="ml-1 text-xs bg-yellow-100 text-yellow-800 px-1 rounded">{day.firstCheckIn.getHours() === 7 ? '07:00' : '08:00'}</span>}</> : 
+                {checkInDisplay}</> : 
                 isOffDay ? 'OFF-DAY' : <span className="text-red-500">Missing</span>}
             </div>
           </div>
@@ -383,11 +383,7 @@ const EmployeeList: React.FC<EmployeeListProps> = ({
                           <div className={`flex items-center ${day.missingCheckIn ? 'text-red-500' : (day.isLate || isLateNightCheckIn) ? 'text-amber-600' : 'text-gray-700'}`}>
                             {day.firstCheckIn ? 
                               <>{(day.isLate || isLateNightCheckIn) && <AlertTriangle className="w-4 h-4 mr-1 text-amber-500" title="Late check-in" />}
-                              {checkInDisplay}
-                              {day.shiftType === 'canteen' && 
-                                <span className="ml-1 text-xs bg-yellow-100 text-yellow-800 px-1 rounded">
-                                  {day.firstCheckIn.getHours() === 7 ? '07:00' : '08:00'}
-                                </span>}</> : 
+                              {checkInDisplay}</> : 
                               (isOffDay ? 'OFF-DAY' : <span className="text-red-500">Missing</span>)}
                           </div>
                           <div className={`flex items-center ${day.missingCheckOut ? 'text-red-500' : day.earlyLeave ? 'text-amber-600' : day.excessiveOvertime ? 'text-blue-600' : 'text-gray-700'}`}>

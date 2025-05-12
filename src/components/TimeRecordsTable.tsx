@@ -335,10 +335,9 @@ const TimeRecordsTable: React.FC<TimeRecordsTableProps> = ({
                         record.shiftType === 'canteen' ? 'bg-yellow-100 text-yellow-800' :
                         'bg-gray-100 text-gray-800'
                       }`}>
+                        {/* Simplify canteen shift display to just "Canteen" */}
                         {record.shiftType === 'canteen' 
-                          ? (record.checkIn && new Date(record.checkIn.timestamp).getHours() === 7)
-                            ? 'Canteen (07:00-16:00)'
-                            : 'Canteen (08:00-17:00)'
+                          ? 'Canteen'
                           : record.shiftType && typeof record.shiftType === 'string'
                             ? record.shiftType.charAt(0).toUpperCase() + record.shiftType.slice(1)
                             : 'Unknown'}
@@ -459,10 +458,9 @@ const TimeRecordsTable: React.FC<TimeRecordsTableProps> = ({
                       record.shiftType === 'canteen' ? 'bg-yellow-100 text-yellow-800' :
                       'bg-gray-100 text-gray-800'
                     }`}>
+                      {/* Simplify canteen shift display to just "Canteen" */}
                       {record.shiftType === 'canteen' 
-                        ? (record.checkIn && new Date(record.checkIn.timestamp).getHours() === 7)
-                          ? 'Canteen (07:00-16:00)'
-                          : 'Canteen (08:00-17:00)'
+                        ? 'Canteen'
                         : record.shiftType && typeof record.shiftType === 'string'
                           ? record.shiftType.charAt(0).toUpperCase() + record.shiftType.slice(1)
                           : 'Unknown'}
