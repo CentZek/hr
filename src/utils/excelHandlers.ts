@@ -114,6 +114,60 @@ const normalizeDayShift = (records: TimeRecord[]): TimeRecord[] => {
   return records;
 };
 
+// Function to detect and fix cases with exactly 2 records where flipping would make a valid shift
+const detectFlippedTwoRecordDays = (records: TimeRecord[]): TimeRecord[] => {
+  // Only process if there are exactly 2 records
+  if (records.length !== 2) return records;
+  
+  // Sort by timestamp (chronological order)
+  records.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+  
+  const first = records[0];
+  const second = records[1];
+  
+  // Skip if the records are already in the expected order (check-in followed by check-out)
+  if (first.status === 'check_in' && second.status === 'check_out') {
+    return records;
+  }
+  
+  // If we have a reversed pattern (check-out followed by check-in) or both records have the same status
+  if ((first.status === 'check_out' && second.status === 'check_in') || first.status === second.status) {
+    // Check if these records would make a valid shift if flipped
+    const hours = differenceInMinutes(second.timestamp, first.timestamp) / 60;
+    
+    // Only flip if the time difference falls within a typical shift duration (7-11 hours)
+    if (hours >= 7 && hours <= 11) {
+      console.log(`Found flipped records that would form a ${hours.toFixed(2)}-hour shift`);
+      
+      // Mark the first record as check-in
+      first.status = 'check_in';
+      first.mislabeled = true;
+      first.originalStatus = first.originalStatus || 'check_out';
+      first.notes = 'Fixed mislabeled: Changed to check-in (valid shift pattern detected)';
+      
+      // Mark the second record as check-out
+      second.status = 'check_out';
+      second.mislabeled = true;
+      second.originalStatus = second.originalStatus || 'check_in';
+      second.notes = 'Fixed mislabeled: Changed to check-out (valid shift pattern detected)';
+      
+      // Determine the shift type based on the first timestamp
+      const shiftType = determineShiftType(first.timestamp);
+      first.shift_type = shiftType;
+      second.shift_type = shiftType;
+      
+      // If it's a night shift, set working_week_start
+      if (shiftType === 'night') {
+        const dateStr = format(first.timestamp, 'yyyy-MM-dd');
+        first.working_week_start = dateStr;
+        second.working_week_start = dateStr;
+      }
+    }
+  }
+  
+  return records;
+};
+
 // Enhanced function to detect and resolve mislabeled records
 const resolveDuplicates = (records: TimeRecord[]): TimeRecord[] => {
   if (records.length <= 1) return records;
@@ -210,6 +264,12 @@ const resolveDuplicates = (records: TimeRecord[]): TimeRecord[] => {
       // Fall back to timestamp if no original index
       return a.timestamp.getTime() - b.timestamp.getTime();
     });
+    
+    // First try to detect and fix flipped records in 2-record days
+    if (dayRecords.length === 2) {
+      dayRecords = detectFlippedTwoRecordDays(dayRecords);
+      recordsByDate.set(date, dayRecords);
+    }
     
     // Apply the normalizeDayShift function to handle morning/evening shifts deterministically
     dayRecords = normalizeDayShift(dayRecords);
