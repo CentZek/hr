@@ -4,7 +4,7 @@ import { Clock, AlertCircle, CheckCircle, XCircle, Info } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import toast from 'react-hot-toast';
 import { DISPLAY_SHIFT_TIMES } from '../types';
-import { formatTime24H } from '../utils/dateTimeHelper';
+import { parseShiftTimes } from '../utils/dateTimeHelper';
 import { fetchManualTimeRecords, checkExistingTimeRecord, safeUpsertTimeRecord } from '../services/database';
 
 interface EmployeeShiftRequestProps {
