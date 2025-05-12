@@ -404,7 +404,10 @@ const TimeRecordsTable: React.FC<TimeRecordsTableProps> = ({
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
             {processedRecords.map((record, index) => (
-              <tr key={index} className={`hover:bg-gray-50 ${record.isOffDay ? 'bg-gray-50' : ''}`}>
+              <tr key={index} className={`hover:bg-gray-50 ${record.isOffDay ? 'bg-gray-50' : ''}
+                ${record.hasSingleDatapoint ? 'border-l-4 border-l-red-500' : 
+                record.hasThreeDatapointsNotNight ? 'border-l-4 border-l-orange-500' : 
+                record.hasExcessiveHours ? 'border-l-4 border-l-purple-500' : ''}`}>
                 <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                   {format(new Date(record.date), 'EEE, MMM d, yyyy')}
                 </td>
