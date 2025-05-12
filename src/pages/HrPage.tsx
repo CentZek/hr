@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Upload, Clock, AlertCircle, CheckCircle, Download, RefreshCw, PlusCircle, Database, KeyRound, Home, Calendar, AlertTriangle } from 'lucide-react';
+import { Upload, Clock, AlertCircle, CheckCircle, Download, RefreshCw, PlusCircle, Database, KeyRound, Home, AlertTriangle } from 'lucide-react';
 import toast, { Toaster } from 'react-hot-toast';
 
 // Import types
@@ -15,7 +15,6 @@ import { addManualEntryToRecords, calculateStats, processRecordsAfterSave } from
 import { saveRecordsToDatabase, fetchManualTimeRecords, fetchPendingEmployeeShifts } from '../services/database';
 import { runAllMigrations, checkSupabaseConnection } from '../services/migrationService';
 import { supabase } from '../lib/supabase';
-import { fetchHolidays } from '../services/holidayService';
 
 // Import components
 import NavigationTabs from '../components/NavigationTabs';
@@ -25,8 +24,7 @@ import ManualEntryModal from '../components/ManualEntryModal';
 import UserCredentialsModal from '../components/UserCredentialsModal';
 import EmployeeShiftRequest from '../components/EmployeeShiftRequest';
 import TimeRecordsTable from '../components/TimeRecordsTable';
-import HolidayCalendar from '../components/HolidayCalendar';
-import ConfirmDialog from '../components/ConfirmDialog';
+import ApproveAllConfirmationDialog from '../components/ApproveAllConfirmationDialog';
 
 // Import context
 import { useAppContext } from '../context/AppContext';
@@ -50,15 +48,14 @@ function HrPage() {
   const [savingErrors, setSavingErrors] = useState<{employeeName: string, date: string, error: string}[]>([]);
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const [isMobile, setIsMobile] = useState(false);
-  const [showHolidayCalendar, setShowHolidayCalendar] = useState(false);
   
   // Modal states
   const [isManualEntryOpen, setIsManualEntryOpen] = useState(false);
   const [isUserCredentialsOpen, setIsUserCredentialsOpen] = useState(false);
   const [recentManualEntry, setRecentManualEntry] = useState<any>(null);
   
-  // Confirm dialog state for Approve All
-  const [showApproveAllConfirm, setShowApproveAllConfirm] = useState(false);
+  // Approve All confirmation dialog state
+  const [isApproveAllDialogOpen, setIsApproveAllDialogOpen] = useState(false);
   const [isApprovingAll, setIsApprovingAll] = useState(false);
 
   // Check if screen is mobile
@@ -306,15 +303,10 @@ function HrPage() {
     toast.success(`All records approved for ${employeeRecords[employeeIndex].name}`);
   };
 
-  // Function to show approve all confirmation dialog
-  const showApproveAllConfirmation = () => {
-    setShowApproveAllConfirm(true);
-  };
-  
   const handleApproveAll = () => {
     setIsApprovingAll(true);
     
-    // Approve all records
+    // Apply approval to all records
     setEmployeeRecords(prev => 
       prev.map(employee => ({
         ...employee,
@@ -325,12 +317,9 @@ function HrPage() {
       }))
     );
     
-    // Complete approval process
-    setTimeout(() => {
-      setIsApprovingAll(false);
-      setShowApproveAllConfirm(false);
-      toast.success('All records approved');
-    }, 500);
+    setIsApprovingAll(false);
+    setIsApproveAllDialogOpen(false);
+    toast.success('All records approved');
   };
 
   const handleReset = () => {
@@ -587,16 +576,6 @@ function HrPage() {
     }
   }, [recentManualEntry]);
 
-  // Handle holiday calendar toggle
-  const handleToggleHolidayCalendar = () => {
-    setShowHolidayCalendar(!showHolidayCalendar);
-  };
-
-  // Handle holiday update
-  const handleHolidaysUpdated = () => {
-    toast.success('Holiday settings updated successfully');
-  };
-
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Navigation tabs */}
@@ -630,20 +609,6 @@ function HrPage() {
                   <KeyRound className="w-4 h-4 mr-1" />
                   <span className="hidden sm:inline">Manage User Credentials</span>
                   <span className="sm:hidden">Users</span>
-                </button>
-                <button
-                  onClick={handleToggleHolidayCalendar}
-                  className={`font-medium flex items-center ${
-                    showHolidayCalendar 
-                      ? 'text-amber-600 hover:text-amber-800' 
-                      : 'text-amber-500 hover:text-amber-700'
-                  }`}
-                >
-                  <Calendar className="w-4 h-4 mr-1" />
-                  <span className="hidden sm:inline">
-                    {showHolidayCalendar ? 'Hide Holiday Calendar' : 'Double-Time Calendar'}
-                  </span>
-                  <span className="sm:hidden">Calendar</span>
                 </button>
                 <button
                   onClick={handleRunMigrations}
@@ -690,13 +655,6 @@ function HrPage() {
                 </div>
               </div>
             )}
-            
-            {/* Holiday Calendar (when shown) */}
-            {showHolidayCalendar && (
-              <div className="mb-4">
-                <HolidayCalendar onHolidaysUpdated={handleHolidaysUpdated} />
-              </div>
-            )}
 
             {/* Info box */}
             <div className="bg-pink-50 border border-pink-100 rounded-md p-4 flex items-start">
@@ -709,10 +667,6 @@ function HrPage() {
                   <li><strong>Night shift:</strong> 09:00 PM - 06:00 AM (allowed check-out from 05:30 AM)</li>
                 </ul>
                 <p className="mt-2"><strong>Note:</strong> Check-ins between 4:30 AM and 5:00 AM are considered part of the morning shift.</p>
-                <p className="mt-2 text-amber-700 font-medium flex items-center">
-                  <Calendar className="w-4 h-4 mr-1" />
-                  All <span className="mx-1 font-bold">Fridays</span> and <span className="mx-1 font-bold">holidays</span> are double-time days. Use the Calendar button to manage holidays.
-                </p>
               </div>
             </div>
 
@@ -856,7 +810,7 @@ function HrPage() {
                       </button>
                       
                       <button
-                        onClick={showApproveAllConfirmation}
+                        onClick={() => setIsApproveAllDialogOpen(true)}
                         className="flex-1 inline-flex items-center justify-center px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white text-sm rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
                       >
                         <CheckCircle className="w-4 h-4 mr-1" />
@@ -906,7 +860,7 @@ function HrPage() {
                     </button>
                     
                     <button
-                      onClick={showApproveAllConfirmation}
+                      onClick={() => setIsApproveAllDialogOpen(true)}
                       className="hidden sm:inline-flex items-center px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white text-sm rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
                     >
                       <CheckCircle className="w-4 h-4 mr-1" />
@@ -952,18 +906,12 @@ function HrPage() {
       />
       
       {/* Approve All Confirmation Dialog */}
-      <ConfirmDialog
-        isOpen={showApproveAllConfirm}
-        onClose={() => setShowApproveAllConfirm(false)}
+      <ApproveAllConfirmationDialog
+        isOpen={isApproveAllDialogOpen}
+        onClose={() => setIsApproveAllDialogOpen(false)}
         onConfirm={handleApproveAll}
-        title="Approve All Records"
-        message="Are you sure you want to approve ALL records for ALL employees? This action will mark every record as approved and ready for saving to the database."
+        totalRecords={totalDays}
         isProcessing={isApprovingAll}
-        confirmButtonText="Yes, Approve All"
-        cancelButtonText="Cancel"
-        type="warning"
-        confirmButtonColor="bg-green-600 hover:bg-green-700"
-        icon={<CheckCircle className="w-5 h-5 mr-2" />}
       />
       
       <Toaster position="top-right" />
