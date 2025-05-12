@@ -229,7 +229,7 @@ export const calculatePayableHours = (
     let earlyLeaveMinute = 0;
     
     if (shiftType === 'canteen') {
-      // Check which canteen shift based on hour
+      // Check if this is a 7AM shift or 8AM shift
       const checkInHour = checkInTime.getHours();
       const checkInMinute = checkInTime.getMinutes();
       const is7AMShift = (checkInHour === 6 && checkInMinute >= 20) || (checkInHour === 7 && checkInMinute <= 20);

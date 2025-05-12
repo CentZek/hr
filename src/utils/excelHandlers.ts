@@ -241,7 +241,7 @@ export const processExcelData = async (data: any[]): Promise<EmployeeRecord[]> =
     const dateTimeStr = row['Date/Time'];
     const employeeName = row['Name'];
     const employeeNumber = row['No.'].toString();
-    const rawStatus = row['Status'] as string;
+    const status = row['Status'];
     const department = row['Department'] || '';
     
     // Parse the date/time
@@ -255,20 +255,8 @@ export const processExcelData = async (data: any[]): Promise<EmployeeRecord[]> =
       continue; // Skip this row but continue processing
     }
     
-    // FIXED: Extract C/In or C/Out from Status field correctly
-    // Split the status to handle cases like "C/Out (Corrected)"
-    const [prefix] = rawStatus.split(' ');
-    let recordStatus: 'check_in' | 'check_out';
-    
-    if (/^C\/In$/i.test(prefix)) {
-      recordStatus = 'check_in';
-    } else if (/^C\/Out$/i.test(prefix)) {
-      recordStatus = 'check_out';
-    } else {
-      // Fallback if we see something unexpected
-      console.warn(`Unrecognized status "${rawStatus}" in row ${i+1}, defaulting to check_in`);
-      recordStatus = 'check_in';
-    }
+    // Extract C/In or C/Out from Status field directly
+    const recordStatus = status.toLowerCase().includes('in') ? 'check_in' : 'check_out';
     
     // Determine shift type immediately to use for setting working_week_start correctly
     const shiftType = determineShiftType(timestamp);
@@ -684,14 +672,18 @@ export const processExcelData = async (data: any[]): Promise<EmployeeRecord[]> =
         
         // Process each shift type separately
         Object.entries(recordsByShiftType).forEach(([shiftType, shiftRecords]) => {
+          // Group by status
+          const checkIns = shiftRecords.filter(r => r.status === 'check_in');
+          const checkOuts = shiftRecords.filter(r => r.status === 'check_out');
+          
           // FIXED: Sort check-ins by timestamp (earliest first)
-          const sortedCheckIns = shiftRecords.filter(r => r.status === 'check_in').sort((a, b) => 
+          const sortedCheckIns = checkIns.sort((a, b) => 
             a.timestamp.getTime() - b.timestamp.getTime()
           );
           
           // FIXED: Sort check-outs by timestamp (latest first)
           // We want the latest checkout for the shift (e.g. 16:57 not 07:01)
-          const sortedCheckOuts = shiftRecords.filter(r => r.status === 'check_out').sort((a, b) => 
+          const sortedCheckOuts = checkOuts.sort((a, b) => 
             b.timestamp.getTime() - a.timestamp.getTime()
           );
           
