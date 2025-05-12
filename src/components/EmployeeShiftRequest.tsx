@@ -185,7 +185,7 @@ const EmployeeShiftRequest: React.FC<EmployeeShiftRequestProps> = ({ onShiftAppr
           },
           {
             employee_id: shift.employee_id,
-            timestamp: checkOutTimestamp,
+            timestamp: checkOutTimestamp, // FIXED: Now using checkOutTimestamp instead of checkInTimestamp
             status: 'check_out',
             shift_type: shift.shift_type,
             notes: `Employee submitted shift - HR approved; ${hoursNote}`,
