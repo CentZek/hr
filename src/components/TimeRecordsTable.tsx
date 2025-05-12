@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { format, parseISO, subDays } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import { Clock, AlertTriangle, CheckCircle } from 'lucide-react';
 import { DISPLAY_SHIFT_TIMES } from '../types';
 import { formatTime24H, formatRecordTime } from '../utils/dateTimeHelper';
@@ -90,17 +90,7 @@ const TimeRecordsTable: React.FC<TimeRecordsTableProps> = ({
       if (!dateKey) {
         // Use the UTC date portion so nothing shifts under local timezones
         const utc = parseISO(record.timestamp);
-        
-        // Push any early-morning night-shift checkout into the prior day
-        if (
-          record.status === 'check_out' &&
-          record.shift_type === 'night' &&
-          utc.getHours() < 6           // anything before 6 AM
-        ) {
-          dateKey = format(subDays(utc, 1), 'yyyy-MM-dd');
-        } else {
-          dateKey = utc.toISOString().slice(0,10);  // "YYYY-MM-DD"
-        }
+        dateKey = utc.toISOString().slice(0,10);  // "YYYY-MM-DD"
       }
 
       if (!groups[dateKey]) {
