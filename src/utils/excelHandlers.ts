@@ -168,6 +168,97 @@ const detectFlippedTwoRecordDays = (records: TimeRecord[]): TimeRecord[] => {
   return records;
 };
 
+// Function to detect and handle multiple shifts in a single day
+const detectMultipleShifts = (records: TimeRecord[]): TimeRecord[] => {
+  // Only process days with at least 3 records
+  if (records.length < 3) return records;
+  
+  // Sort records by timestamp
+  records.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+  
+  // Look for patterns that suggest multiple shifts
+  // A typical pattern would be: C/In -> C/Out -> C/In -> C/Out
+  
+  // First, check for shift transitions (time gaps between records)
+  const SHIFT_TRANSITION_HOURS = 1.5; // Minimum hours between shifts
+  let possibleShiftBreakpoints: number[] = [];
+  
+  for (let i = 1; i < records.length; i++) {
+    const hourDiff = differenceInMinutes(records[i].timestamp, records[i-1].timestamp) / 60;
+    
+    // If there's a significant gap between records, it might be a shift transition
+    if (hourDiff >= SHIFT_TRANSITION_HOURS) {
+      possibleShiftBreakpoints.push(i);
+    }
+  }
+  
+  // If we found potential shift transitions, analyze the records around them
+  if (possibleShiftBreakpoints.length > 0) {
+    // Preserve existing shift types
+    const shiftTypes: (string | null)[] = [];
+    
+    for (let i = 0; i < records.length; i++) {
+      shiftTypes[i] = records[i].shift_type;
+    }
+    
+    // Now analyze each segment as a separate shift
+    let currentSegmentStart = 0;
+    
+    for (let i = 0; i <= possibleShiftBreakpoints.length; i++) {
+      const segmentEnd = i < possibleShiftBreakpoints.length 
+                       ? possibleShiftBreakpoints[i] 
+                       : records.length;
+      
+      const segment = records.slice(currentSegmentStart, segmentEnd);
+      
+      if (segment.length >= 1) {
+        // For each segment, ensure the first record is a check-in and the last is a check-out
+        if (segment.length === 1) {
+          // If only one record in the segment, determine based on time of day
+          const hour = segment[0].timestamp.getHours();
+          
+          // Morning hours (5-12) are more likely check-ins, afternoon/evening (12-22) more likely check-outs
+          if (hour >= 5 && hour < 12) {
+            segment[0].status = 'check_in';
+          } else if (hour >= 12 && hour <= 22) {
+            segment[0].status = 'check_out';
+          }
+          // Otherwise, leave as is
+        } else if (segment.length >= 2) {
+          // Ensure first record in segment is check-in and last is check-out
+          if (segment[0].status !== 'check_in') {
+            segment[0].status = 'check_in';
+            segment[0].mislabeled = true;
+            segment[0].originalStatus = segment[0].originalStatus || 'check_out';
+            segment[0].notes = 'Fixed mislabeled: Changed to check-in (multiple shift pattern detected)';
+          }
+          
+          if (segment[segment.length - 1].status !== 'check_out') {
+            segment[segment.length - 1].status = 'check_out';
+            segment[segment.length - 1].mislabeled = true;
+            segment[segment.length - 1].originalStatus = segment[segment.length - 1].originalStatus || 'check_in';
+            segment[segment.length - 1].notes = 'Fixed mislabeled: Changed to check-out (multiple shift pattern detected)';
+          }
+          
+          // Determine shift type based on start time if not already set
+          const segmentShiftType = shiftTypes[currentSegmentStart] || determineShiftType(segment[0].timestamp);
+          
+          // Apply shift type to all records in this segment
+          for (const record of segment) {
+            if (!record.shift_type) {
+              record.shift_type = segmentShiftType;
+            }
+          }
+        }
+      }
+      
+      currentSegmentStart = segmentEnd;
+    }
+  }
+  
+  return records;
+};
+
 // Enhanced function to detect and resolve mislabeled records
 const resolveDuplicates = (records: TimeRecord[]): TimeRecord[] => {
   if (records.length <= 1) return records;
@@ -268,6 +359,12 @@ const resolveDuplicates = (records: TimeRecord[]): TimeRecord[] => {
     // First try to detect and fix flipped records in 2-record days
     if (dayRecords.length === 2) {
       dayRecords = detectFlippedTwoRecordDays(dayRecords);
+      recordsByDate.set(date, dayRecords);
+    }
+    
+    // For days with 3+ records, try to detect multiple shifts pattern
+    if (dayRecords.length >= 3) {
+      dayRecords = detectMultipleShifts(dayRecords);
       recordsByDate.set(date, dayRecords);
     }
     
