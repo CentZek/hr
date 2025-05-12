@@ -154,17 +154,23 @@ const EmployeeList: React.FC<EmployeeListProps> = ({
       checkOutDisplay = getStandardDisplayTime(day.shiftType, 'end');
     }
 
+    // Flag indicators for mobile view
+    const hasSinglePoint = day.missingCheckIn || day.missingCheckOut;
+    const hasThreeDatapoints = day.allTimeRecords && day.allTimeRecords.length === 3 && day.shiftType !== 'night';
+    const hasExcessiveHours = day.hoursWorked > 12;
+
     return (
-      <div key={day.date} className={`mobile-card ${day.approved ? 'bg-green-50' : ''} 
+      <div key={day.date} className={`mobile-card 
+        ${day.approved ? 'bg-green-50' : ''} 
         ${isManualEntry ? 'bg-blue-50' : ''}
         ${isManualEntry && day.approved ? 'bg-teal-50' : ''}
         ${wasCorrected ? 'bg-yellow-50' : ''}
         ${isOffDay ? 'bg-gray-50' : ''}
         ${day.isCrossDay ? 'border-l-4 border-purple-300' : ''}
         ${day.missingCheckIn || day.missingCheckOut ? 'border-l-4 border-red-300' : ''}
-        ${day.isLate || isLateNightCheckIn ? 'border-l-4 border-amber-300' : ''}
-        ${day.earlyLeave ? 'border-l-4 border-amber-300' : ''}
-        ${day.excessiveOvertime ? 'border-l-4 border-blue-300' : ''}`}
+        ${(day.isLate || isLateNightCheckIn) && !day.missingCheckIn ? 'border-l-4 border-amber-300' : ''}
+        ${day.earlyLeave && !day.missingCheckOut ? 'border-l-4 border-amber-300' : ''}
+        ${day.excessiveOvertime && !day.earlyLeave && !day.missingCheckOut ? 'border-l-4 border-blue-300' : ''}`}
       >
         <div className="flex justify-between items-start mb-2">
           <div>
@@ -173,7 +179,6 @@ const EmployeeList: React.FC<EmployeeListProps> = ({
               {isManualEntry && <span className="ml-1 text-xs px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded-full">Manual</span>}
               {wasCorrected && <span className="ml-1 text-xs px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded-full" title="Original C/In or C/Out was corrected">Fixed</span>}
               {isOffDay && <span className="ml-1 text-xs px-1.5 py-0.5 bg-gray-100 text-gray-700 rounded-full">OFF-DAY</span>}
-              {/* Cross-Day label removed */}
             </div>
             <div className="mt-1 mb-2">
               <span className={`px-2 py-1 text-xs font-medium rounded-full ${shiftDisplay.color}`}>{shiftDisplay.name}</span>
@@ -195,6 +200,30 @@ const EmployeeList: React.FC<EmployeeListProps> = ({
             </button>
           </div>
         </div>
+        
+        {/* Flag indicators for mobile */}
+        {(hasSinglePoint || hasThreeDatapoints || hasExcessiveHours) && (
+          <div className="flex flex-wrap gap-1 mb-2">
+            {hasSinglePoint && (
+              <span className="px-2 py-0.5 text-xs bg-red-100 text-red-800 rounded-full flex items-center">
+                <AlertTriangle className="w-3 h-3 mr-1" />
+                {day.missingCheckIn ? (day.missingCheckOut ? 'Missing both' : 'Missing check-in') : 'Missing check-out'}
+              </span>
+            )}
+            {hasThreeDatapoints && (
+              <span className="px-2 py-0.5 text-xs bg-orange-100 text-orange-800 rounded-full flex items-center">
+                <AlertTriangle className="w-3 h-3 mr-1" />
+                3 records (non-night)
+              </span>
+            )}
+            {hasExcessiveHours && (
+              <span className="px-2 py-0.5 text-xs bg-blue-100 text-blue-800 rounded-full flex items-center">
+                <Clock className="w-3 h-3 mr-1" />
+                {day.hoursWorked.toFixed(1)}+ hours
+              </span>
+            )}
+          </div>
+        )}
         
         <div className="grid grid-cols-2 gap-2 mb-1">
           <div>
@@ -300,6 +329,11 @@ const EmployeeList: React.FC<EmployeeListProps> = ({
                       checkInDisplay = getStandardDisplayTime(day.shiftType, 'start');
                       checkOutDisplay = getStandardDisplayTime(day.shiftType, 'end');
                     }
+
+                    // Flag indicators for desktop view
+                    const hasSinglePoint = day.missingCheckIn || day.missingCheckOut;
+                    const hasThreeDatapoints = day.allTimeRecords && day.allTimeRecords.length === 3 && day.shiftType !== 'night';
+                    const hasExcessiveHours = day.hoursWorked > 12;
                     
                     if (typeof window !== 'undefined' && window.innerWidth < 640) {
                       return renderMobileDay(day, dayIndex, empIndex, employee);
@@ -324,7 +358,27 @@ const EmployeeList: React.FC<EmployeeListProps> = ({
                             {isManualEntry && <span className="ml-1 text-xs px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded-full">Manual</span>}
                             {wasCorrected && <span className="ml-1 text-xs px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded-full" title="Original C/In or C/Out was corrected">Fixed</span>}
                             {isOffDay && <span className="ml-1 text-xs px-1.5 py-0.5 bg-gray-100 text-gray-700 rounded-full">OFF-DAY</span>}
-                            {/* Cross-Day label removed */}
+                            
+                            {/* Flag indicators as badges */}
+                            {hasSinglePoint && (
+                              <span className="ml-1 text-xs px-1.5 py-0.5 bg-red-100 text-red-700 rounded-full flex items-center inline-flex">
+                                <AlertTriangle className="w-3 h-3 mr-1" />
+                                {day.missingCheckIn && day.missingCheckOut ? 'Both missing' : 
+                                 day.missingCheckIn ? 'Missing C/In' : 'Missing C/Out'}
+                              </span>
+                            )}
+                            {hasThreeDatapoints && !hasSinglePoint && (
+                              <span className="ml-1 text-xs px-1.5 py-0.5 bg-orange-100 text-orange-700 rounded-full flex items-center inline-flex">
+                                <AlertTriangle className="w-3 h-3 mr-1" />
+                                3 records
+                              </span>
+                            )}
+                            {hasExcessiveHours && !hasSinglePoint && !hasThreeDatapoints && (
+                              <span className="ml-1 text-xs px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded-full flex items-center inline-flex">
+                                <Clock className="w-3 h-3 mr-1" />
+                                {day.hoursWorked.toFixed(1)}h
+                              </span>
+                            )}
                           </div>
                           <div className={`flex items-center ${day.missingCheckIn ? 'text-red-500' : (day.isLate || isLateNightCheckIn) ? 'text-amber-600' : 'text-gray-700'}`}>
                             {day.firstCheckIn ? 
