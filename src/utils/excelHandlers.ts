@@ -66,6 +66,54 @@ const guessShiftWindow = (timestamp: Date): 'morning' | 'evening' | 'night' | 'c
   return 'morning';
 };
 
+// Function to normalize day shifts (morning/evening) by selecting earliest check-in and latest check-out
+const normalizeDayShift = (records: TimeRecord[]): TimeRecord[] => {
+  // Only apply for pure morning/evening days:
+  const types = new Set(records.map(r => r.shift_type));
+  if (![...types].every(t => t === 'morning' || t === 'evening')) {
+    return records;
+  }
+
+  // Define threshold for "close enough" duplicate records
+  const DAY_SHIFT_THRESHOLD_MINUTES = 60;  // 1 hour grace
+
+  // Separate ins & outs
+  const ins = records.filter(r => r.status === 'check_in').sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+  const outs = records.filter(r => r.status === 'check_out').sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+
+  if (!ins.length || !outs.length) return records;
+
+  const earliestIn = ins[0];
+  let latestOut = outs[0];
+
+  // If there are multiple outs very close together, pick the very latest
+  if (outs.length > 1 && differenceInMinutes(outs[0].timestamp, outs[1].timestamp) <= DAY_SHIFT_THRESHOLD_MINUTES) {
+    latestOut = outs[0];
+  }
+
+  // Same for ins: if two ins are within the threshold, keep the earliest
+  if (ins.length > 1 && differenceInMinutes(ins[1].timestamp, ins[0].timestamp) <= DAY_SHIFT_THRESHOLD_MINUTES) {
+    // earliestIn is already ins[0]
+  }
+
+  // Relabel everything else
+  for (const r of records) {
+    if (r === earliestIn) {
+      r.status = 'check_in';
+    } else if (r === latestOut) {
+      r.status = 'check_out';
+    } else {
+      // anything else that survives is likely a spam duplicate
+      r.mislabeled = true;
+      r.originalStatus = r.status;
+      r.status = r.status === 'check_in' ? 'check_out' : 'check_in';
+      r.notes = `Fixed duplicate: forced to ${r.status}`;
+    }
+  }
+
+  return records;
+};
+
 // Enhanced function to detect and resolve mislabeled records
 const resolveDuplicates = (records: TimeRecord[]): TimeRecord[] => {
   if (records.length <= 1) return records;
@@ -162,6 +210,9 @@ const resolveDuplicates = (records: TimeRecord[]): TimeRecord[] => {
       // Fall back to timestamp if no original index
       return a.timestamp.getTime() - b.timestamp.getTime();
     });
+    
+    // Apply the normalizeDayShift function to handle morning/evening shifts deterministically
+    dayRecords = normalizeDayShift(dayRecords);
     
     // Handle consecutive same-status records
     for (let i = 0; i < dayRecords.length - 1; i++) {
