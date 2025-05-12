@@ -124,17 +124,13 @@ const EmployeeShiftRequest: React.FC<EmployeeShiftRequestProps> = ({ onShiftAppr
       
       console.log('Processing shift with:', { dateStr, startTime, endTime, shiftType: shift.shift_type });
       
-      // parseShiftTimes() already returns two Date objects, correctly rolling over past midnight
+      // Parse times and get proper date objects
       const { checkIn, checkOut } = parseShiftTimes(
         dateStr,
         startTime,
         endTime,
         shift.shift_type
       );
-
-      // now turn them straight into ISO strings (no more manual +1-day hacks)
-      const checkInTimestamp = checkIn.toISOString();
-      const checkOutTimestamp = checkOut.toISOString();
       
       // Calculate hours worked for consistency
       const hoursWorked = 9.0; // Standard hours for all shift types
@@ -145,41 +141,23 @@ const EmployeeShiftRequest: React.FC<EmployeeShiftRequestProps> = ({ onShiftAppr
       const displayCheckIn = displayTimes?.startTime || startTime;
       const displayCheckOut = displayTimes?.endTime || endTime;
 
-      // Create time records
-      const records = [
-        {
-          employee_id: shift.employee_id,
-          timestamp: checkInTimestamp,
-          status: 'check_in',
-          shift_type: shift.shift_type,
-          notes: `Employee submitted shift - HR approved; ${hoursNote}`,
-          is_manual_entry: true,
-          exact_hours: hoursWorked,
-          is_late: false,
-          early_leave: false,
-          deduction_minutes: 0,
-          display_check_in: displayCheckIn,
-          display_check_out: displayCheckOut,
-          working_week_start: dateStr // Add working_week_start for proper grouping
-        },
-        {
-          employee_id: shift.employee_id,
-          timestamp: checkOutTimestamp,
-          status: 'check_out',
-          shift_type: shift.shift_type,
-          notes: `Employee submitted shift - HR approved; ${hoursNote}`,
-          is_manual_entry: true,
-          exact_hours: hoursWorked,
-          is_late: false,
-          early_leave: false,
-          deduction_minutes: 0,
-          display_check_in: displayCheckIn,
-          display_check_out: displayCheckOut,
-          working_week_start: dateStr // Same working_week_start for both records
-        }
-      ];
+      // Create formatted local timestamps (NOT ISO strings with Z)
+      // Use the standard pattern that matches ManualEntryModal
+      const checkInDateStr = format(checkIn, 'yyyy-MM-dd');
+      const checkInTimestamp = `${checkInDateStr}T${startTime}:00`;
       
-      // Check if records already exist
+      // For night shifts, use next day date for checkout
+      let checkOutDateStr;
+      if (shift.shift_type === 'night') {
+        const nextDay = new Date(checkIn);
+        nextDay.setDate(nextDay.getDate() + 1);
+        checkOutDateStr = format(nextDay, 'yyyy-MM-dd');
+      } else {
+        checkOutDateStr = format(checkOut, 'yyyy-MM-dd');
+      }
+      const checkOutTimestamp = `${checkOutDateStr}T${endTime}:00`;
+
+      // Check if records already exist with the proper status
       const checkInExists = await checkExistingTimeRecord(
         shift.employee_id,
         shift.shift_type,
@@ -193,19 +171,52 @@ const EmployeeShiftRequest: React.FC<EmployeeShiftRequestProps> = ({ onShiftAppr
         'check_out',
         dateStr
       );
-      
+
+      // Prepare the check-in record
+      const checkInRecord = {
+        employee_id: shift.employee_id,
+        timestamp: checkInTimestamp,
+        status: 'check_in',
+        shift_type: shift.shift_type,
+        notes: `Employee submitted shift - HR approved; ${hoursNote}`,
+        is_manual_entry: true,
+        exact_hours: hoursWorked,
+        is_late: false,
+        early_leave: false,
+        deduction_minutes: 0,
+        display_check_in: displayCheckIn,
+        display_check_out: displayCheckOut,
+        working_week_start: dateStr // Set working_week_start for proper grouping
+      };
+
+      // Prepare the check-out record
+      const checkOutRecord = {
+        employee_id: shift.employee_id,
+        timestamp: checkOutTimestamp,
+        status: 'check_out',
+        shift_type: shift.shift_type,
+        notes: `Employee submitted shift - HR approved; ${hoursNote}`,
+        is_manual_entry: true,
+        exact_hours: hoursWorked,
+        is_late: false,
+        early_leave: false,
+        deduction_minutes: 0,
+        display_check_in: displayCheckIn,
+        display_check_out: displayCheckOut,
+        working_week_start: dateStr // Same working_week_start for both records
+      };
+
       // Use safe upsert for each record
-      const checkInSuccess = await safeUpsertTimeRecord(records[0], checkInExists);
-      const checkOutSuccess = await safeUpsertTimeRecord(records[1], checkOutExists);
+      const checkInSuccess = await safeUpsertTimeRecord(checkInRecord, checkInExists);
+      if (!checkInSuccess) throw new Error('Failed to save check-in record');
       
-      if (!checkInSuccess || !checkOutSuccess) {
-        throw new Error('Failed to save time records');
-      }
+      const checkOutSuccess = await safeUpsertTimeRecord(checkOutRecord, checkOutExists);
+      if (!checkOutSuccess) throw new Error('Failed to save check-out record');
       
       // Remove the shift from the list
       setEmployeeShiftRequests(prev => prev.filter(s => s.id !== shift.id));
       
-      // FIXED: Get fresh records from the database instead of creating manually
+      // FIXED: Get fresh records from the database
       const freshRecords = await fetchManualTimeRecords(50);
       
       // Call callback if provided
