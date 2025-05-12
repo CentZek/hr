@@ -160,7 +160,11 @@ const EmployeeList: React.FC<EmployeeListProps> = ({
         ${isManualEntry && day.approved ? 'bg-teal-50' : ''}
         ${wasCorrected ? 'bg-yellow-50' : ''}
         ${isOffDay ? 'bg-gray-50' : ''}
-        ${day.isCrossDay ? 'border-l-4 border-purple-300' : ''}`}
+        ${day.isCrossDay ? 'border-l-4 border-purple-300' : ''}
+        ${day.missingCheckIn || day.missingCheckOut ? 'border-l-4 border-red-300' : ''}
+        ${day.isLate || isLateNightCheckIn ? 'border-l-4 border-amber-300' : ''}
+        ${day.earlyLeave ? 'border-l-4 border-amber-300' : ''}
+        ${day.excessiveOvertime ? 'border-l-4 border-blue-300' : ''}`}
       >
         <div className="flex justify-between items-start mb-2">
           <div>
@@ -311,9 +315,9 @@ const EmployeeList: React.FC<EmployeeListProps> = ({
                           ${isOffDay ? 'bg-gray-50' : ''}
                           ${day.isCrossDay ? 'border-l-4 border-purple-300' : ''}
                           ${day.missingCheckIn || day.missingCheckOut ? 'border-l-4 border-red-300' : ''}
-                          ${day.isLate || isLateNightCheckIn ? 'border-l-4 border-amber-300' : ''}
-                          ${day.earlyLeave ? 'border-l-4 border-amber-300' : ''}
-                          ${day.excessiveOvertime ? 'border-l-4 border-blue-300' : ''}`}
+                          ${(day.isLate || isLateNightCheckIn) && !day.missingCheckIn ? 'border-l-4 border-amber-300' : ''}
+                          ${day.earlyLeave && !day.missingCheckOut ? 'border-l-4 border-amber-300' : ''}
+                          ${day.excessiveOvertime && !day.earlyLeave && !day.missingCheckOut ? 'border-l-4 border-blue-300' : ''}`}
                         >
                           <div className="text-gray-900 font-medium">
                             {format(new Date(day.date), 'MM/dd/yyyy')}
