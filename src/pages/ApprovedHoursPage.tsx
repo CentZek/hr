@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { format, subMonths, isSameDay, startOfMonth, endOfMonth } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
-import { Clock, ArrowLeft, Download, Users, Calendar, Filter, Trash2, Home, Calendar2 } from 'lucide-react';
+import { Clock, ArrowLeft, Download, Users, Calendar, Filter, Trash2, Home, Calendar as Calendar2 } from 'lucide-react';
 import toast, { Toaster } from 'react-hot-toast';
 import { fetchApprovedHours, fetchEmployeeDetails, deleteAllTimeRecords } from '../services/database';
 import { exportApprovedHoursToExcel } from '../utils/excelHandlers';

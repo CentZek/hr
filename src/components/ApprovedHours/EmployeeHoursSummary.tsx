@@ -1,5 +1,5 @@
 import React from 'react';
-import { ChevronDown, ChevronRight, Calendar2 } from 'lucide-react';
+import { ChevronDown, ChevronRight, Calendar as Calendar2 } from 'lucide-react';
 
 interface EmployeeHoursSummaryProps {
   employee: {

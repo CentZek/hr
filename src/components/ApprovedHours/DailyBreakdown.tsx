@@ -1,6 +1,6 @@
 import React from 'react';
 import { format, differenceInMinutes, parseISO } from 'date-fns';
-import { AlertTriangle, CheckCircle, Clock, Calendar2 } from 'lucide-react';
+import { AlertTriangle, CheckCircle, Clock, Calendar as Calendar2 } from 'lucide-react';
 import { DISPLAY_SHIFT_TIMES } from '../../types';
 import { formatTime24H, formatRecordTime } from '../../utils/dateTimeHelper';
 import { getEveningShiftCheckoutDisplay } from '../../utils/shiftCalculations';
