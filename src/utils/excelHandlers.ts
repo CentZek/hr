@@ -145,48 +145,6 @@ const resolveDuplicates = (records: TimeRecord[]): TimeRecord[] => {
     }
   }
   
-  // NEW: Proximity-based correction for records within 45 minutes
-  // This examines all records to find ones close in time that might be mislabeled
-  const allRecords = [...result]; // Create a copy to iterate over
-  
-  // First, sort by timestamp
-  allRecords.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
-  
-  // Check each pair of records that are close in time
-  for (let i = 0; i < allRecords.length - 1; i++) {
-    const current = allRecords[i];
-    const next = allRecords[i + 1];
-    
-    // Skip if either record has already been processed
-    if (current.processed || next.processed) continue;
-    
-    // Check if records are within 45 minutes of each other
-    const diffInMinutes = differenceInMinutes(next.timestamp, current.timestamp);
-    
-    if (diffInMinutes > 0 && diffInMinutes <= 45) {
-      // Records are close in time - check if they have the same status
-      if (current.status === next.status) {
-        console.log(`Found records with same status '${current.status}' within ${diffInMinutes} minutes of each other`);
-        
-        if (current.status === 'check_in') {
-          // Two close check-ins: convert second to check-out
-          next.status = 'check_out';
-          next.mislabeled = true;
-          next.originalStatus = 'check_in';
-          next.notes = 'Fixed mislabeled: Changed from check-in to check-out (proximity-based correction)';
-          console.log('Changed second check-in to check-out (proximity-based)');
-        } else if (current.status === 'check_out') {
-          // Two close check-outs: convert first to check-in
-          current.status = 'check_in';
-          current.mislabeled = true;
-          current.originalStatus = 'check_out';
-          current.notes = 'Fixed mislabeled: Changed from check-out to check-in (proximity-based correction)';
-          console.log('Changed first check-out to check-in (proximity-based)');
-        }
-      }
-    }
-  }
-  
   // Process general cases by date
   const dates = Array.from(recordsByDate.keys());
   for (const date of dates) {
