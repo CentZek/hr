@@ -270,7 +270,7 @@ const HolidayCalendar: React.FC<HolidayCalendarProps> = ({ onHolidaysUpdated }) 
     <div className="bg-white rounded-lg shadow border border-gray-200 overflow-hidden">
       <div className="px-4 py-3 bg-purple-600 text-white flex items-center justify-between">
         <h3 className="font-medium flex items-center">
-          <Calendar as={CalendarIcon} className="w-5 h-5 mr-2" />
+          <CalendarIcon className="w-5 h-5 mr-2" />
           Double-Time Calendar
         </h3>
         {isLoading && (
