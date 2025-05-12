@@ -229,13 +229,13 @@ export const calculatePayableHours = (
     let earlyLeaveMinute = 0;
     
     if (shiftType === 'canteen') {
-      // Check if this is a 7AM shift or 8AM shift
+      // FIXED: Properly determine early leave time based on canteen shift type
+      // Check if this is a 7AM shift (check-in between 6:20-7:20) or 8AM shift (check-in between 7:20-8:40)
       const checkInHour = checkInTime.getHours();
       const checkInMinute = checkInTime.getMinutes();
       const is7AMShift = (checkInHour === 6 && checkInMinute >= 20) || (checkInHour === 7 && checkInMinute <= 20);
       
       if (is7AMShift) {
-        // FIXED: Properly determine early leave time based on canteen shift type
         // 7AM shift
         earlyLeaveHour = 15; // 3 PM
         earlyLeaveMinute = 30; // 3:30 PM
