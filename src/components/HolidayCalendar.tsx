@@ -11,7 +11,7 @@ interface HolidayCalendarProps {
 interface Holiday {
   id: string;
   date: string;
-  description: string;
+  description?: string;
 }
 
 const HolidayCalendar: React.FC<HolidayCalendarProps> = ({ onHolidaysUpdated }) => {
@@ -21,7 +21,6 @@ const HolidayCalendar: React.FC<HolidayCalendarProps> = ({ onHolidaysUpdated }) 
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState<Record<string, boolean>>({});
-  const [holidayDescription, setHolidayDescription] = useState('');
   const [error, setError] = useState('');
 
   // Fetch holidays from database
@@ -56,25 +55,14 @@ const HolidayCalendar: React.FC<HolidayCalendarProps> = ({ onHolidaysUpdated }) 
     // If date is already selected, unselect it
     if (selectedDate && isSameDay(selectedDate, date)) {
       setSelectedDate(null);
-      setHolidayDescription('');
       return;
     }
 
     // Otherwise, select it
     setSelectedDate(date);
-    setHolidayDescription('');
     
     // Clear any previous errors
     setError('');
-    
-    // Check if this date is already a holiday
-    const existingHoliday = holidays.find(holiday => 
-      isSameDay(parseISO(holiday.date), date)
-    );
-    
-    if (existingHoliday) {
-      setHolidayDescription(existingHoliday.description || '');
-    }
   };
 
   // Add a holiday
@@ -94,30 +82,15 @@ const HolidayCalendar: React.FC<HolidayCalendarProps> = ({ onHolidaysUpdated }) 
 
     try {
       if (existingHoliday) {
-        // Update existing holiday
-        const { error } = await supabase
-          .from('holidays')
-          .update({ description: holidayDescription })
-          .eq('id', existingHoliday.id);
-
-        if (error) throw error;
-        
-        // Update local state
-        setHolidays(prev => 
-          prev.map(h => 
-            h.id === existingHoliday.id 
-              ? { ...h, description: holidayDescription } 
-              : h
-          )
-        );
-        
-        toast.success('Holiday updated successfully');
+        // If it already exists, we don't need to update anything since we're
+        // removing the description field
+        toast.success('Date already marked as double-time');
       } else {
-        // Add new holiday
+        // Add new holiday with just the date
         const { data, error } = await supabase
           .from('holidays')
           .insert([
-            { date: formattedDate, description: holidayDescription }
+            { date: formattedDate }
           ])
           .select();
 
@@ -128,12 +101,11 @@ const HolidayCalendar: React.FC<HolidayCalendarProps> = ({ onHolidaysUpdated }) 
           setHolidays(prev => [...prev, data[0]]);
         }
         
-        toast.success('Holiday added successfully');
+        toast.success('Double-time day added successfully');
       }
 
       // Reset form
       setSelectedDate(null);
-      setHolidayDescription('');
       
       // Notify parent component
       if (onHolidaysUpdated) {
@@ -141,8 +113,8 @@ const HolidayCalendar: React.FC<HolidayCalendarProps> = ({ onHolidaysUpdated }) 
       }
     } catch (err) {
       console.error('Error saving holiday:', err);
-      toast.error('Failed to save holiday');
-      setError('Failed to save holiday. Please try again.');
+      toast.error('Failed to save double-time day');
+      setError('Failed to save double-time day. Please try again.');
     } finally {
       setIsSaving(false);
     }
@@ -162,14 +134,13 @@ const HolidayCalendar: React.FC<HolidayCalendarProps> = ({ onHolidaysUpdated }) 
       
       // Update local state
       setHolidays(prev => prev.filter(h => h.id !== id));
-      toast.success('Holiday deleted successfully');
+      toast.success('Double-time day removed successfully');
       
       // If the deleted holiday was the selected date, reset selection
       if (selectedDate) {
         const deletedHoliday = holidays.find(h => h.id === id);
         if (deletedHoliday && isSameDay(parseISO(deletedHoliday.date), selectedDate)) {
           setSelectedDate(null);
-          setHolidayDescription('');
         }
       }
       
@@ -179,7 +150,7 @@ const HolidayCalendar: React.FC<HolidayCalendarProps> = ({ onHolidaysUpdated }) 
       }
     } catch (err) {
       console.error('Error deleting holiday:', err);
-      toast.error('Failed to delete holiday');
+      toast.error('Failed to remove double-time day');
     } finally {
       setIsDeleting(prev => ({ ...prev, [id]: false }));
     }
@@ -195,12 +166,6 @@ const HolidayCalendar: React.FC<HolidayCalendarProps> = ({ onHolidaysUpdated }) 
   // Check if a date is double-time (Friday or holiday)
   const isDoubleTimeDay = (date: Date): boolean => {
     return isFriday(date) || isHoliday(date);
-  };
-
-  // Get description for a holiday
-  const getHolidayDescription = (date: Date): string | undefined => {
-    const holiday = holidays.find(h => isSameDay(parseISO(h.date), date));
-    return holiday?.description;
   };
 
   // Render calendar days
@@ -234,7 +199,6 @@ const HolidayCalendar: React.FC<HolidayCalendarProps> = ({ onHolidaysUpdated }) 
       const isDayHoliday = isHoliday(day);
       const isDayFriday = isFriday(day);
       const isDouble = isDayFriday || isDayHoliday;
-      const holidayDesc = getHolidayDescription(day);
       
       days.push(
         <div
@@ -245,7 +209,7 @@ const HolidayCalendar: React.FC<HolidayCalendarProps> = ({ onHolidaysUpdated }) 
             ${isDouble ? (isDayHoliday && !isDayFriday ? 'bg-red-50' : 'bg-amber-50') : ''}
           `}
           onClick={() => handleDateSelect(day)}
-          title={isDayHoliday ? holidayDesc : (isDayFriday ? 'Friday (Double Time)' : '')}
+          title={isDayFriday ? 'Friday (Double Time)' : (isDayHoliday ? 'Holiday (Double Time)' : '')}
         >
           <span className={`text-sm ${isSelectedDay ? 'text-purple-800' : isDouble ? 'text-red-800' : ''}`}>
             {formattedDate}
@@ -342,7 +306,7 @@ const HolidayCalendar: React.FC<HolidayCalendarProps> = ({ onHolidaysUpdated }) 
         {selectedDate && (
           <div className="border-t border-gray-200 pt-4 mt-4">
             <h4 className="text-sm font-medium text-gray-700 mb-2">
-              {isHoliday(selectedDate) ? 'Edit Holiday' : 'Add Holiday'}
+              {isHoliday(selectedDate) ? 'Remove Double-Time Day' : 'Add Double-Time Day'}
               <span className="ml-2 text-sm font-normal text-gray-500">
                 {format(selectedDate, 'EEEE, MMMM d, yyyy')}
               </span>
@@ -354,32 +318,13 @@ const HolidayCalendar: React.FC<HolidayCalendarProps> = ({ onHolidaysUpdated }) 
             </h4>
             
             <div className="space-y-3">
-              <div>
-                <label htmlFor="holiday-description" className="block text-sm font-medium text-gray-700 mb-1">
-                  Holiday Description
-                </label>
-                <input
-                  type="text"
-                  id="holiday-description"
-                  value={holidayDescription}
-                  onChange={(e) => {
-                    setHolidayDescription(e.target.value);
-                    setError('');
-                  }}
-                  className={`block w-full px-3 py-2 border ${
-                    error ? 'border-red-300' : 'border-gray-300'
-                  } rounded-md shadow-sm focus:ring-purple-500 focus:border-purple-500`}
-                  placeholder="e.g., Christmas Day, Independence Day"
-                />
-                {error && <p className="mt-1 text-xs text-red-600">{error}</p>}
-              </div>
+              {error && <p className="mt-1 text-xs text-red-600">{error}</p>}
               
               <div className="flex justify-end space-x-2">
                 <button
                   type="button"
                   onClick={() => {
                     setSelectedDate(null);
-                    setHolidayDescription('');
                     setError('');
                   }}
                   className="px-3 py-1.5 border border-gray-300 rounded text-sm text-gray-700 hover:bg-gray-50"
@@ -388,39 +333,21 @@ const HolidayCalendar: React.FC<HolidayCalendarProps> = ({ onHolidaysUpdated }) 
                 </button>
                 
                 {isHoliday(selectedDate) ? (
-                  <>
-                    <button
-                      type="button"
-                      onClick={handleAddHoliday}
-                      disabled={isSaving}
-                      className="px-3 py-1.5 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 disabled:opacity-50"
-                    >
-                      {isSaving ? (
-                        <span className="flex items-center">
-                          <span className="animate-spin h-3 w-3 border-2 border-white border-t-transparent rounded-full mr-1"></span>
-                          Updating...
-                        </span>
-                      ) : (
-                        'Update Holiday'
-                      )}
-                    </button>
-                    
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const holiday = holidays.find(h => 
-                          isSameDay(parseISO(h.date), selectedDate)
-                        );
-                        if (holiday) {
-                          handleDeleteHoliday(holiday.id);
-                        }
-                      }}
-                      disabled={isSaving}
-                      className="px-3 py-1.5 bg-red-600 text-white rounded text-sm hover:bg-red-700 disabled:opacity-50"
-                    >
-                      Remove
-                    </button>
-                  </>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const holiday = holidays.find(h => 
+                        isSameDay(parseISO(h.date), selectedDate)
+                      );
+                      if (holiday) {
+                        handleDeleteHoliday(holiday.id);
+                      }
+                    }}
+                    disabled={isSaving}
+                    className="px-3 py-1.5 bg-red-600 text-white rounded text-sm hover:bg-red-700 disabled:opacity-50"
+                  >
+                    Remove Double-Time
+                  </button>
                 ) : (
                   <button
                     type="button"
@@ -434,7 +361,7 @@ const HolidayCalendar: React.FC<HolidayCalendarProps> = ({ onHolidaysUpdated }) 
                         Saving...
                       </span>
                     ) : (
-                      'Add Holiday'
+                      'Mark as Double-Time'
                     )}
                   </button>
                 )}
@@ -447,7 +374,7 @@ const HolidayCalendar: React.FC<HolidayCalendarProps> = ({ onHolidaysUpdated }) 
         <div className="mt-4 border-t border-gray-200 pt-4">
           <h4 className="text-sm font-medium text-gray-700 mb-2 flex items-center">
             <Clock className="w-4 h-4 mr-1 text-purple-500" />
-            Saved Holidays
+            Double-Time Days
             <span className="ml-2 text-xs bg-gray-100 text-gray-700 px-2 py-0.5 rounded-full">
               {holidays.length || 0}
             </span>
@@ -455,7 +382,7 @@ const HolidayCalendar: React.FC<HolidayCalendarProps> = ({ onHolidaysUpdated }) 
           
           {holidays.length === 0 ? (
             <div className="text-sm text-gray-500 bg-gray-50 p-3 rounded">
-              No holidays have been added yet. Select dates on the calendar to add holidays.
+              No additional double-time days have been marked yet. Select dates on the calendar to add them.
             </div>
           ) : (
             <div className="space-y-2 max-h-48 overflow-y-auto">
@@ -476,9 +403,6 @@ const HolidayCalendar: React.FC<HolidayCalendarProps> = ({ onHolidaysUpdated }) 
                         </span>
                       )}
                     </div>
-                    {holiday.description && (
-                      <p className="text-xs text-gray-600 mt-0.5">{holiday.description}</p>
-                    )}
                   </div>
                   
                   <button
