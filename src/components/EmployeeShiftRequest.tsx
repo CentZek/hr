@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { format, parseISO, isValid, addDays } from 'date-fns';
+import { format, parseISO, isValid } from 'date-fns';
 import { Clock, AlertCircle, CheckCircle, XCircle, Info } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import toast from 'react-hot-toast';
@@ -124,37 +124,17 @@ const EmployeeShiftRequest: React.FC<EmployeeShiftRequestProps> = ({ onShiftAppr
       
       console.log('Processing shift with:', { dateStr, startTime, endTime, shiftType: shift.shift_type });
       
-      // Use our helper function to properly parse shift times and handle night shift logic
+      // parseShiftTimes() already returns two Date objects, correctly rolling over past midnight
       const { checkIn, checkOut } = parseShiftTimes(
         dateStr,
         startTime,
         endTime,
         shift.shift_type
       );
-        
-      // Validate the parsed dates
-      if (!isValid(checkIn) || !isValid(checkOut)) {
-        throw new Error('Invalid date after parsing shift times');
-      }
-      
-      // Format timestamps for database records
-      let checkInTimestamp, checkOutTimestamp;
-      
-      // For night shifts, handle the day boundary properly
-      if (shift.shift_type === 'night') {
-        // The check-in day
-        const checkInDateStr = format(checkIn, 'yyyy-MM-dd');
-        checkInTimestamp = `${checkInDateStr}T${startTime}:00`;
-        
-        // The check-out is next day for night shifts
-        const nextDay = addDays(new Date(dateStr), 1);
-        const checkOutDateStr = format(nextDay, 'yyyy-MM-dd');
-        checkOutTimestamp = `${checkOutDateStr}T${endTime}:00`;
-      } else {
-        // For normal shifts, both are on the same day
-        checkInTimestamp = `${dateStr}T${startTime}:00`;
-        checkOutTimestamp = `${dateStr}T${endTime}:00`;
-      }
+
+      // now turn them straight into ISO strings (no more manual +1-day hacks)
+      const checkInTimestamp = checkIn.toISOString();
+      const checkOutTimestamp = checkOut.toISOString();
       
       // Calculate hours worked for consistency
       const hoursWorked = 9.0; // Standard hours for all shift types
@@ -205,7 +185,7 @@ const EmployeeShiftRequest: React.FC<EmployeeShiftRequestProps> = ({ onShiftAppr
       // Remove the shift from the list
       setEmployeeShiftRequests(prev => prev.filter(s => s.id !== shift.id));
       
-      // Get fresh records from the database
+      // FIXED: Get fresh records from the database instead of creating manually
       const freshRecords = await fetchManualTimeRecords(50);
       
       // Call callback if provided
