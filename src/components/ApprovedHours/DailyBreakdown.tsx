@@ -4,6 +4,7 @@ import { AlertTriangle, CheckCircle, Clock } from 'lucide-react';
 import { DISPLAY_SHIFT_TIMES } from '../../types';
 import { formatTime24H, formatRecordTime } from '../../utils/dateTimeHelper';
 import { getEveningShiftCheckoutDisplay } from '../../utils/shiftCalculations';
+import { pairNightShifts } from '../../utils/timeRecordHelpers';
 
 interface DailyBreakdownProps {
   isLoading: boolean;
@@ -11,8 +12,14 @@ interface DailyBreakdownProps {
 }
 
 const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records }) => {
+  // First: carve out any true night-shift pairs
+  const { pairs: nightPairs, used: nightUsed } = pairNightShifts(records);
+  
+  // Filter out those paired records so they don't fall into the same-day logic
+  const remainder = records.filter(r => !nightUsed.has(r.id));
+  
   // Group records by date for better display
-  const recordsByDate = records.reduce((acc: any, record: any) => {
+  const recordsByDate = remainder.reduce((acc: any, record: any) => {
     // Use working_week_start if available (preferred for consistency)
     let dateKey = record.working_week_start || '';
     
@@ -50,6 +57,15 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records }) =
     acc[dateKey].push(record);
     return acc;
   }, {});
+  
+  // Now add all our night shift pairs as properly grouped records
+  nightPairs.forEach(({ date, checkIn, checkOut }) => {
+    if (!recordsByDate[date]) {
+      recordsByDate[date] = [];
+    }
+    recordsByDate[date].push(checkIn);
+    recordsByDate[date].push(checkOut);
+  });
 
   // FIXED: Get standardized display time based on shift type
   const getStandardDisplayTime = (shiftType: string, timeType: 'start' | 'end'): string => {
