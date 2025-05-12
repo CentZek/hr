@@ -1,9 +1,8 @@
 /**
  * Time record helper functions for applying changes to daily records
  */
-import { DailyRecord, TimeRecord } from '../types';
+import { DailyRecord } from '../types';
 import { calculatePayableHours, determineShiftType } from './shiftCalculations';
-import { parseISO, addDays, format } from 'date-fns';
 
 // Apply a penalty to a specific day
 export const applyPenaltyToDay = (day: DailyRecord, penaltyMinutes: number): DailyRecord => {
@@ -119,52 +118,3 @@ export const approveAllDays = (days: DailyRecord[]): DailyRecord[] => {
     approved: true
   }));
 };
-
-// Helper function to pair night shifts spanning across two days
-export function pairNightShifts(records: any[]) {
-  const pairs: { date: string; checkIn: any; checkOut: any }[] = [];
-  const used = new Set<string>();  // track record IDs that get paired
-
-  // Group by employee
-  const byEmp = records.reduce<Record<string, any[]>>((acc, r) => {
-    if (!acc[r.employee_id]) {
-      acc[r.employee_id] = [];
-    }
-    acc[r.employee_id].push(r);
-    return acc;
-  }, {});
-
-  Object.values(byEmp).forEach(empRecs => {
-    // Pick all night-shift check-ins (e.g. 18:00–23:59)
-    const ins = empRecs.filter(r =>
-      r.status === 'check_in' &&
-      r.shift_type === 'night' &&
-      new Date(r.timestamp).getHours() >= 18
-    );
-    
-    ins.forEach(ci => {
-      // Find the matching next-day check-out (e.g. 00:00–08:00)
-      const checkInDate = parseISO(ci.timestamp);
-      const targetDay = format(addDays(checkInDate, 1), 'yyyy-MM-dd');
-      
-      const co = empRecs.find(r =>
-        r.status === 'check_out' &&
-        r.shift_type === 'night' &&
-        format(parseISO(r.timestamp), 'yyyy-MM-dd') === targetDay &&
-        new Date(r.timestamp).getHours() < 8
-      );
-      
-      if (co) {
-        pairs.push({
-          date: format(parseISO(ci.timestamp), 'yyyy-MM-dd'),
-          checkIn: ci,
-          checkOut: co
-        });
-        used.add(ci.id);
-        used.add(co.id);
-      }
-    });
-  });
-
-  return { pairs, used };
-}

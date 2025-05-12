@@ -3,7 +3,6 @@ import { format, parseISO } from 'date-fns';
 import { Clock, AlertTriangle, CheckCircle } from 'lucide-react';
 import { DISPLAY_SHIFT_TIMES } from '../types';
 import { formatTime24H, formatRecordTime } from '../utils/dateTimeHelper';
-import { pairNightShifts } from '../utils/timeRecordHelpers';
 
 interface TimeRecord {
   id: string;
@@ -59,17 +58,11 @@ const TimeRecordsTable: React.FC<TimeRecordsTableProps> = ({
     };
   }, []);
   
-  // First: carve out any true night-shift pairs
-  const { pairs: nightPairs, used: nightUsed } = pairNightShifts(records);
-  
-  // Filter out those paired records so they don't fall into the same-day logic
-  const remainder = records.filter(r => !nightUsed.has(r.id));
-  
   // Group records by date and employee
   const groupedRecords = React.useMemo(() => {
     const groups: Record<string, Record<string, any[]>> = {};
     
-    remainder.forEach(record => {
+    records.forEach(record => {
       // Handle OFF-DAY records specially
       if (record.status === 'off_day' || record.notes?.includes('OFF-DAY')) {
         // Use working_week_start if available, otherwise use timestamp date
@@ -151,26 +144,12 @@ const TimeRecordsTable: React.FC<TimeRecordsTableProps> = ({
     });
     
     return groups;
-  }, [remainder]);
+  }, [records]);
   
   // Calculate pairs of check-in/check-out
   const processedRecords = React.useMemo(() => {
     const result: any[] = [];
     const processedDates = new Set<string>();
-    
-    // 1) Inject our night-shifts first
-    nightPairs.forEach(({ date, checkIn, checkOut }) => {
-      result.push({
-        date,
-        employeeId: checkIn.employee_id,
-        employeeName: checkIn.employees?.name || 'Unknown Employee',
-        employeeNumber: checkIn.employees?.employee_number || 'Unknown',
-        checkIn,
-        checkOut,
-        shiftType: 'night'
-      });
-      processedDates.add(date);
-    });
     
     // Process each date
     Object.entries(groupedRecords).forEach(([date, employeeRecords]) => {
@@ -204,26 +183,26 @@ const TimeRecordsTable: React.FC<TimeRecordsTableProps> = ({
           new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
         );
         
-        // Use earliest check-in and LATEST check-out
+        // Use earliest check-in and earliest check-out
         const earliestCheckIn = sortedCheckIns.length > 0 ? sortedCheckIns[0] : null;
-        const latestCheckOut = sortedCheckOuts.length > 0 ? sortedCheckOuts[sortedCheckOuts.length - 1] : null;
+        const earliestCheckOut = sortedCheckOuts.length > 0 ? sortedCheckOuts[0] : null;
         
         // Add both records
         result.push({
           date,
           employeeId,
-          employeeName: (earliestCheckIn || latestCheckOut)?.employees?.name || 'Unknown',
-          employeeNumber: (earliestCheckIn || latestCheckOut)?.employees?.employee_number || 'Unknown',
+          employeeName: (earliestCheckIn || earliestCheckOut)?.employees?.name || 'Unknown',
+          employeeNumber: (earliestCheckIn || earliestCheckOut)?.employees?.employee_number || 'Unknown',
           checkIn: earliestCheckIn,
-          checkOut: latestCheckOut,
-          shiftType: (earliestCheckIn || latestCheckOut)?.shift_type || 'unknown'
+          checkOut: earliestCheckOut,
+          shiftType: (earliestCheckIn || earliestCheckOut)?.shift_type || 'unknown'
         });
         processedDates.add(date);
       });
     });
     
     return result;
-  }, [groupedRecords, nightPairs]);
+  }, [groupedRecords]);
 
   // Get time in 24-hour format
   const getActualTime = (record: any) => {
