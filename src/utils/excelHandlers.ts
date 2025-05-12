@@ -906,10 +906,11 @@ export const exportApprovedHoursToExcel = (data: {
   
   // Add details data
   data.details.forEach(record => {
+    // FIXED: Directly create a Date object and use format for consistent local time display
     const timestamp = new Date(record.timestamp);
     
     // Use our helper to get consistent 24-hour time display
-    const displayTime = formatTime24H(timestamp);
+    const displayTime = format(timestamp, 'HH:mm');
     
     detailsData.push([
       record.employees?.employee_number || '',

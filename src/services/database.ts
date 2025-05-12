@@ -373,10 +373,9 @@ export const saveRecordsToDatabase = async (employeeRecords: EmployeeRecord[]): 
         
         // Add check-in record if available
         if (day.firstCheckIn) {
-          // FIXED: Use local date-time string instead of UTC timestamp
-          const checkInDateStr = format(day.firstCheckIn, 'yyyy-MM-dd');
-          const checkInTimeStr = format(day.firstCheckIn, 'HH:mm:ss');
-          const checkInTimestamp = `${checkInDateStr}T${checkInTimeStr}`;
+          // FIXED: Use proper local date-time string by creating a new date directly
+          // and using format() to generate the local time string
+          const checkInTimestamp = format(day.firstCheckIn, "yyyy-MM-dd'T'HH:mm:ss");
           
           // Check if check-in record already exists
           const existingCheckInId = await checkExistingTimeRecord(
@@ -415,10 +414,9 @@ export const saveRecordsToDatabase = async (employeeRecords: EmployeeRecord[]): 
         
         // Add check-out record if available
         if (day.lastCheckOut) {
-          // FIXED: Use local date-time string instead of UTC timestamp
-          const checkOutDateStr = format(day.lastCheckOut, 'yyyy-MM-dd');
-          const checkOutTimeStr = format(day.lastCheckOut, 'HH:mm:ss');
-          const checkOutTimestamp = `${checkOutDateStr}T${checkOutTimeStr}`;
+          // FIXED: Use proper local date-time string by creating a new date directly
+          // and using format() to generate the local time string
+          const checkOutTimestamp = format(day.lastCheckOut, "yyyy-MM-dd'T'HH:mm:ss");
           
           // Check if check-out record already exists
           const existingCheckOutId = await checkExistingTimeRecord(
