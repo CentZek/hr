@@ -18,6 +18,7 @@ export const fetchApprovedHours = async (monthFilter: string = ''): Promise<{
         timestamp,
         status,
         exact_hours,
+        working_week_start,
         employees (
           id,
           name,
@@ -173,6 +174,7 @@ export const fetchEmployeeDetails = async (employeeId: string, monthFilter: stri
         display_check_out,
         mislabeled,
         working_week_start,
+        is_manual_entry,
         employees (
           name,
           employee_number
@@ -399,7 +401,7 @@ export const saveRecordsToDatabase = async (employeeRecords: EmployeeRecord[]): 
             is_fixed: day.correctedRecords || false,
             corrected_records: day.correctedRecords || false,
             mislabeled: false,
-            is_manual_entry: true,
+            is_manual_entry: false, // Mark as non-manual entry since it's from Excel
             working_week_start: day.date
           };
 
@@ -441,7 +443,7 @@ export const saveRecordsToDatabase = async (employeeRecords: EmployeeRecord[]): 
             is_fixed: day.correctedRecords || false,
             corrected_records: day.correctedRecords || false,
             mislabeled: false,
-            is_manual_entry: true,
+            is_manual_entry: false, // Mark as non-manual entry since it's from Excel
             working_week_start: day.shiftType === 'night' && day.lastCheckOut.getHours() < 12 ? day.date : day.date
           };
 

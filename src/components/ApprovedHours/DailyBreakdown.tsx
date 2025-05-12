@@ -78,24 +78,27 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records }) =
     if (!timestamp) return '–';
     
     try {
-      // FIXED: First check if this record has a display value we can use
-      if (timeType === 'in' && record.display_check_in && record.display_check_in !== 'Missing') {
-        return record.display_check_in;
+      // Only use display values for manual entries
+      if (record.is_manual_entry === true) {
+        // Check if this record has a display value we can use
+        if (timeType === 'in' && record.display_check_in && record.display_check_in !== 'Missing') {
+          return record.display_check_in;
+        }
+        
+        if (timeType === 'out' && record.display_check_out && record.display_check_out !== 'Missing') {
+          return record.display_check_out;
+        }
+        
+        // If we don't have a display value, try to get standard time based on shift type
+        if (record.shift_type) {
+          return getStandardDisplayTime(
+            record.shift_type, 
+            timeType === 'in' ? 'start' : 'end'
+          );
+        }
       }
       
-      if (timeType === 'out' && record.display_check_out && record.display_check_out !== 'Missing') {
-        return record.display_check_out;
-      }
-      
-      // FIXED: If we don't have a display value, try to get standard time based on shift type
-      if (record.shift_type) {
-        return getStandardDisplayTime(
-          record.shift_type, 
-          timeType === 'in' ? 'start' : 'end'
-        );
-      }
-      
-      // Last resort: Format the timestamp
+      // For Excel imports or records without display values, use the actual timestamp
       const date = parseISO(timestamp);
       return format(date, 'HH:mm');
     } catch (err) {
@@ -284,7 +287,7 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records }) =
           // Determine if this is significant overtime
           const isSignificantOvertime = hours > 9.5;
 
-          // FIXED: Get standardized display times for this shift type
+          // Get display times for this shift
           let checkInDisplay = checkIn ? 
             formatTimeDisplay(checkIn.timestamp, checkIn, 'in') :
             (isOffDay ? 'OFF-DAY' : 'Missing');

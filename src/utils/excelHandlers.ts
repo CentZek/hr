@@ -427,7 +427,8 @@ export const processExcelData = async (data: any[]): Promise<EmployeeRecord[]> =
           allTimeRecords: [...currentDateRecords, ...morningCheckOuts], // Include all relevant records
           hasMultipleRecords: true,
           isCrossDay: true,
-          checkOutNextDay: true
+          checkOutNextDay: true,
+          working_week_start: currentDate // Set working_week_start for proper grouping
         });
         
         // Mark dates as processed
@@ -486,7 +487,8 @@ export const processExcelData = async (data: any[]): Promise<EmployeeRecord[]> =
             allTimeRecords: [...march24Records, march25CheckOut], // Include all relevant records
             hasMultipleRecords: true,
             isCrossDay: true,
-            checkOutNextDay: true
+            checkOutNextDay: true,
+            working_week_start: '2025-03-24' // Set working_week_start for proper grouping
           });
           
           // Mark records as processed
@@ -542,7 +544,8 @@ export const processExcelData = async (data: any[]): Promise<EmployeeRecord[]> =
             penaltyMinutes: 0,
             correctedRecords: openCheckIn.mislabeled,
             allTimeRecords: openDateRecords,
-            hasMultipleRecords: openDateRecords.length > 1
+            hasMultipleRecords: openDateRecords.length > 1,
+            working_week_start: openCheckInDate // Set working_week_start for proper grouping
           });
           
           openCheckIn.processed = true;
@@ -592,7 +595,8 @@ export const processExcelData = async (data: any[]): Promise<EmployeeRecord[]> =
             allTimeRecords: [...allDayRecords, ...(isCrossDay ? [record] : [])],
             hasMultipleRecords: allDayRecords.length > 2 || isCrossDay,
             isCrossDay,
-            checkOutNextDay: isCrossDay
+            checkOutNextDay: isCrossDay,
+            working_week_start: checkInDate // Set working_week_start for proper grouping
           });
           
           // Mark as processed
@@ -652,7 +656,8 @@ export const processExcelData = async (data: any[]): Promise<EmployeeRecord[]> =
             penaltyMinutes: 0,
             correctedRecords: record.mislabeled,
             allTimeRecords: dateRecords,
-            hasMultipleRecords: dateRecords.length > 1
+            hasMultipleRecords: dateRecords.length > 1,
+            working_week_start: checkOutDate // Set working_week_start for proper grouping
           });
           
           record.processed = true;
@@ -681,7 +686,8 @@ export const processExcelData = async (data: any[]): Promise<EmployeeRecord[]> =
         penaltyMinutes: 0,
         correctedRecords: openCheckIn.mislabeled,
         allTimeRecords: dateRecords,
-        hasMultipleRecords: dateRecords.length > 1
+        hasMultipleRecords: dateRecords.length > 1,
+        working_week_start: checkInDate // Set working_week_start for proper grouping
       });
       
       openCheckIn.processed = true;
@@ -737,7 +743,8 @@ export const processExcelData = async (data: any[]): Promise<EmployeeRecord[]> =
           penaltyMinutes: 0,
           correctedRecords: unprocessedRecords.some(r => r.mislabeled),
           allTimeRecords: dateRecords,
-          hasMultipleRecords: dateRecords.length > 1
+          hasMultipleRecords: dateRecords.length > 1,
+          working_week_start: dateStr // Set working_week_start for proper grouping
         });
         
         // Mark records as processed
@@ -816,7 +823,8 @@ const addOffDaysToEmployeeRecords = (dailyRecords: Map<string, DailyRecord>, rec
         excessiveOvertime: false,
         penaltyMinutes: 0,
         allTimeRecords: dateRecords,
-        hasMultipleRecords: dateRecords.length > 0
+        hasMultipleRecords: dateRecords.length > 0,
+        working_week_start: dateStr // Set working_week_start for proper grouping
       });
     }
   }
