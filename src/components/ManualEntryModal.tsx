@@ -131,17 +131,15 @@ const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
       const displayCheckIn = displayTimes?.startTime || startTime;
       const displayCheckOut = displayTimes?.endTime || endTime;
       
-      // Use our helper function to properly handle day rollover
-      const { checkIn, checkOut } = parseShiftTimes(shift.date, startTime, endTime, shift.shift_type);
-      
-      // FIXED: Use format directly on the Date objects
-      const checkInTimestamp = format(checkIn, "yyyy-MM-dd'T'HH:mm:ss");
-      const checkOutTimestamp = format(checkOut, "yyyy-MM-dd'T'HH:mm:ss");
+      // Determine checkout date based on shift type
+      const checkOutDate = shift.shift_type === 'night'
+        ? format(addDays(new Date(shift.date), 1), 'yyyy-MM-dd')
+        : shift.date;
       
       // Prepare time records data
       const checkInData = {
         employee_id: shift.employee_id,
-        timestamp: checkInTimestamp,
+        timestamp: `${shift.date}T${startTime}:00`,
         status: 'check_in',
         shift_type: shift.shift_type,
         notes: 'Employee submitted shift - HR approved; hours:9.00',
@@ -154,7 +152,7 @@ const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
       
       const checkOutData = {
         employee_id: shift.employee_id,
-        timestamp: checkOutTimestamp,
+        timestamp: `${checkOutDate}T${endTime}:00`,
         status: 'check_out',
         shift_type: shift.shift_type,
         notes: 'Employee submitted shift - HR approved; hours:9.00',
@@ -276,22 +274,15 @@ const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
           working_week_start: selectedDate
         });
 
-      // Parse dates properly with the helper function to handle day rollover
-      const { checkIn, checkOut } = parseShiftTimes(
-        selectedDate, 
-        times.start, 
-        times.end, 
-        shiftType
-      );
-
-      // FIXED: Use format directly on the Date objects
-      const checkInTimestamp = format(checkIn, "yyyy-MM-dd'T'HH:mm:ss");
-      const checkOutTimestamp = format(checkOut, "yyyy-MM-dd'T'HH:mm:ss");
+      // Determine checkout date based on shift type
+      const checkOutDate = shiftType === 'night'
+        ? format(addDays(new Date(selectedDate), 1), 'yyyy-MM-dd')
+        : selectedDate;
 
       // Prepare time records for check-in and check-out
       const checkInData = {
         employee_id: employeeId,
-        timestamp: checkInTimestamp,
+        timestamp: `${selectedDate}T${times.start}:00`,
         status: 'check_in',
         shift_type: shiftType,
         notes: notes || 'Manual entry; hours:9.00',
@@ -304,7 +295,7 @@ const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
 
       const checkOutData = {
         employee_id: employeeId,
-        timestamp: checkOutTimestamp,
+        timestamp: `${checkOutDate}T${times.end}:00`,
         status: 'check_out',
         shift_type: shiftType,
         notes: notes || 'Manual entry; hours:9.00',
@@ -349,8 +340,8 @@ const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
         checkIn: times.start,
         checkOut: times.end,
         shiftType,
-        checkInDate: checkIn,
-        checkOutDate: checkOut
+        checkInDate: new Date(`${selectedDate}T${times.start}`),
+        checkOutDate: new Date(`${checkOutDate}T${times.end}`)
       });
 
     } catch (error) {

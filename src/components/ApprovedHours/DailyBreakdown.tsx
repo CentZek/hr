@@ -1,5 +1,5 @@
 import React from 'react';
-import { format, differenceInMinutes, parseISO } from 'date-fns';
+import { format, differenceInMinutes, parseISO, subDays } from 'date-fns';
 import { AlertTriangle, CheckCircle, Clock } from 'lucide-react';
 import { DISPLAY_SHIFT_TIMES } from '../../types';
 import { formatTime24H, formatRecordTime } from '../../utils/dateTimeHelper';
@@ -20,7 +20,17 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records }) =
     if (!dateKey) {
       // Use the UTC date portion so nothing shifts under local timezones
       const utc = parseISO(record.timestamp);
-      dateKey = utc.toISOString().slice(0,10);  // "YYYY-MM-DD"
+      
+      // Push any early-morning night-shift checkout into the prior day
+      if (
+        record.status === 'check_out' &&
+        record.shift_type === 'night' &&
+        utc.getHours() < 6           // anything before 6 AM
+      ) {
+        dateKey = format(subDays(utc, 1), 'yyyy-MM-dd');
+      } else {
+        dateKey = utc.toISOString().slice(0,10);  // "YYYY-MM-DD"
+      }
     }
 
     if (!acc[dateKey]) {
