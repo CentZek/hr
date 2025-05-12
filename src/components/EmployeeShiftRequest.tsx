@@ -5,7 +5,7 @@ import { supabase } from '../lib/supabase';
 import toast from 'react-hot-toast';
 import { DISPLAY_SHIFT_TIMES } from '../types';
 import { parseShiftTimes } from '../utils/dateTimeHelper';
-import { fetchManualTimeRecords } from '../services/database';
+import { fetchManualTimeRecords, checkExistingTimeRecord, safeUpsertTimeRecord } from '../services/database';
 
 interface EmployeeShiftRequestProps {
   onShiftApproved?: (employeeData: any, shiftData: any) => void;
@@ -179,8 +179,28 @@ const EmployeeShiftRequest: React.FC<EmployeeShiftRequestProps> = ({ onShiftAppr
         }
       ];
       
-      const { error: insertError } = await supabase.from('time_records').insert(records);
-      if (insertError) throw insertError;
+      // Check if records already exist
+      const checkInExists = await checkExistingTimeRecord(
+        shift.employee_id,
+        shift.shift_type,
+        'check_in',
+        dateStr
+      );
+      
+      const checkOutExists = await checkExistingTimeRecord(
+        shift.employee_id,
+        shift.shift_type,
+        'check_out',
+        dateStr
+      );
+      
+      // Use safe upsert for each record
+      const checkInSuccess = await safeUpsertTimeRecord(records[0], checkInExists);
+      const checkOutSuccess = await safeUpsertTimeRecord(records[1], checkOutExists);
+      
+      if (!checkInSuccess || !checkOutSuccess) {
+        throw new Error('Failed to save time records');
+      }
       
       // Remove the shift from the list
       setEmployeeShiftRequests(prev => prev.filter(s => s.id !== shift.id));
