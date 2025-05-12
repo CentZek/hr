@@ -23,6 +23,7 @@ const ApprovedHoursPage: React.FC = () => {
   const [totalHours, setTotalHours] = useState(0);
   const [totalEmployees, setTotalEmployees] = useState(0);
   const [totalDoubleTimeHours, setTotalDoubleTimeHours] = useState(0);
+  const [totalPayableHours, setTotalPayableHours] = useState(0);
   const [doubleDays, setDoubleDays] = useState<string[]>([]);
   const [showCalendar, setShowCalendar] = useState(false);
   
@@ -94,8 +95,8 @@ const ApprovedHoursPage: React.FC = () => {
               const hours = employee.hours_by_date?.[dateStr] || 0;
               if (doubleDays.includes(dateStr)) {
                 employeeDoubleTime += hours;
-                doubleTimeHours += hours * 2; // Double the hours for total calculation
-                regularHours += hours; // Also add to regular hours for accounting
+                doubleTimeHours += hours; // Add the bonus hours (base hours already counted)
+                regularHours += hours; // Base hours
               } else {
                 employeeRegularTime += hours;
                 regularHours += hours;
@@ -114,8 +115,9 @@ const ApprovedHoursPage: React.FC = () => {
           employee.double_time_hours = employeeDoubleTime;
         });
         
-        setTotalHours(totalHoursSum);
+        setTotalHours(regularHours);
         setTotalDoubleTimeHours(doubleTimeHours);
+        setTotalPayableHours(regularHours + doubleTimeHours);
       } catch (error) {
         console.error('Error loading approved hours:', error);
         toast.error('Failed to load approved hours data');
@@ -312,6 +314,13 @@ const ApprovedHoursPage: React.FC = () => {
                     <div className="text-lg font-bold text-amber-900">{totalDoubleTimeHours.toFixed(2)}</div>
                   </div>
                 </div>
+                <div className="flex items-center gap-2 px-3 py-2 bg-green-50 rounded-md">
+                  <Clock className="w-5 h-5 text-green-600" />
+                  <div>
+                    <div className="text-xs text-green-600 font-medium">Total Hours</div>
+                    <div className="text-lg font-bold text-green-900">{(totalHours + totalDoubleTimeHours).toFixed(2)}</div>
+                  </div>
+                </div>
               </div>
 
               {/* Filter and Export */}
@@ -335,9 +344,9 @@ const ApprovedHoursPage: React.FC = () => {
                   onClick={handleCalendarToggle}
                   className={`flex items-center gap-1 px-3 py-1 ${
                     showCalendar 
-                      ? 'bg-amber-600 hover:bg-amber-700' 
+                      ? 'bg-amber-600 hover:bg-amber-700 text-white' 
                       : 'bg-amber-100 text-amber-800 hover:bg-amber-200'
-                  } text-white text-sm rounded hover:bg-amber-700`}
+                  } text-sm rounded`}
                 >
                   <Calendar className="w-4 h-4" />
                   {showCalendar ? 'Hide Calendar' : 'Manage Holidays'}

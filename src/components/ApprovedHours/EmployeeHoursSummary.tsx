@@ -64,6 +64,9 @@ const EmployeeHoursSummary: React.FC<EmployeeHoursSummaryProps> = ({
             </div>
           )}
           <div className="px-2 py-1 bg-green-50 text-green-700 rounded text-xs">
+            Total: <span className="font-medium">{totalPayableHours.toFixed(2)}</span>
+          </div>
+          <div className="px-2 py-1 bg-green-50 text-green-700 rounded text-xs">
             Avg: <span className="font-medium">{avgHoursPerDay.toFixed(2)}/day</span>
           </div>
         </div>
@@ -84,13 +87,15 @@ const EmployeeHoursSummary: React.FC<EmployeeHoursSummaryProps> = ({
       </div>
       <div className="hidden sm:flex sm:items-center font-medium text-gray-800">{employee.total_days}</div>
       <div className="hidden sm:flex sm:items-center">
-        <span className="font-medium text-gray-800">{employee.total_hours.toFixed(2)}</span>
-        {doubleTimeHours > 0 && (
-          <div className="ml-2 px-2 py-0.5 bg-amber-100 text-amber-800 rounded-full text-xs flex items-center">
-            <span className="font-bold text-xs mr-1">2×:</span>
-            {doubleTimeHours.toFixed(2)}
-          </div>
-        )}
+        <div className="font-medium text-gray-800">
+          <span className="mr-1">{totalPayableHours.toFixed(2)}</span>
+          {doubleTimeHours > 0 && (
+            <div className="ml-1 px-2 py-0.5 bg-amber-100 text-amber-800 rounded-full text-xs flex items-center">
+              <span className="font-bold text-xs mr-1">2×:</span>
+              {doubleTimeHours.toFixed(2)}
+            </div>
+          )}
+        </div>
       </div>
       <div className="hidden sm:flex sm:items-center text-gray-700">{avgHoursPerDay.toFixed(2)}</div>
       <div className="hidden sm:flex sm:items-center">

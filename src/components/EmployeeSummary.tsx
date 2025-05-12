@@ -4,9 +4,10 @@ import { Clock, Calendar, AlertTriangle, CheckCircle, AlertCircle } from 'lucide
 
 interface EmployeeSummaryProps {
   days: DailyRecord[];
+  doubleDays?: string[];
 }
 
-const EmployeeSummary: React.FC<EmployeeSummaryProps> = ({ days }) => {
+const EmployeeSummary: React.FC<EmployeeSummaryProps> = ({ days, doubleDays = [] }) => {
   // Only include days with hours > 0 for calculations and exclude OFF-DAYs
   const validDays = days.filter(day => day.hoursWorked > 0 && day.notes !== 'OFF-DAY');
   
@@ -15,6 +16,18 @@ const EmployeeSummary: React.FC<EmployeeSummaryProps> = ({ days }) => {
   const totalDays = validDays.length;
   const offDaysCount = days.filter(d => d.notes === 'OFF-DAY').length;
   const avgHoursPerDay = totalDays > 0 ? parseFloat((totalHours / totalDays).toFixed(2)) : 0;
+  
+  // Calculate double-time hours
+  const doubleTimeHours = parseFloat(validDays.reduce((sum, day) => {
+    // Check if the day is in doubleDays
+    if (doubleDays.includes(day.date) || day.date.includes('2x')) {
+      return sum + day.hoursWorked;
+    }
+    return sum;
+  }, 0).toFixed(2));
+  
+  // Calculate total payable hours (regular + double-time)
+  const totalPayableHours = totalHours + doubleTimeHours;
   
   // Count issues
   const lateDays = days.filter(d => d.isLate).length;
@@ -42,12 +55,20 @@ const EmployeeSummary: React.FC<EmployeeSummaryProps> = ({ days }) => {
             <span className="text-xs font-medium uppercase">Working Hours</span>
           </div>
           <div>
-            <p className="text-2xl font-bold text-gray-800">{totalHours.toFixed(2)}</p>
-            <p className="text-xs text-gray-500">Total Hours</p>
+            <p className="text-2xl font-bold text-gray-800">{totalPayableHours.toFixed(2)}</p>
+            <p className="text-xs text-gray-500">Total Payable Hours</p>
           </div>
-          <div className="mt-2">
-            <p className="text-sm font-medium">{avgHoursPerDay.toFixed(2)} hrs/day</p>
-            <p className="text-xs text-gray-500">Average</p>
+          <div className="mt-2 flex flex-col">
+            <div className="flex justify-between">
+              <p className="text-xs text-gray-500">Regular:</p>
+              <p className="text-xs font-medium">{totalHours.toFixed(2)} hrs</p>
+            </div>
+            {doubleTimeHours > 0 && (
+              <div className="flex justify-between">
+                <p className="text-xs text-amber-600">Double-Time:</p>
+                <p className="text-xs font-medium text-amber-600">+{doubleTimeHours.toFixed(2)} hrs</p>
+              </div>
+            )}
           </div>
         </div>
         
