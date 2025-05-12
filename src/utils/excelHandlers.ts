@@ -196,7 +196,7 @@ const resolveDuplicates = (records: TimeRecord[]): TimeRecord[] => {
   // Process general cases by date
   const dates = Array.from(recordsByDate.keys());
   for (const date of dates) {
-    const dayRecords = recordsByDate.get(date)!;
+    let dayRecords = recordsByDate.get(date)!;
     
     // Skip days with only one record
     if (dayRecords.length <= 1) continue;
@@ -213,6 +213,7 @@ const resolveDuplicates = (records: TimeRecord[]): TimeRecord[] => {
     
     // Apply the normalizeDayShift function to handle morning/evening shifts deterministically
     dayRecords = normalizeDayShift(dayRecords);
+    recordsByDate.set(date, dayRecords);
     
     // Handle consecutive same-status records
     for (let i = 0; i < dayRecords.length - 1; i++) {
