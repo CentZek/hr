@@ -5,7 +5,7 @@ import { supabase } from '../lib/supabase';
 import toast from 'react-hot-toast';
 import { SHIFT_TIMES, DISPLAY_SHIFT_TIMES } from '../types';
 import { parseShiftTimes } from '../utils/dateTimeHelper';
-import { fetchManualTimeRecords } from '../services/database';
+import { fetchManualTimeRecords, checkExistingTimeRecord, safeUpsertTimeRecord } from '../services/database';
 
 interface ManualEntryModalProps {
   isOpen: boolean;
@@ -153,35 +153,56 @@ const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
         checkOutTimestamp = `${shift.date}T${endTime}:00`;
       }
       
-      const timeRecords = [
-        {
-          employee_id: shift.employee_id,
-          timestamp: checkInTimestamp,
-          status: 'check_in',
-          shift_type: shift.shift_type,
-          notes: 'Employee submitted shift - HR approved; hours:9.00',
-          is_manual_entry: true,
-          exact_hours: 9.0,
-          display_check_in: displayCheckIn,
-          display_check_out: displayCheckOut,
-          working_week_start: shift.date // Set working_week_start for proper grouping
-        },
-        {
-          employee_id: shift.employee_id,
-          timestamp: checkOutTimestamp,
-          status: 'check_out',
-          shift_type: shift.shift_type,
-          notes: 'Employee submitted shift - HR approved; hours:9.00',
-          is_manual_entry: true,
-          exact_hours: 9.0,
-          display_check_in: displayCheckIn,
-          display_check_out: displayCheckOut,
-          working_week_start: shift.date // Same working_week_start for both records
-        }
-      ];
+      // Prepare time records data
+      const checkInData = {
+        employee_id: shift.employee_id,
+        timestamp: checkInTimestamp,
+        status: 'check_in',
+        shift_type: shift.shift_type,
+        notes: 'Employee submitted shift - HR approved; hours:9.00',
+        is_manual_entry: true,
+        exact_hours: 9.0,
+        display_check_in: displayCheckIn,
+        display_check_out: displayCheckOut,
+        working_week_start: shift.date // Set working_week_start for proper grouping
+      };
       
-      const { error: insertError } = await supabase.from('time_records').insert(timeRecords);
-      if (insertError) throw insertError;
+      const checkOutData = {
+        employee_id: shift.employee_id,
+        timestamp: checkOutTimestamp,
+        status: 'check_out',
+        shift_type: shift.shift_type,
+        notes: 'Employee submitted shift - HR approved; hours:9.00',
+        is_manual_entry: true,
+        exact_hours: 9.0,
+        display_check_in: displayCheckIn,
+        display_check_out: displayCheckOut,
+        working_week_start: shift.date // Same working_week_start for both records
+      };
+
+      // Check if records already exist and update or insert accordingly
+      // First check for existing check-in record
+      const existingCheckInId = await checkExistingTimeRecord(
+        shift.employee_id, 
+        shift.shift_type,
+        'check_in',
+        shift.date
+      );
+      
+      // Then check for existing check-out record
+      const existingCheckOutId = await checkExistingTimeRecord(
+        shift.employee_id, 
+        shift.shift_type,
+        'check_out',
+        shift.date
+      );
+      
+      // Use safeUpsertTimeRecord to handle both insert and update
+      const checkInSuccess = await safeUpsertTimeRecord(checkInData, existingCheckInId);
+      if (!checkInSuccess) throw new Error('Failed to save check-in record');
+      
+      const checkOutSuccess = await safeUpsertTimeRecord(checkOutData, existingCheckOutId);
+      if (!checkOutSuccess) throw new Error('Failed to save check-out record');
       
       // Refresh the list
       fetchEmployeeShiftRequests();
@@ -296,35 +317,56 @@ const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
         checkOutTimestamp = `${selectedDate}T${times.end}:00`;
       }
 
-      // Add records to time_records table with full ISO timestamps
-      await supabase
-        .from('time_records')
-        .insert([
-          {
-            employee_id: employeeId,
-            timestamp: checkInTimestamp,
-            status: 'check_in',
-            shift_type: shiftType,
-            notes: notes || 'Manual entry; hours:9.00',
-            is_manual_entry: true,
-            working_week_start: selectedDate, // Set working_week_start for proper grouping
-            display_check_in: displayCheckIn,
-            display_check_out: displayCheckOut,
-            exact_hours: 9.0
-          },
-          {
-            employee_id: employeeId,
-            timestamp: checkOutTimestamp,
-            status: 'check_out',
-            shift_type: shiftType,
-            notes: notes || 'Manual entry; hours:9.00',
-            is_manual_entry: true,
-            working_week_start: selectedDate, // Same working_week_start for both records
-            display_check_in: displayCheckIn,
-            display_check_out: displayCheckOut,
-            exact_hours: 9.0
-          }
-        ]);
+      // Prepare time records for check-in and check-out
+      const checkInData = {
+        employee_id: employeeId,
+        timestamp: checkInTimestamp,
+        status: 'check_in',
+        shift_type: shiftType,
+        notes: notes || 'Manual entry; hours:9.00',
+        is_manual_entry: true,
+        working_week_start: selectedDate, // Set working_week_start for proper grouping
+        display_check_in: displayCheckIn,
+        display_check_out: displayCheckOut,
+        exact_hours: 9.0
+      };
+
+      const checkOutData = {
+        employee_id: employeeId,
+        timestamp: checkOutTimestamp,
+        status: 'check_out',
+        shift_type: shiftType,
+        notes: notes || 'Manual entry; hours:9.00',
+        is_manual_entry: true,
+        working_week_start: selectedDate, // Same working_week_start for both records
+        display_check_in: displayCheckIn,
+        display_check_out: displayCheckOut,
+        exact_hours: 9.0
+      };
+
+      // Check if records already exist and update or insert accordingly
+      // First check for existing check-in record
+      const existingCheckInId = await checkExistingTimeRecord(
+        employeeId, 
+        shiftType,
+        'check_in',
+        selectedDate
+      );
+      
+      // Then check for existing check-out record
+      const existingCheckOutId = await checkExistingTimeRecord(
+        employeeId, 
+        shiftType,
+        'check_out',
+        selectedDate
+      );
+      
+      // Use safeUpsertTimeRecord to handle both insert and update
+      const checkInSuccess = await safeUpsertTimeRecord(checkInData, existingCheckInId);
+      if (!checkInSuccess) throw new Error('Failed to save check-in record');
+      
+      const checkOutSuccess = await safeUpsertTimeRecord(checkOutData, existingCheckOutId);
+      if (!checkOutSuccess) throw new Error('Failed to save check-out record');
 
       // FIXED: Fetch fresh records from the database
       const freshRecords = await fetchManualTimeRecords(50);

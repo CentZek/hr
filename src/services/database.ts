@@ -204,7 +204,7 @@ export const fetchEmployeeDetails = async (employeeId: string, monthFilter: stri
 };
 
 // Check if a time record exists before inserting
-const checkExistingTimeRecord = async (
+export const checkExistingTimeRecord = async (
   employeeId: string, 
   shiftType: string, 
   status: string, 
@@ -246,7 +246,7 @@ const checkExistingTimeRecord = async (
 };
 
 // Safely insert or update time record
-const safeUpsertTimeRecord = async (recordData: any, existingId: string | null = null): Promise<boolean> => {
+export const safeUpsertTimeRecord = async (recordData: any, existingId: string | null = null): Promise<boolean> => {
   try {
     // If we have an existing ID, update the record
     if (existingId) {
@@ -340,7 +340,7 @@ export const saveRecordsToDatabase = async (employeeRecords: EmployeeRecord[]): 
             shift_type: 'off_day',
             notes: 'OFF-DAY',
             is_manual_entry: true,
-            exact_hours: 0,
+            exact_hours: a0,
             working_week_start: day.date // Set working_week_start for proper grouping
           };
 
