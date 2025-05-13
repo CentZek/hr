@@ -1179,7 +1179,7 @@ export const exportApprovedHoursToExcel = (data: {
 }): void => {
   // Create worksheets for summary and details
   const summaryData = [
-    ['Employee Number', 'Name', 'Total Days', 'Regular Hours', 'Double-Time Hours', 'Total Payable Hours']
+    ['Employee Number', 'Name', 'Total Days', 'Regular Hours', 'Double-Time Hours', 'Fridays Worked', 'Over Time (Hours)', 'Over Time (Days)', 'Total Payable Hours']
   ];
   
   const detailsData = [
@@ -1206,12 +1206,40 @@ export const exportApprovedHoursToExcel = (data: {
     // Calculate total payable hours (regular hours + double-time bonus)
     const totalPayableHours = emp.total_hours + doubleTimeHours;
     
+    // Calculate Fridays worked
+    let fridaysWorked = 0;
+    if (emp.working_week_dates) {
+      fridaysWorked = emp.working_week_dates.filter((date: string) => {
+        try {
+          const dateObj = parseISO(date);
+          return isFriday(dateObj);
+        } catch (e) {
+          return false;
+        }
+      }).length;
+    }
+    
+    // Calculate overtime hours (hours exceeding 9 per day)
+    let overtimeHours = 0;
+    if (emp.working_week_dates && emp.hours_by_date) {
+      overtimeHours = emp.working_week_dates.reduce((total: number, date: string) => {
+        const hoursForDay = emp.hours_by_date?.[date] || 0;
+        return total + (hoursForDay > 9 ? hoursForDay - 9 : 0);
+      }, 0);
+    }
+    
+    // Convert overtime hours to days (assuming 8-hour workday for overtime calculation)
+    const overtimeDays = parseFloat((overtimeHours / 8).toFixed(2));
+    
     summaryData.push([
       emp.employee_number,
       emp.name,
       emp.total_days,
       emp.total_hours.toFixed(2),
       doubleTimeHours.toFixed(2),
+      fridaysWorked,
+      overtimeHours.toFixed(2),
+      overtimeDays.toFixed(2),
       totalPayableHours.toFixed(2)
     ]);
   });
@@ -1258,10 +1286,34 @@ export const exportApprovedHoursToExcel = (data: {
   
   // Add Summary sheet
   const wsSummary = utils.aoa_to_sheet(summaryData);
+  
+  // Apply some styling to the header row
+  const range = utils.decode_range(wsSummary['!ref'] || 'A1:I1');
+  for (let C = range.s.c; C <= range.e.c; ++C) {
+    const address = utils.encode_col(C) + '1';
+    if (!wsSummary[address]) continue;
+    wsSummary[address].s = {
+      fill: { fgColor: { rgb: "FFAAAAAA" } },
+      font: { bold: true }
+    };
+  }
+  
   utils.book_append_sheet(wb, wsSummary, 'Summary');
   
   // Add Details sheet
   const wsDetails = utils.aoa_to_sheet(detailsData);
+  
+  // Apply styling to details header
+  const detailsRange = utils.decode_range(wsDetails['!ref'] || 'A1:J1');
+  for (let C = detailsRange.s.c; C <= detailsRange.e.c; ++C) {
+    const address = utils.encode_col(C) + '1';
+    if (!wsDetails[address]) continue;
+    wsDetails[address].s = {
+      fill: { fgColor: { rgb: "FFAAAAAA" } },
+      font: { bold: true }
+    };
+  }
+  
   utils.book_append_sheet(wb, wsDetails, 'Details');
   
   // Add Double-Time Days sheet
@@ -1279,7 +1331,67 @@ export const exportApprovedHoursToExcel = (data: {
   });
   
   const wsDoubleDays = utils.aoa_to_sheet(doubleTimeDaysData);
+  
+  // Apply styling to double days header
+  const doubleDaysRange = utils.decode_range(wsDoubleDays['!ref'] || 'A1:C1');
+  for (let C = doubleDaysRange.s.c; C <= doubleDaysRange.e.c; ++C) {
+    const address = utils.encode_col(C) + '1';
+    if (!wsDoubleDays[address]) continue;
+    wsDoubleDays[address].s = {
+      fill: { fgColor: { rgb: "FFAAAAAA" } },
+      font: { bold: true }
+    };
+  }
+  
   utils.book_append_sheet(wb, wsDoubleDays, 'Double-Time Days');
+  
+  // Add statistics worksheet with aggregated totals
+  const statsHeaders = [
+    'Category', 
+    'Value'
+  ];
+  
+  const statsData: any[][] = [statsHeaders];
+  
+  // Calculate totals from the summary data
+  let totalDays = 0;
+  let totalRegularHours = 0;
+  let totalDoubleTimeHours = 0;
+  let totalPayableHours = 0;
+  let totalFridaysWorked = 0;
+  let totalOvertimeHours = 0;
+  
+  // Skip the header row (index 0)
+  for (let i = 1; i < summaryData.length; i++) {
+    totalDays += parseFloat(summaryData[i][2]) || 0;
+    totalRegularHours += parseFloat(summaryData[i][3]) || 0;
+    totalDoubleTimeHours += parseFloat(summaryData[i][4]) || 0;
+    totalFridaysWorked += parseFloat(summaryData[i][5]) || 0;
+    totalOvertimeHours += parseFloat(summaryData[i][6]) || 0;
+    totalPayableHours += parseFloat(summaryData[i][8]) || 0;
+  }
+  
+  // Convert overtime hours to days (assuming 8-hour workday for overtime calculation)
+  const totalOvertimeDays = parseFloat((totalOvertimeHours / 8).toFixed(2));
+  
+  // Add statistics rows
+  statsData.push(['Total Employees', summaryData.length - 1]);
+  statsData.push(['Total Days', totalDays]);
+  statsData.push(['Total Regular Hours', totalRegularHours.toFixed(2)]);
+  statsData.push(['Total Double-Time Hours', totalDoubleTimeHours.toFixed(2)]);
+  statsData.push(['Total Payable Hours', totalPayableHours.toFixed(2)]);
+  statsData.push(['Fridays Worked (Days)', totalFridaysWorked]);
+  statsData.push(['Overtime Hours', totalOvertimeHours.toFixed(2)]);
+  statsData.push(['Overtime (Days)', totalOvertimeDays.toFixed(2)]);
+  
+  // Filter period
+  statsData.push(['Filter Period', data.filterMonth === 'all' ? 'All Time' : data.filterMonth]);
+  
+  // Create the statistics worksheet
+  const statsWorksheet = utils.aoa_to_sheet(statsData);
+  
+  // Add the statistics sheet to the workbook
+  utils.book_append_sheet(wb, statsWorksheet, 'Statistics');
   
   // Generate filename with month if specified
   const monthStr = data.filterMonth === 'all' ? 'all_time' : data.filterMonth;
