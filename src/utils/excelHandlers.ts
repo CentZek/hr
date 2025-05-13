@@ -687,6 +687,7 @@ export const processExcelData = async (data: any[]): Promise<EmployeeRecord[]> =
         // Calculate hours for night shift
         const hoursWorked = calculateNightShiftHours(checkIn.timestamp, checkOut.timestamp);
         
+        
         // Store original check-in and check-out times as display values
         const checkInDisplayTime = format(checkIn.timestamp, 'HH:mm');
         const checkOutDisplayTime = format(checkOut.timestamp, 'HH:mm');
@@ -1287,7 +1288,3 @@ export const exportApprovedHoursToExcel = (data: {
   // Export file
   writeFile(wb, fileName);
 };
-
-export { exportToExcel }
-
-export { exportApprovedHoursToExcel }
