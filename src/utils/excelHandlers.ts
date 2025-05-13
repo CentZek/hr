@@ -1,5 +1,5 @@
 import * as XLSX from 'xlsx';
-import { format, isFriday, parseISO, parse } from 'date-fns';
+import { format, isFriday, parseISO } from 'date-fns';
 import { EmployeeRecord, DailyRecord } from '../types';
 
 // Export face ID data to Excel
@@ -230,50 +230,20 @@ export const handleExcelFile = async (file: File): Promise<EmployeeRecord[]> => 
     
     reader.onload = (e) => {
       try {
-        console.log("Starting to process Excel file...");
         const data = new Uint8Array(e.target?.result as ArrayBuffer);
-        console.log("File read as array buffer, parsing with XLSX...");
-        
-        // Try to read the workbook with different options if the default fails
-        let workbook;
-        try {
-          workbook = XLSX.read(data, { type: 'array' });
-        } catch (readError) {
-          console.error("Error with default reading, trying with different options:", readError);
-          // Try with different options
-          workbook = XLSX.read(data, { type: 'array', cellDates: true, dateNF: 'yyyy-mm-dd' });
-        }
-        
-        console.log("Workbook parsed, sheets:", workbook.SheetNames);
+        const workbook = XLSX.read(data, { type: 'array' });
         
         // Get the first sheet name
         const sheetName = workbook.SheetNames[0];
-        if (!sheetName) {
-          throw new Error("No sheets found in the workbook");
-        }
         
         // Get the worksheet
         const worksheet = workbook.Sheets[sheetName];
-        console.log("Got worksheet:", sheetName);
         
-        // Convert to JSON with different options
-        let jsonData;
-        try {
-          // Try with dates enabled
-          jsonData = XLSX.utils.sheet_to_json(worksheet, { raw: false, dateNF: 'yyyy-mm-dd' });
-        } catch (jsonError) {
-          console.error("Error converting to JSON with dates, trying without:", jsonError);
-          // Fall back to basic conversion
-          jsonData = XLSX.utils.sheet_to_json(worksheet);
-        }
-        
-        console.log("Converted to JSON, row count:", jsonData.length);
-        console.log("First row sample:", jsonData.length > 0 ? jsonData[0] : "No data");
+        // Convert to JSON
+        const jsonData = XLSX.utils.sheet_to_json(worksheet) as any[];
         
         // Process the data into the required format
-        console.log("Processing Face ID data...");
         const processedData = processFaceIDData(jsonData);
-        console.log("Processing complete, employee count:", processedData.length);
         
         resolve(processedData);
       } catch (error) {
@@ -282,202 +252,98 @@ export const handleExcelFile = async (file: File): Promise<EmployeeRecord[]> => 
       }
     };
     
-    reader.onerror = (error) => {
-      console.error('FileReader error:', error);
+    reader.onerror = () => {
       reject(new Error('Failed to read file. Please try again.'));
     };
     
-    console.log("Starting to read file as array buffer...");
     reader.readAsArrayBuffer(file);
   });
 };
 
 // Function to process Face ID data from Excel into EmployeeRecord[]
 const processFaceIDData = (data: any[]): EmployeeRecord[] => {
-  if (!Array.isArray(data) || data.length === 0) {
-    console.error("Invalid or empty data array:", data);
-    throw new Error("No valid data found in the Excel file");
-  }
-  
-  console.log("Processing", data.length, "rows of data");
-  
-  // Detect column names from the first row to make it more flexible
-  const firstRow = data[0];
-  const columnMap = detectColumnNames(firstRow);
-  
-  console.log("Detected column mapping:", columnMap);
+  // Implementation of processing logic
+  // This is a placeholder - the actual implementation would depend on your data structure
   
   // Map to store employees by employee number
   const employeeMap: Map<string, EmployeeRecord> = new Map();
   
   // Process each row in the Excel data
   data.forEach((row, index) => {
-    try {
-      // Extract data using the detected column names
-      const department = getValueByPossibleKeys(row, columnMap.department) || '';
-      const name = getValueByPossibleKeys(row, columnMap.name) || '';
-      const employeeNumberRaw = getValueByPossibleKeys(row, columnMap.employeeNumber);
-      const employeeNumber = String(employeeNumberRaw || '').trim();
-      
-      const timestampRaw = getValueByPossibleKeys(row, columnMap.timestamp);
-      const timestamp = parseTimestamp(timestampRaw);
-      
-      const statusRaw = getValueByPossibleKeys(row, columnMap.status);
-      const status = determineStatus(String(statusRaw || ''));
-      
-      if (!timestamp) {
-        console.warn(`Row ${index + 1}: Invalid or missing timestamp:`, timestampRaw);
-        return;
-      }
-      
-      if (!employeeNumber) {
-        console.warn(`Row ${index + 1}: Missing employee number`);
-        return;
-      }
-      
-      if (!name) {
-        console.warn(`Row ${index + 1}: Missing employee name`);
-        // We can continue with a placeholder name if needed
-      }
-      
-      // For debugging
-      console.log(`Row ${index + 1}: Processing ${name} (${employeeNumber}) - ${format(timestamp, 'yyyy-MM-dd HH:mm:ss')} - ${status}`);
-      
-      // Get or create employee record
-      let employee = employeeMap.get(employeeNumber);
-      if (!employee) {
-        employee = {
-          employeeNumber,
-          name: name || `Employee ${employeeNumber}`, // Fallback name
-          department,
-          days: [],
-          totalDays: 0,
-          expanded: false
-        };
-        employeeMap.set(employeeNumber, employee);
-      }
-      
-      // Process the timestamp into the appropriate day record
-      processTimeRecord(employee, timestamp, status, index);
-    } catch (rowError) {
-      console.error(`Error processing row ${index + 1}:`, rowError, "Row data:", row);
-      // Continue to next row
+    // Extract department, name, employee number, timestamp, and status
+    // The exact field names will depend on your Excel structure
+    const department = row.Department || '';
+    const name = row.Name || '';
+    const employeeNumber = String(row['Employee No'] || '').trim();
+    const timestamp = parseTimestamp(row.Time || row.Timestamp || row.DateTime);
+    const status = determineStatus(row.Status || '');
+    
+    if (!timestamp || !employeeNumber || !name) {
+      console.warn(`Skipping row ${index + 1} due to missing data`);
+      return;
     }
+    
+    // Get or create employee record
+    let employee = employeeMap.get(employeeNumber);
+    if (!employee) {
+      employee = {
+        employeeNumber,
+        name,
+        department,
+        days: [],
+        totalDays: 0,
+        expanded: false
+      };
+      employeeMap.set(employeeNumber, employee);
+    }
+    
+    // Process the timestamp into the appropriate day record
+    processTimeRecord(employee, timestamp, status, index);
   });
   
   // Format the results and count the total days
   const results = Array.from(employeeMap.values());
-  console.log(`Processed ${results.length} employees`);
-  
   results.forEach(emp => {
     // Sort days chronologically
     emp.days.sort((a, b) => a.date.localeCompare(b.date));
     
     // Count total days
     emp.totalDays = emp.days.length;
-    
-    console.log(`Employee ${emp.name} has ${emp.days.length} days`);
   });
   
   return results;
 };
 
-// Helper function to detect column names from the first row
-const detectColumnNames = (firstRow: any) => {
-  const columnMap = {
-    department: ['Department', 'Dept', 'dept', 'department'],
-    name: ['Name', 'Employee Name', 'EmployeeName', 'name', 'employee', 'employee_name'],
-    employeeNumber: ['Employee No', 'Employee Number', 'EmployeeNo', 'employee_no', 'EmployeeID', 'ID', 'employee_id', 'emp_no', 'emp_id'],
-    timestamp: ['Time', 'Timestamp', 'DateTime', 'Date Time', 'time', 'timestamp', 'datetime', 'date_time', 'Check Time', 'check_time'],
-    status: ['Status', 'Check Type', 'CheckType', 'status', 'check_type', 'type', 'check', 'in_out']
-  };
-
-  // For debugging, log all keys from the first row
-  console.log("Available columns in Excel:", Object.keys(firstRow));
-  
-  // Return the column mapping
-  return columnMap;
-};
-
-// Helper function to get value by possible column names
-const getValueByPossibleKeys = (row: any, possibleKeys: string[]): any => {
-  for (const key of possibleKeys) {
-    if (row[key] !== undefined) {
-      return row[key];
-    }
-  }
-  return null;
-};
-
 // Helper function to parse timestamps from Excel
 const parseTimestamp = (timestampStr: any): Date | null => {
-  if (timestampStr === null || timestampStr === undefined) {
-    return null;
-  }
-  
-  console.log("Parsing timestamp:", timestampStr, "Type:", typeof timestampStr);
+  if (!timestampStr) return null;
   
   // Handle numeric Excel date values
   if (typeof timestampStr === 'number') {
-    // Excel dates are number of days since Dec 30, 1899
-    const date = new Date((timestampStr - 25569) * 86400 * 1000);
-    console.log("Parsed numeric Excel date:", date);
-    return date;
+    return new Date((timestampStr - 25569) * 86400 * 1000);
   }
   
-  // Handle date object directly
-  if (timestampStr instanceof Date) {
-    console.log("Already a Date object:", timestampStr);
-    return timestampStr;
-  }
-  
-  // Try parsing string formats
-  if (typeof timestampStr === 'string') {
-    try {
-      // Try parsing ISO format first
-      const isoDate = parseISO(timestampStr);
-      if (!isNaN(isoDate.getTime())) {
-        console.log("Parsed as ISO date:", isoDate);
-        return isoDate;
-      }
-      
-      // Try using tryParseDate function for various formats
-      const parsedDate = tryParseDate(timestampStr);
-      if (parsedDate) {
-        console.log("Parsed with tryParseDate:", parsedDate);
-        return parsedDate;
-      }
-      
-      // Last resort: direct Date constructor
-      const date = new Date(timestampStr);
-      if (!isNaN(date.getTime())) {
-        console.log("Parsed with Date constructor:", date);
-        return date;
-      }
-      
-      console.error("Failed to parse timestamp:", timestampStr);
-      return null;
-    } catch (e) {
-      console.error('Error parsing timestamp string:', timestampStr, e);
-      return null;
+  try {
+    const date = new Date(timestampStr);
+    if (isNaN(date.getTime())) {
+      throw new Error('Invalid date');
     }
+    return date;
+  } catch (e) {
+    console.error('Error parsing timestamp:', timestampStr, e);
+    return null;
   }
-  
-  // If we get here, we couldn't parse the timestamp
-  console.error("Unparseable timestamp format:", timestampStr);
-  return null;
 };
 
 // Helper function to determine the status (check-in or check-out)
 const determineStatus = (statusStr: string): 'check_in' | 'check_out' => {
   const lowerStatus = statusStr.toLowerCase();
   
-  if (lowerStatus.includes('in') || lowerStatus.includes('entry') || lowerStatus === 'c/in' || lowerStatus === 'i' || lowerStatus === '1') {
+  if (lowerStatus.includes('in') || lowerStatus.includes('entry')) {
     return 'check_in';
   }
   
-  // Default to check-out for anything else
-  return 'check_out';
+  return 'check_out'; // Default to check-out
 };
 
 // Helper function to process a time record into an employee's days
@@ -487,6 +353,9 @@ const processTimeRecord = (
   status: 'check_in' | 'check_out',
   originalIndex: number
 ): void => {
+  // Implementation depends on your specific business logic
+  // This is a placeholder function
+  
   // Format date as YYYY-MM-DD for grouping
   const dateStr = format(timestamp, 'yyyy-MM-dd');
   
@@ -550,20 +419,10 @@ const processTimeRecord = (
 const tryParseDate = (dateStr: string): Date | null => {
   const formats = [
     'yyyy-MM-dd',
-    'yyyy-MM-dd HH:mm:ss',
     'MM/dd/yyyy',
-    'MM/dd/yyyy HH:mm:ss',
     'MM-dd-yyyy',
-    'MM-dd-yyyy HH:mm:ss',
     'yyyy/MM/dd',
-    'yyyy/MM/dd HH:mm:ss',
     'd-MMM-yyyy',
-    'd-MMM-yyyy HH:mm:ss',
-    'M/d/yyyy h:mm:ss a',
-    'M/d/yyyy h:mm a',
-    'MM/dd/yyyy hh:mm:ss a',
-    'yyyy-MM-dd\'T\'HH:mm:ss',
-    'yyyy-MM-dd\'T\'HH:mm:ss.SSSZ',
   ];
   
   for (const fmt of formats) {
