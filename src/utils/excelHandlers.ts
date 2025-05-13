@@ -1,424 +1,223 @@
 import * as XLSX from 'xlsx';
-import { format, isFriday, parseISO } from 'date-fns';
+import { format, parseISO, isFriday } from 'date-fns';
 import { EmployeeRecord, DailyRecord } from '../types';
 
-// Helper to create styles for the Excel workbook
-const createStyles = () => {
-  return {
-    headerStyle: {
-      font: { bold: true, color: { rgb: 'FFFFFF' } },
-      fill: { fgColor: { rgb: '4F81BD' } },
-      alignment: { horizontal: 'center' }
-    },
-    dateHeaderStyle: {
-      font: { bold: true },
-      fill: { fgColor: { rgb: 'D9E1F2' } },
-      alignment: { horizontal: 'center' }
-    },
-    normalCell: {
-      alignment: { horizontal: 'left' }
-    },
-    numberCell: {
-      alignment: { horizontal: 'right' },
-      numFmt: '0.00'
-    },
-    dateCell: {
-      alignment: { horizontal: 'center' },
-      numFmt: 'yyyy-mm-dd'
-    },
-    timeCell: {
-      alignment: { horizontal: 'center' },
-      numFmt: 'h:mm'
-    },
-    highlightCell: {
-      font: { color: { rgb: 'C00000' } },
-      alignment: { horizontal: 'right' },
-      numFmt: '0.00'
-    }
-  };
+// Helper function to create a workbook
+const createWorkbook = () => {
+  return XLSX.utils.book_new();
 };
 
-// Function to export Face ID Data to Excel
+// Helper function to add a worksheet to a workbook
+const addWorksheet = (workbook: any, data: any[], sheetName: string) => {
+  const worksheet = XLSX.utils.json_to_sheet(data);
+  XLSX.utils.book_append_sheet(workbook, worksheet, sheetName);
+};
+
+// Helper function to download a workbook
+const downloadWorkbook = (workbook: any, fileName: string) => {
+  XLSX.writeFile(workbook, fileName);
+};
+
+// Export employee records to Excel
 export const exportToExcel = (employeeRecords: EmployeeRecord[]) => {
-  try {
-    const workbook = XLSX.utils.book_new();
-    const styles = createStyles();
+  // Create a new workbook
+  const workbook = createWorkbook();
+
+  // Prepare data for summary sheet
+  const summaryData = employeeRecords.map(employee => {
+    // Calculate total hours
+    const totalHours = employee.days.reduce((sum, day) => sum + day.hoursWorked, 0);
     
-    // Summary sheet data
-    const summaryData = [
-      ['Employee Number', 'Name', 'Department', 'Total Days', 'Approved Days', 'Total Hours'],
-      ...employeeRecords.map(employee => {
-        // Calculate approved days
-        const approvedDays = employee.days.filter(day => day.approved).length;
-        
-        // Calculate total hours
-        const totalHours = employee.days.reduce((sum, day) => sum + day.hoursWorked, 0);
-        
-        return [
-          employee.employeeNumber,
-          employee.name,
-          employee.department,
-          employee.days.length,
-          approvedDays,
-          totalHours.toFixed(2)
-        ];
-      })
-    ];
+    // Calculate total days with hours > 0
+    const totalDaysWithHours = employee.days.filter(day => day.hoursWorked > 0).length;
     
-    // Create summary sheet
-    const summarySheet = XLSX.utils.aoa_to_sheet(summaryData);
-    XLSX.utils.book_append_sheet(workbook, summarySheet, 'Summary');
-    
-    // Create sheet for each employee
-    employeeRecords.forEach(employee => {
-      // Skip employees with no days
-      if (employee.days.length === 0) return;
-      
-      // Format data for Excel
-      const data = [
-        ['Date', 'First Check-In', 'Last Check-Out', 'Hours Worked', 'Shift Type', 'Approved', 'Late', 'Early Leave', 'Penalty Minutes', 'Notes'],
-        ...employee.days.map(day => {
-          return [
-            day.date,
-            day.firstCheckIn ? format(day.firstCheckIn, 'HH:mm') : 'N/A',
-            day.lastCheckOut ? format(day.lastCheckOut, 'HH:mm') : 'N/A',
-            day.hoursWorked.toFixed(2),
-            day.shiftType || 'Unknown',
-            day.approved ? 'Yes' : 'No',
-            day.isLate ? 'Yes' : 'No',
-            day.earlyLeave ? 'Yes' : 'No',
-            day.penaltyMinutes || 0,
-            day.notes || ''
-          ];
-        })
-      ];
-      
-      // Create sheet
-      const sheet = XLSX.utils.aoa_to_sheet(data);
-      XLSX.utils.book_append_sheet(workbook, sheet, `${employee.name.substring(0, 20)}`);
+    return {
+      'Employee Number': employee.employeeNumber,
+      'Name': employee.name,
+      'Department': employee.department,
+      'Total Days': totalDaysWithHours,
+      'Total Hours': totalHours.toFixed(2),
+      'Average Hours/Day': totalDaysWithHours > 0 ? (totalHours / totalDaysWithHours).toFixed(2) : '0.00'
+    };
+  });
+
+  // Add summary sheet
+  addWorksheet(workbook, summaryData, 'Summary');
+
+  // Add detailed sheets for each employee
+  employeeRecords.forEach(employee => {
+    const detailedData = employee.days.map(day => {
+      return {
+        'Date': day.date,
+        'Check In': day.firstCheckIn ? format(day.firstCheckIn, 'HH:mm') : 'Missing',
+        'Check Out': day.lastCheckOut ? format(day.lastCheckOut, 'HH:mm') : 'Missing',
+        'Hours': day.hoursWorked.toFixed(2),
+        'Shift Type': day.shiftType || 'Unknown',
+        'Status': day.approved ? 'Approved' : 'Pending',
+        'Penalty (min)': day.penaltyMinutes,
+        'Notes': day.notes
+      };
     });
-    
-    // Generate Excel file
-    const fileName = `TimeTracking_Export_${format(new Date(), 'yyyyMMdd_HHmm')}.xlsx`;
-    XLSX.writeFile(workbook, fileName);
-    
-    return fileName;
-  } catch (error) {
-    console.error('Error exporting to Excel:', error);
-    throw error;
-  }
+
+    // Add detailed sheet
+    addWorksheet(workbook, detailedData, `${employee.name.substring(0, 20)}`);
+  });
+
+  // Download the workbook
+  downloadWorkbook(workbook, 'Employee_Time_Records.xlsx');
 };
 
-// Function to export approved hours data to Excel
+// Export approved hours to Excel with additional metrics
 export const exportApprovedHoursToExcel = (data: any) => {
-  try {
-    const { summary, details, filterMonth, doubleDays = [] } = data;
-    const workbook = XLSX.utils.book_new();
+  const { summary, details, filterMonth, doubleDays } = data;
+  
+  // Create a new workbook
+  const workbook = createWorkbook();
+  
+  // Prepare data for summary sheet with additional metrics
+  const summaryData = summary.map((employee: any) => {
+    // Calculate total days with hours > 0
+    const workingDates = employee.working_week_dates || [];
+    const daysWithHours = workingDates.filter((date: string) => 
+      (employee.hours_by_date?.[date] || 0) > 0
+    ).length;
     
-    // Create summary sheet
-    const summaryData = [
-      ['Employee Number', 'Name', 'Total Days', 'Regular Hours', 'Double-Time Hours', 'Fridays Worked', 'Over Time (Hours)', 'Over Time (Days)', 'Total Payable Hours']
-    ];
+    // Calculate total regular hours
+    const regularHours = employee.total_hours || 0;
     
-    // Formatting helpers
-    const formatNumber = (value: number) => Number(value.toFixed(2));
+    // Calculate double-time hours
+    const doubleTimeHours = employee.double_time_hours || 0;
     
-    let totalEmployees = 0;
-    let totalDays = 0;
-    let totalRegularHours = 0;
-    let totalDoubleTimeHours = 0;
-    let totalPayableHours = 0;
-    let totalFridaysWorked = 0;
-    let totalOvertimeHours = 0;
-    let totalOvertimeDays = 0;
+    // Calculate total payable hours (regular + double-time)
+    const totalPayableHours = regularHours + doubleTimeHours;
     
-    // Process each employee
-    summary.forEach((employee: any) => {
-      if (!employee || !employee.id) return;
-      
-      totalEmployees++;
-      
-      // Calculate days where the employee actually worked (hours > 0)
-      const workingDays = employee.working_week_dates?.filter((date: string) => {
-        return (employee.hours_by_date?.[date] || 0) > 0;
-      }) || [];
-      
-      // Only count days with actual work hours
-      const actualWorkingDaysCount = workingDays.length;
-      totalDays += actualWorkingDaysCount;
-      
-      // Regular hours (already calculated)
-      const regularHours = employee.total_hours || 0;
-      totalRegularHours += regularHours;
-      
-      // Double-time hours (already calculated)
-      const doubleTimeHours = employee.double_time_hours || 0;
-      totalDoubleTimeHours += doubleTimeHours;
-      
-      // Total payable hours
-      const payableHours = regularHours + doubleTimeHours;
-      totalPayableHours += payableHours;
-      
-      // Calculate Fridays worked
-      const fridaysWorked = workingDays.filter((dateStr: string) => {
-        const date = parseISO(dateStr);
-        return isFriday(date);
-      }).length;
-      totalFridaysWorked += fridaysWorked;
-      
-      // Calculate overtime hours (hours > 9 per day)
-      let overtimeHours = 0;
-      workingDays.forEach((dateStr: string) => {
-        const hoursForDay = employee.hours_by_date?.[dateStr] || 0;
-        if (hoursForDay > 9) {
-          overtimeHours += (hoursForDay - 9);
-        }
-      });
-      totalOvertimeHours += overtimeHours;
-      
-      // Calculate overtime days (overtime hours / 9)
-      const overtimeDays = overtimeHours / 9;
-      totalOvertimeDays += overtimeDays;
-      
-      // Add employee row to summary data
-      summaryData.push([
-        employee.employee_number,
-        employee.name,
-        actualWorkingDaysCount,
-        formatNumber(regularHours),
-        formatNumber(doubleTimeHours),
-        fridaysWorked,
-        formatNumber(overtimeHours),
-        formatNumber(overtimeDays),
-        formatNumber(payableHours)
-      ]);
+    // Calculate Fridays worked
+    const fridaysWorked = workingDates.filter((date: string) => {
+      try {
+        return isFriday(parseISO(date));
+      } catch (e) {
+        return false;
+      }
+    }).length;
+    
+    // Calculate overtime hours (hours over 9 per day)
+    let overtimeHours = 0;
+    workingDates.forEach((date: string) => {
+      const hoursForDay = employee.hours_by_date?.[date] || 0;
+      if (hoursForDay > 9) {
+        overtimeHours += (hoursForDay - 9);
+      }
     });
     
-    // Create summary sheet
-    const summarySheet = XLSX.utils.aoa_to_sheet(summaryData);
+    // Calculate overtime days
+    const overtimeDays = overtimeHours > 0 ? (overtimeHours / 9).toFixed(2) : '0.00';
     
-    // Set column widths
-    const summaryColWidths = [
-      { wch: 18 }, // Employee Number
-      { wch: 30 }, // Name
-      { wch: 12 }, // Total Days
-      { wch: 15 }, // Regular Hours
-      { wch: 20 }, // Double-Time Hours
-      { wch: 15 }, // Fridays Worked
-      { wch: 18 }, // Over Time (Hours)
-      { wch: 18 }, // Over Time (Days)
-      { wch: 20 }  // Total Payable Hours
-    ];
-    summarySheet['!cols'] = summaryColWidths;
+    return {
+      'Employee Number': employee.employee_number,
+      'Name': employee.name,
+      'Total Days': daysWithHours,
+      'Regular Hours': regularHours.toFixed(2),
+      'Double-Time Hours': doubleTimeHours.toFixed(2),
+      'Fridays Worked': fridaysWorked,
+      'Over Time (Hours)': overtimeHours.toFixed(2),
+      'Over Time (Days)': overtimeDays,
+      'Total Payable Hours': totalPayableHours.toFixed(2)
+    };
+  });
+
+  // Add summary sheet
+  addWorksheet(workbook, summaryData, 'Summary');
+  
+  // Add detailed sheets for each employee with records
+  summary.forEach((employee: any) => {
+    // Get details for this employee
+    const employeeDetails = details.filter((record: any) => record.employeeId === employee.id);
     
-    // Style the header row
-    for (let i = 0; i < summaryData[0].length; i++) {
-      const cellRef = XLSX.utils.encode_cell({ r: 0, c: i });
-      if (!summarySheet[cellRef]) continue;
+    if (employeeDetails.length === 0) return; // Skip if no details
+    
+    const detailedData = employeeDetails.map((record: any) => {
+      // Determine if this is a double-time day
+      const isDoubleTime = doubleDays.includes(record.date);
       
-      summarySheet[cellRef].s = {
-        font: { bold: true, color: { rgb: 'FFFFFF' } },
-        fill: { fgColor: { rgb: '4F81BD' } },
-        alignment: { horizontal: 'center' }
+      // Get hours for this day
+      const hoursForDay = employee.hours_by_date?.[record.date] || 0;
+      
+      // Calculate overtime (hours over 9)
+      const overtimeHours = hoursForDay > 9 ? (hoursForDay - 9).toFixed(2) : '0.00';
+      
+      // Determine if this is a Friday
+      let isFridayDay = false;
+      try {
+        isFridayDay = isFriday(parseISO(record.date));
+      } catch (e) {
+        // Handle parsing error
+      }
+      
+      return {
+        'Date': record.date,
+        'Check In': record.checkIn ? formatRecordTime(record.checkIn, 'check_in') : 'Missing',
+        'Check Out': record.checkOut ? formatRecordTime(record.checkOut, 'check_out') : 'Missing',
+        'Hours': hoursForDay.toFixed(2),
+        'Shift Type': record.shiftType || 'Unknown',
+        'Double-Time': isDoubleTime ? 'Yes' : 'No',
+        'Friday': isFridayDay ? 'Yes' : 'No',
+        'Overtime Hours': overtimeHours,
+        'Notes': record.notes || ''
       };
-    }
-    
-    XLSX.utils.book_append_sheet(workbook, summarySheet, 'Summary');
-    
-    // Create statistics sheet
-    const statsData = [
-      ['Metric', 'Value'],
-      ['Total Employees', totalEmployees],
-      ['Total Working Days', totalDays],
-      ['Total Regular Hours', formatNumber(totalRegularHours)],
-      ['Total Double-Time Hours', formatNumber(totalDoubleTimeHours)],
-      ['Total Payable Hours', formatNumber(totalPayableHours)],
-      ['Total Fridays Worked', totalFridaysWorked],
-      ['Total Overtime Hours', formatNumber(totalOvertimeHours)],
-      ['Total Overtime Days', formatNumber(totalOvertimeDays)]
-    ];
-    
-    const statsSheet = XLSX.utils.aoa_to_sheet(statsData);
-    // Set column widths
-    statsSheet['!cols'] = [
-      { wch: 25 }, // Metric
-      { wch: 15 }  // Value
-    ];
-    
-    // Style the header row
-    for (let i = 0; i < statsData[0].length; i++) {
-      const cellRef = XLSX.utils.encode_cell({ r: 0, c: i });
-      if (!statsSheet[cellRef]) continue;
-      
-      statsSheet[cellRef].s = {
-        font: { bold: true, color: { rgb: 'FFFFFF' } },
-        fill: { fgColor: { rgb: '4F81BD' } },
-        alignment: { horizontal: 'center' }
-      };
-    }
-    
-    XLSX.utils.book_append_sheet(workbook, statsSheet, 'Statistics');
-    
-    // Create detail sheets for each employee with detailed records
-    if (details && details.length > 0) {
-      // Group details by employee
-      const detailsByEmployee = details.reduce((acc: any, record: any) => {
-        if (!record.employee_id) return acc;
-        
-        if (!acc[record.employee_id]) {
-          acc[record.employee_id] = [];
-        }
-        
-        acc[record.employee_id].push(record);
-        return acc;
-      }, {});
-      
-      // Find employee data from summary
-      Object.entries(detailsByEmployee).forEach(([employeeId, records]: [string, any]) => {
-        if (!records || !records.length) return;
-        
-        const employee = summary.find((e: any) => e.id === employeeId);
-        if (!employee) return;
-        
-        const employeeName = employee.name;
-        const employeeNumber = employee.employee_number;
-        
-        // Format detail records for Excel
-        const detailData = [
-          ['Date', 'Check-In', 'Check-Out', 'Shift Type', 'Hours', 'Double-Time', 'Notes']
-        ];
-        
-        // Group records by date
-        const recordsByDate = records.reduce((acc: any, record: any) => {
-          // Skip if this is an off-day record
-          if (record.status === 'off_day' || record.notes?.includes('OFF-DAY')) {
-            return acc;
-          }
-          
-          // Use working_week_start if available, otherwise use timestamp date
-          const dateKey = record.working_week_start || 
-                         (record.timestamp ? new Date(record.timestamp).toISOString().slice(0, 10) : '');
-          
-          if (!dateKey) return acc;
-          
-          if (!acc[dateKey]) {
-            acc[dateKey] = [];
-          }
-          
-          acc[dateKey].push(record);
-          return acc;
-        }, {});
-        
-        // Process each date for this employee
-        Object.entries(recordsByDate).forEach(([date, dateRecords]: [string, any]) => {
-          const checkIns = dateRecords.filter((r: any) => r.status === 'check_in');
-          const checkOuts = dateRecords.filter((r: any) => r.status === 'check_out');
-          
-          // Get the first check-in and last check-out
-          const checkIn = checkIns.length > 0 ? 
-            checkIns.sort((a: any, b: any) => 
-              new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())[0] 
-            : null;
-          
-          const checkOut = checkOuts.length > 0 ? 
-            checkOuts.sort((a: any, b: any) => 
-              new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())[0] 
-            : null;
-          
-          // Skip if we don't have both check-in and check-out
-          if (!checkIn && !checkOut) return;
-          
-          // Get check-in and check-out display times
-          const checkInDisplay = checkIn?.display_check_in || 'Missing';
-          const checkOutDisplay = checkOut?.display_check_out || 'Missing';
-          
-          // Get hours - prioritize exact_hours field
-          let hours = 0;
-          if (checkIn && checkIn.exact_hours !== null && checkIn.exact_hours !== undefined) {
-            hours = parseFloat(checkIn.exact_hours);
-          } else if (checkOut && checkOut.exact_hours !== null && checkOut.exact_hours !== undefined) {
-            hours = parseFloat(checkOut.exact_hours);
-          }
-          
-          // Calculate double time if this is a double time day
-          const isDoubleTimeDay = doubleDays.includes(date);
-          const doubleTimeHours = isDoubleTimeDay ? hours : 0;
-          
-          // Extract notes (remove hours part)
-          const notes = (checkIn?.notes || checkOut?.notes || '')
-            .replace(/hours:\d+\.\d+;?\s*/, '')
-            .replace(/double-time:true;?\s*/, '');
-          
-          detailData.push([
-            date,
-            checkInDisplay,
-            checkOutDisplay,
-            checkIn?.shift_type || checkOut?.shift_type || 'Unknown',
-            formatNumber(hours),
-            isDoubleTimeDay ? formatNumber(doubleTimeHours) : 0,
-            notes
-          ]);
-        });
-        
-        if (detailData.length > 1) { // Only create sheet if we have data
-          const detailSheet = XLSX.utils.aoa_to_sheet(detailData);
-          
-          // Set column widths
-          const detailColWidths = [
-            { wch: 12 }, // Date
-            { wch: 12 }, // Check-In
-            { wch: 12 }, // Check-Out
-            { wch: 15 }, // Shift Type
-            { wch: 10 }, // Hours
-            { wch: 12 }, // Double-Time
-            { wch: 40 }  // Notes
-          ];
-          detailSheet['!cols'] = detailColWidths;
-          
-          // Style the header row
-          for (let i = 0; i < detailData[0].length; i++) {
-            const cellRef = XLSX.utils.encode_cell({ r: 0, c: i });
-            if (!detailSheet[cellRef]) continue;
-            
-            detailSheet[cellRef].s = {
-              font: { bold: true, color: { rgb: 'FFFFFF' } },
-              fill: { fgColor: { rgb: '4F81BD' } },
-              alignment: { horizontal: 'center' }
-            };
-          }
-          
-          // Highlight double-time days
-          for (let r = 1; r < detailData.length; r++) {
-            const dateCell = XLSX.utils.encode_cell({ r, c: 0 });
-            const date = detailSheet[dateCell]?.v;
-            
-            if (date && doubleDays.includes(date)) {
-              // Style the whole row
-              for (let c = 0; c < detailData[0].length; c++) {
-                const cellRef = XLSX.utils.encode_cell({ r, c });
-                if (!detailSheet[cellRef]) continue;
-                
-                detailSheet[cellRef].s = {
-                  ...detailSheet[cellRef].s, // Preserve existing style
-                  fill: { fgColor: { rgb: 'FFF9C4' } } // Light yellow background
-                };
-              }
-            }
-          }
-          
-          XLSX.utils.book_append_sheet(workbook, detailSheet, `${employeeNumber} - ${employeeName.substring(0, 15)}`);
-        }
-      });
-    }
-    
-    // Generate Excel file
-    const period = filterMonth ? `_${filterMonth}` : '_AllTime';
-    const fileName = `ApprovedHours${period}_${format(new Date(), 'yyyyMMdd_HHmm')}.xlsx`;
-    XLSX.writeFile(workbook, fileName);
-    
-    return fileName;
-  } catch (error) {
-    console.error('Error exporting approved hours to Excel:', error);
-    throw error;
+    });
+
+    // Add detailed sheet
+    const sheetName = `${employee.name.substring(0, 20)}`;
+    addWorksheet(workbook, detailedData, sheetName);
+  });
+
+  // Download the workbook
+  const fileName = filterMonth ? 
+    `Approved_Hours_${filterMonth}.xlsx` : 
+    `Approved_Hours_All_Time.xlsx`;
+  
+  downloadWorkbook(workbook, fileName);
+};
+
+// Helper function to format record time
+const formatRecordTime = (record: any, field: 'check_in' | 'check_out'): string => {
+  // For Excel-imported data, prefer the display value
+  if (!record.is_manual_entry && record[`display_${field}`] && record[`display_${field}`] !== 'Missing') {
+    return record[`display_${field}`];
   }
+  
+  // For manual entries, use the standard display logic
+  if (record.is_manual_entry) {
+    // Check if the record has a display value to use
+    if (record[`display_${field}`] && record[`display_${field}`] !== 'Missing') {
+      return record[`display_${field}`];
+    }
+    
+    // If we have a shift type, use standard times
+    if (record.shift_type) {
+      const displayTimes = {
+        morning: { check_in: '05:00', check_out: '14:00' },
+        evening: { check_in: '13:00', check_out: '22:00' },
+        night: { check_in: '21:00', check_out: '06:00' },
+        canteen: { check_in: '07:00', check_out: '16:00' }
+      };
+      
+      const shiftType = record.shift_type;
+      if (displayTimes[shiftType as keyof typeof displayTimes]) {
+        return displayTimes[shiftType as keyof typeof displayTimes][field];
+      }
+    }
+  }
+  
+  // Fallback to the actual timestamp if available
+  if (record.timestamp) {
+    try {
+      const date = parseISO(record.timestamp);
+      return format(date, 'HH:mm');
+    } catch (err) {
+      console.error("Error formatting time record:", err);
+    }
+  }
+  
+  return 'Missing';
 };
