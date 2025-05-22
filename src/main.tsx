@@ -1,3 +1,5 @@
+import 'core-js/stable';
+import 'regenerator-runtime/runtime';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
@@ -5,7 +7,7 @@ import App from './App.tsx';
 import { AppProvider } from './context/AppContext';
 import './index.css';
 
-// Add polyfills for older browsers if needed
+// Add polyfills for older browsers
 // This helps with compatibility issues
 if (!Object.entries) {
   Object.entries = function(obj: any) {
