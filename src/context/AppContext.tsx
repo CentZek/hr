@@ -20,6 +20,43 @@ interface AppContextType {
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
+// Custom reviver function to convert ISO date strings back to Date objects
+const dateReviver = (key: string, value: any): any => {
+  // Check if the value is a string and matches ISO date format
+  if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{3})?Z$/.test(value)) {
+    return new Date(value);
+  }
+  
+  // If the value is an object (but not null), recursively check for date strings
+  if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
+    // Check for properties that likely contain dates
+    if (
+      (key === 'firstCheckIn' || key === 'lastCheckOut' || 
+       key === 'timestamp' || key === 'date' || 
+       key === 'checkIn' || key === 'checkOut') && 
+      typeof value === 'string'
+    ) {
+      try {
+        return new Date(value);
+      } catch (e) {
+        return value;
+      }
+    }
+  }
+  
+  return value;
+};
+
+// Parse JSON with Date object restoration
+const parseWithDates = (jsonString: string): any => {
+  try {
+    return JSON.parse(jsonString, dateReviver);
+  } catch (error) {
+    console.error('Error parsing JSON with dates:', error);
+    return null;
+  }
+};
+
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // HR page state
   const [employeeRecords, setEmployeeRecords] = useState<EmployeeRecord[]>([]);
@@ -37,13 +74,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const savedTotalEmployees = localStorage.getItem('totalEmployees');
       const savedTotalDays = localStorage.getItem('totalDays');
 
-      if (savedEmployeeRecords) setEmployeeRecords(JSON.parse(savedEmployeeRecords));
+      if (savedEmployeeRecords) {
+        // Use the custom parser to handle dates properly
+        const parsedRecords = parseWithDates(savedEmployeeRecords);
+        if (parsedRecords) {
+          setEmployeeRecords(parsedRecords);
+        }
+      }
       if (savedHasUploadedFile) setHasUploadedFile(JSON.parse(savedHasUploadedFile));
       if (savedCurrentFileName) setCurrentFileName(savedCurrentFileName);
       if (savedTotalEmployees) setTotalEmployees(JSON.parse(savedTotalEmployees));
       if (savedTotalDays) setTotalDays(JSON.parse(savedTotalDays));
     } catch (error) {
       console.error('Error loading data from localStorage:', error);
+      // If there's an error loading the data, clear it to prevent future errors
+      localStorage.removeItem('employeeRecords');
+      localStorage.removeItem('hasUploadedFile');
+      localStorage.removeItem('currentFileName');
+      localStorage.removeItem('totalEmployees');
+      localStorage.removeItem('totalDays');
     }
   }, []);
 
