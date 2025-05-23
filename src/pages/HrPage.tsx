@@ -10,6 +10,7 @@ import { EmployeeRecord, DailyRecord } from '../types';
 import { handleExcelFile, exportToExcel } from '../utils/excelHandlers';
 import { calculatePayableHours, determineShiftType } from '../utils/shiftCalculations';
 import { addManualEntryToRecords, calculateStats, processRecordsAfterSave } from '../utils/dataHandlers';
+import { detectBrowser, getBrowserVersion, checkBrowserCompatibility } from '../utils/browserDetection';
 
 // Import services
 import { saveRecordsToDatabase, fetchManualTimeRecords, fetchPendingEmployeeShifts } from '../services/database';
@@ -24,6 +25,7 @@ import ManualEntryModal from '../components/ManualEntryModal';
 import UserCredentialsModal from '../components/UserCredentialsModal';
 import EmployeeShiftRequest from '../components/EmployeeShiftRequest';
 import TimeRecordsTable from '../components/TimeRecordsTable';
+import ApproveAllConfirmationDialog from '../components/ApproveAllConfirmationDialog';
 
 // Import context
 import { useAppContext } from '../context/AppContext';
@@ -35,8 +37,30 @@ function HrPage() {
     hasUploadedFile, setHasUploadedFile,
     currentFileName, setCurrentFileName,
     totalEmployees, setTotalEmployees,
-    totalDays, setTotalDays
+    totalDays, setTotalDays,
+    clearData
   } = useAppContext();
+
+  // Browser detection
+  const [browserInfo, setBrowserInfo] = useState<Record<string, boolean>>({
+    chrome: false,
+    firefox: false,
+    safari: false,
+    edge: false,
+    ie: false,
+    isModern: true,
+    isLegacy: false
+  });
+  
+  // Browser version info
+  const [browserVersion, setBrowserVersion] = useState<Record<string, string | null>>({
+    name: null,
+    version: null,
+    fullUserAgent: null
+  });
+  
+  // Compatibility issues
+  const [compatibilityIssues, setCompatibilityIssues] = useState<string[]>([]);
   
   const [isUploading, setIsUploading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -47,57 +71,103 @@ function HrPage() {
   const [savingErrors, setSavingErrors] = useState<{employeeName: string, date: string, error: string}[]>([]);
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const [isMobile, setIsMobile] = useState(false);
+  const [pageLoadError, setPageLoadError] = useState<string | null>(null);
   
   // Modal states
   const [isManualEntryOpen, setIsManualEntryOpen] = useState(false);
   const [isUserCredentialsOpen, setIsUserCredentialsOpen] = useState(false);
   const [recentManualEntry, setRecentManualEntry] = useState<any>(null);
+  
+  // Approve All confirmation dialog state
+  const [isApproveAllDialogOpen, setIsApproveAllDialogOpen] = useState(false);
+  const [isApprovingAll, setIsApprovingAll] = useState(false);
+
+  // Check browser compatibility
+  useEffect(() => {
+    try {
+      // Detect browser
+      const browser = detectBrowser();
+      setBrowserInfo(browser);
+      
+      // Get browser version
+      const versionInfo = getBrowserVersion();
+      setBrowserVersion(versionInfo);
+      
+      // Check for compatibility issues
+      const { isCompatible, issues } = checkBrowserCompatibility();
+      setCompatibilityIssues(issues);
+      
+      if (!isCompatible) {
+        console.warn('Browser compatibility issues detected:', issues);
+      }
+      
+      console.log('Browser detection:', { browser, versionInfo, issues });
+    } catch (error) {
+      console.error('Error during browser detection:', error);
+    }
+  }, []);
 
   // Check if screen is mobile
   useEffect(() => {
-    const checkIfMobile = () => {
-      setIsMobile(window.innerWidth < 640);
-    };
-    
-    checkIfMobile();
-    window.addEventListener('resize', checkIfMobile);
-    
-    return () => {
-      window.removeEventListener('resize', checkIfMobile);
-    };
+    try {
+      const checkIfMobile = () => {
+        setIsMobile(window.innerWidth < 640);
+      };
+      
+      checkIfMobile();
+      window.addEventListener('resize', checkIfMobile);
+      
+      return () => {
+        window.removeEventListener('resize', checkIfMobile);
+      };
+    } catch (error) {
+      console.error('Error checking mobile status:', error);
+    }
   }, []);
 
   // Check Supabase connection
   const checkConnection = async () => {
-    const { connected, error } = await checkSupabaseConnection();
-    if (!connected) {
-      setConnectionError(error || 'Could not connect to Supabase');
-      toast.error(`Database connection error: ${error || 'Unknown error'}`);
-    } else {
-      setConnectionError(null);
+    try {
+      const { connected, error } = await checkSupabaseConnection();
+      if (!connected) {
+        setConnectionError(error || 'Could not connect to Supabase');
+        toast.error(`Database connection error: ${error || 'Unknown error'}`);
+      } else {
+        setConnectionError(null);
+      }
+      return connected;
+    } catch (err) {
+      console.error('Error checking connection:', err);
+      setConnectionError('Failed to check database connection');
+      return false;
     }
-    return connected;
   };
 
   // Run migrations when component mounts and fetch manual records
   useEffect(() => {
     const initializeSystem = async () => {
-      // First check connection
-      const isConnected = await checkConnection();
-      if (!isConnected) {
-        return;
-      }
-      
-      setIsMigrating(true);
-      const migrationResult = await runAllMigrations();
-      setIsMigrating(false);
-      
-      if (migrationResult.success) {
-        if (migrationResult.counts.credentials > 0) {
-          toast.success(`Created login credentials for ${migrationResult.counts.credentials} employees`);
+      try {
+        // First check connection
+        const isConnected = await checkConnection();
+        if (!isConnected) {
+          return;
         }
-      } else {
-        toast.error('Error initializing system. Some features may not work properly.');
+        
+        setIsMigrating(true);
+        const migrationResult = await runAllMigrations();
+        setIsMigrating(false);
+        
+        if (migrationResult.success) {
+          if (migrationResult.counts.credentials > 0) {
+            toast.success(`Created login credentials for ${migrationResult.counts.credentials} employees`);
+          }
+        } else {
+          toast.error('Error initializing system. Some features may not work properly.');
+        }
+      } catch (error) {
+        console.error('Error initializing system:', error);
+        setIsMigrating(false);
+        setPageLoadError('Failed to initialize the system. Please try refreshing the page.');
       }
     };
     
@@ -114,9 +184,15 @@ function HrPage() {
       }
     };
     
+    // Log browser info to help debug issues
+    console.log('Browser information:', browserInfo);
+    console.log('Browser version:', browserVersion);
+    console.log('Compatibility issues:', compatibilityIssues);
+    
+    // Initialize the system
     initializeSystem();
     fetchManualRecords();
-  }, []);
+  }, [browserInfo, browserVersion, compatibilityIssues]);
 
   // Refresh manual records and pending shifts after changes
   const refreshData = async () => {
@@ -299,6 +375,9 @@ function HrPage() {
   };
 
   const handleApproveAll = () => {
+    setIsApprovingAll(true);
+    
+    // Apply approval to all records
     setEmployeeRecords(prev => 
       prev.map(employee => ({
         ...employee,
@@ -308,16 +387,15 @@ function HrPage() {
         }))
       }))
     );
+    
+    setIsApprovingAll(false);
+    setIsApproveAllDialogOpen(false);
     toast.success('All records approved');
   };
 
   const handleReset = () => {
     if (confirm('Are you sure you want to reset all data? This cannot be undone.')) {
-      setEmployeeRecords([]);
-      setTotalEmployees(0);
-      setTotalDays(0);
-      setHasUploadedFile(false);
-      setCurrentFileName('');
+      clearData();
       setRecentManualEntry(null);
       setSavingErrors([]);
       toast.success('All data reset');
@@ -565,6 +643,40 @@ function HrPage() {
     }
   }, [recentManualEntry]);
 
+  // If there's a page load error, show it
+  if (pageLoadError) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-4">
+        <div className="bg-white rounded-lg shadow-lg p-6 max-w-lg w-full">
+          <h2 className="text-xl font-bold text-red-600 mb-4">Failed to load HR page</h2>
+          <p className="text-gray-700 mb-4">{pageLoadError}</p>
+          <p className="text-gray-700 mb-4">
+            This could be due to browser compatibility issues. Please try:
+          </p>
+          <ul className="list-disc pl-5 mb-4 text-gray-700">
+            <li>Using a modern browser like Chrome, Firefox, or Edge</li>
+            <li>Clearing your browser cache</li>
+            <li>Disabling browser extensions</li>
+          </ul>
+          <div className="flex flex-wrap gap-3">
+            <button
+              onClick={() => window.location.reload()}
+              className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+            >
+              Reload Page
+            </button>
+            <button
+              onClick={() => navigate('/')}
+              className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700 transition-colors"
+            >
+              Return Home
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Navigation tabs */}
@@ -627,6 +739,33 @@ function HrPage() {
 
           {/* Card content */}
           <div className="p-6 space-y-6">
+            {/* Browser compatibility warning */}
+            {(browserInfo.ie || compatibilityIssues.length > 0 || browserInfo.isLegacy) && (
+              <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4 flex items-start">
+                <AlertTriangle className="w-5 h-5 text-yellow-500 mr-3 mt-0.5 flex-shrink-0" />
+                <div className="text-sm text-yellow-700">
+                  <p className="font-medium">Browser Compatibility Warning</p>
+                  <p>For the best experience, please use a modern browser like Chrome, Firefox, or Edge. Some features may not work correctly in your current browser ({browserVersion.name || 'Unknown'} {browserVersion.version || ''}).</p>
+                  {compatibilityIssues.length > 0 && (
+                    <div className="mt-2">
+                      <p className="font-medium">Detected issues:</p>
+                      <ul className="list-disc pl-5 mt-1">
+                        {compatibilityIssues.map((issue, index) => (
+                          <li key={index}>{issue}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  <button 
+                    onClick={() => window.location.reload()}
+                    className="mt-2 px-3 py-1 bg-yellow-100 text-yellow-700 rounded-md hover:bg-yellow-200 text-sm"
+                  >
+                    Reload Page
+                  </button>
+                </div>
+              </div>
+            )}
+            
             {/* Connection error message */}
             {connectionError && (
               <div className="bg-red-50 border border-red-200 rounded-md p-4 flex items-start">
@@ -799,7 +938,7 @@ function HrPage() {
                       </button>
                       
                       <button
-                        onClick={handleApproveAll}
+                        onClick={() => setIsApproveAllDialogOpen(true)}
                         className="flex-1 inline-flex items-center justify-center px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white text-sm rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
                       >
                         <CheckCircle className="w-4 h-4 mr-1" />
@@ -849,7 +988,7 @@ function HrPage() {
                     </button>
                     
                     <button
-                      onClick={handleApproveAll}
+                      onClick={() => setIsApproveAllDialogOpen(true)}
                       className="hidden sm:inline-flex items-center px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white text-sm rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
                     >
                       <CheckCircle className="w-4 h-4 mr-1" />
@@ -892,6 +1031,15 @@ function HrPage() {
       <UserCredentialsModal
         isOpen={isUserCredentialsOpen}
         onClose={() => setIsUserCredentialsOpen(false)}
+      />
+      
+      {/* Approve All Confirmation Dialog */}
+      <ApproveAllConfirmationDialog
+        isOpen={isApproveAllDialogOpen}
+        onClose={() => setIsApproveAllDialogOpen(false)}
+        onConfirm={handleApproveAll}
+        totalRecords={totalDays}
+        isProcessing={isApprovingAll}
       />
       
       <Toaster position="top-right" />

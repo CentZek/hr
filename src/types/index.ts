@@ -48,6 +48,9 @@ export interface DailyRecord {
   // Display values for check-in/check-out times (for consistent display)
   displayCheckIn?: string;
   displayCheckOut?: string;
+  
+  // Working week start date (for proper grouping of night shifts)
+  working_week_start?: string;
 }
 
 export interface EmployeeRecord {
@@ -223,3 +226,10 @@ export const CANTEEN_SHIFT_HOURS = {
     }
   }
 };
+
+// Holiday interface
+export interface Holiday {
+  id: string;
+  date: string;
+  description: string;
+}
