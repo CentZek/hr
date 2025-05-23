@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { addCacheBuster } from '../utils/storageUtils';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -16,6 +17,14 @@ const options = {
   },
   global: {
     fetch: (...args: any[]) => {
+      // Add cache busting for network requests
+      if (typeof args[0] === 'string') {
+        args[0] = addCacheBuster(args[0]);
+      } else if (args[0] instanceof Request) {
+        const url = addCacheBuster(args[0].url);
+        args[0] = new Request(url, args[0]);
+      }
+      
       // Add retry logic for network errors
       return fetch(...args).catch(err => {
         console.warn('Supabase fetch error, retrying:', err);

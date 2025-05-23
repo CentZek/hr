@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { EmployeeRecord } from '../types';
+import { STORAGE_VERSION, getKeyName, parseWithDates } from '../utils/storageUtils';
 
 interface AppContextType {
   // HR page state
@@ -19,62 +20,6 @@ interface AppContextType {
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
-
-// Custom reviver function to convert ISO date strings back to Date objects
-const dateReviver = (_key: string, value: any): any => {
-  // Check if the value is a string and matches ISO date format with more permissive regex
-  // This regex matches any ISO 8601 format with or without milliseconds, with or without Z
-  if (
-    typeof value === 'string' && 
-    /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+\-]\d{2}:\d{2})?$/.test(value)
-  ) {
-    return new Date(value);
-  }
-  
-  // If the value is an object (but not null), recursively check for date strings
-  if (value !== null && typeof value === 'object') {
-    // For arrays, just return as-is (the array elements will be processed individually)
-    if (Array.isArray(value)) {
-      return value;
-    }
-    
-    // For objects, handle special fields that we know should be dates
-    const dateFieldNames = [
-      'firstCheckIn', 'lastCheckOut', 'timestamp', 
-      'date', 'checkIn', 'checkOut', 'checkInDate', 
-      'checkOutDate', 'created_at', 'updated_at'
-    ];
-    
-    for (const field of dateFieldNames) {
-      if (value[field] && typeof value[field] === 'string') {
-        try {
-          value[field] = new Date(value[field]);
-        } catch (e) {
-          console.warn(`Failed to convert ${field} to Date:`, e);
-        }
-      }
-    }
-  }
-  
-  return value;
-};
-
-// Parse JSON with Date object restoration
-const parseWithDates = (jsonString: string): any => {
-  try {
-    return JSON.parse(jsonString, dateReviver);
-  } catch (error) {
-    console.error('Error parsing JSON with dates:', error);
-    // Re-throw to ensure the clearData() is triggered in the catch block
-    throw error;
-  }
-};
-
-// Storage version key to handle breaking changes
-const STORAGE_VERSION = 'v2';
-
-// Key names with versioning
-const getKeyName = (baseName: string) => `${baseName}_${STORAGE_VERSION}`;
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // HR page state
