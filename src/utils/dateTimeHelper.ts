@@ -108,44 +108,8 @@ export function formatRecordTime(record: any, field: 'check_in' | 'check_out'): 
   // Fallback to the actual timestamp if available
   if (record.timestamp) {
     try {
-      // FIREFOX FIX: Ensure we have a proper date object by creating a new one
-      let date;
-      if (typeof record.timestamp === 'string') {
-        try {
-          // Handle different string formats
-          if (record.timestamp.includes('T')) {
-            // ISO format
-            date = new Date(record.timestamp);
-          } else if (record.timestamp.includes('-')) {
-            // YYYY-MM-DD format
-            const parts = record.timestamp.split(/[-:\s]/);
-            if (parts.length >= 3) {
-              date = new Date(
-                parseInt(parts[0], 10),
-                parseInt(parts[1], 10) - 1,
-                parseInt(parts[2], 10),
-                parts.length > 3 ? parseInt(parts[3], 10) : 0,
-                parts.length > 4 ? parseInt(parts[4], 10) : 0
-              );
-            } else {
-              date = new Date(record.timestamp);
-            }
-          } else {
-            // Fallback
-            date = new Date(record.timestamp);
-          }
-        } catch (e) {
-          console.error("Error parsing timestamp string:", e);
-          return 'Missing';
-        }
-      } else if (record.timestamp instanceof Date) {
-        date = record.timestamp;
-      } else {
-        console.error("Unrecognized timestamp format:", record.timestamp);
-        return 'Missing';
-      }
-      
-      if (date instanceof Date && !isNaN(date.getTime())) {
+      const date = typeof record.timestamp === 'string' ? parseISO(record.timestamp) : record.timestamp;
+      if (date instanceof Date && isValid(date)) {
         return format(date, 'HH:mm');
       }
     } catch (err) {
@@ -175,40 +139,24 @@ export function parseShiftTimes(dateStr: string, timeIn: string, timeOut: string
       throw new Error('Invalid date or time parameters');
     }
     
-    // FIREFOX FIX: Use new Date() approach for better cross-browser compatibility
-    const [year, month, day] = dateStr.split('-').map(n => parseInt(n, 10));
-    if (isNaN(year) || isNaN(month) || isNaN(day)) {
-      throw new Error(`Invalid date format: ${dateStr}`);
+    // Parse dates safely
+    const checkIn = parse(`${dateStr} ${timeIn}`, 'yyyy-MM-dd HH:mm', new Date());
+    if (!isValid(checkIn)) {
+      throw new Error(`Invalid check-in date: ${dateStr} ${timeIn}`);
     }
     
-    // Parse check-in time
-    const [inHour, inMinute] = timeIn.split(':').map(n => parseInt(n, 10));
-    if (isNaN(inHour) || isNaN(inMinute)) {
-      throw new Error(`Invalid check-in time: ${timeIn}`);
+    let checkOut = parse(`${dateStr} ${timeOut}`, 'yyyy-MM-dd HH:mm', new Date());
+    if (!isValid(checkOut)) {
+      throw new Error(`Invalid check-out date: ${dateStr} ${timeOut}`);
     }
-    
-    // Parse check-out time
-    const [outHour, outMinute] = timeOut.split(':').map(n => parseInt(n, 10));
-    if (isNaN(outHour) || isNaN(outMinute)) {
-      throw new Error(`Invalid check-out time: ${timeOut}`);
-    }
-    
-    // Create Date objects (month is 0-indexed in JavaScript)
-    const checkIn = new Date(year, month - 1, day, inHour, inMinute);
-    let checkOut = new Date(year, month - 1, day, outHour, outMinute);
     
     // For night shifts, always roll over to next day if checkout is in early morning hours
-    if (shiftType === 'night' && outHour < 12) {
-      checkOut = new Date(year, month - 1, day + 1, outHour, outMinute);
+    if (shiftType === 'night' && checkOut.getHours() < 12) {
+      checkOut = addDays(checkOut, 1);
     } 
     // If check-out time is same or earlier than check-in, assume it's next day
-    else if (checkOut <= checkIn) {
-      checkOut = new Date(year, month - 1, day + 1, outHour, outMinute);
-    }
-    
-    // Final validation
-    if (isNaN(checkIn.getTime()) || isNaN(checkOut.getTime())) {
-      throw new Error('Invalid date calculation');
+    else if (isBefore(checkOut, checkIn) || checkOut.getTime() === checkIn.getTime()) {
+      checkOut = addDays(checkOut, 1);
     }
     
     return { checkIn, checkOut };
@@ -218,7 +166,7 @@ export function parseShiftTimes(dateStr: string, timeIn: string, timeOut: string
     const now = new Date();
     return { 
       checkIn: now, 
-      checkOut: new Date(now.getTime() + 9 * 60 * 60 * 1000) // 9 hours later
+      checkOut: addDays(now, 1) 
     };
   }
 }
@@ -231,51 +179,24 @@ export function parseTime(timeStr: string, dateStr: string): Date | null {
   if (!timeStr || !dateStr) return null;
   
   try {
-    // FIREFOX FIX: Use direct Date creation instead of parse
-    const [year, month, day] = dateStr.split('-').map(n => parseInt(n, 10));
-    if (isNaN(year) || isNaN(month) || isNaN(day)) {
-      throw new Error(`Invalid date format: ${dateStr}`);
-    }
-    
-    // Handle 24-hour format (HH:MM)
+    // Handle direct 24-hour input (standard)
     if (timeStr.match(/^\d{1,2}:\d{2}$/)) {
-      const [hours, minutes] = timeStr.split(':').map(n => parseInt(n, 10));
-      if (isNaN(hours) || isNaN(minutes)) {
-        throw new Error(`Invalid time format: ${timeStr}`);
-      }
-      return new Date(year, month - 1, day, hours, minutes);
-    }
-    
-    // Handle 12-hour format with AM/PM
-    if (timeStr.match(/^\d{1,2}:\d{2}\s*[AaPp][Mm]$/)) {
-      // Extract hours, minutes, and AM/PM
-      const match = timeStr.match(/^(\d{1,2}):(\d{2})\s*([AaPp][Mm])$/);
-      if (!match) throw new Error(`Invalid time format: ${timeStr}`);
-      
-      let hours = parseInt(match[1], 10);
-      const minutes = parseInt(match[2], 10);
-      const isPM = match[3].toLowerCase() === 'pm';
-      
-      // Convert to 24-hour format
-      if (isPM && hours < 12) hours += 12;
-      if (!isPM && hours === 12) hours = 0;
-      
-      return new Date(year, month - 1, day, hours, minutes);
-    }
-    
-    // Default fallback using parse (with error checking)
-    try {
       const result = parse(`${dateStr} ${timeStr}`, 'yyyy-MM-dd HH:mm', new Date());
       if (!isValid(result)) throw new Error(`Invalid time: ${timeStr}`);
       return result;
-    } catch (parseError) {
-      // If parse fails, try direct Date creation
-      const [hours, minutes] = timeStr.split(':').map(n => parseInt(n, 10));
-      if (isNaN(hours) || isNaN(minutes)) {
-        throw new Error(`Invalid time format: ${timeStr}`);
-      }
-      return new Date(year, month - 1, day, hours, minutes);
     }
+    
+    // Handle 12-hour format with AM/PM if present
+    if (timeStr.match(/^\d{1,2}:\d{2}\s*[AaPp][Mm]$/)) {
+      const result = parse(`${dateStr} ${timeStr}`, 'yyyy-MM-dd hh:mm a', new Date());
+      if (!isValid(result)) throw new Error(`Invalid time: ${timeStr}`);
+      return result;
+    }
+    
+    // Default fallback
+    const result = parse(`${dateStr} ${timeStr}`, 'yyyy-MM-dd HH:mm', new Date());
+    if (!isValid(result)) throw new Error(`Invalid time: ${timeStr}`);
+    return result;
   } catch (e) {
     console.error('Failed to parse time:', e);
     return null;
@@ -289,15 +210,6 @@ export function parseTime(timeStr: string, dateStr: string): Date | null {
 export function parseDateTime(dateTimeStr: string): Date | null {
   // Skip if empty or not a string
   if (!dateTimeStr || typeof dateTimeStr !== 'string') return null;
-  
-  // FIREFOX FIX: Try direct Date creation first
-  try {
-    const date = new Date(dateTimeStr);
-    if (isValid(date)) return date;
-  } catch (e) {
-    // Continue to other methods if this fails
-    console.debug('Direct Date creation failed, trying other methods', e);
-  }
   
   // Common formats to try
   const formats = [
@@ -369,26 +281,23 @@ export function parseDateTime(dateTimeStr: string): Date | null {
       hours = 0; // 12 AM = 00:00 in 24-hour format
     }
     
-    // FIREFOX FIX: Use direct Date constructor
+    // Create and return the date
     const result = new Date(year, month - 1, day, hours, minutes, seconds);
     if (isValid(result)) {
       return result;
     }
   } catch (e) {
     // If manual parsing fails, fall through to the last resort options
-    console.error('Manual date parsing failed:', e);
   }
   
-  // FIREFOX FIX: As a last resort, try a standard ISO format transformation
+  // If all else fails, try to directly create a Date object
   try {
-    // Try to convert to a standard ISO format
-    const cleanedDateStr = dateTimeStr.replace(/(\d+)\/(\d+)\/(\d+)/, '$3-$1-$2');
-    const result = new Date(cleanedDateStr);
+    const result = new Date(dateTimeStr);
     if (isValid(result)) {
       return result;
     }
   } catch (e) {
-    console.error('Last resort date parsing failed:', e);
+    console.error('Failed to parse datetime:', e);
   }
   
   return null;
@@ -462,54 +371,16 @@ export function ensureValidDate(value: any): Date | null {
   // If it's a string, try to parse it
   if (typeof value === 'string') {
     try {
-      // FIREFOX FIX: Try multiple methods to parse the date
+      const parsed = parseISO(value);
+      if (isValid(parsed)) {
+        return parsed;
+      }
       
-      // Method 1: Try direct Date construction
-      let date = new Date(value);
+      // Try alternative parsing
+      const date = new Date(value);
       if (isValid(date)) {
         return date;
       }
-      
-      // Method 2: Try date-fns parseISO for ISO format
-      if (value.includes('T')) {
-        date = parseISO(value);
-        if (isValid(date)) {
-          return date;
-        }
-      }
-      
-      // Method 3: Try manual parsing for YYYY-MM-DD format
-      if (value.includes('-')) {
-        const [year, month, day] = value.split('-').map(part => parseInt(part, 10));
-        if (!isNaN(year) && !isNaN(month) && !isNaN(day)) {
-          date = new Date(year, month - 1, day);
-          if (isValid(date)) {
-            return date;
-          }
-        }
-      }
-      
-      // Method 4: Try manual parsing for MM/DD/YYYY format
-      if (value.includes('/')) {
-        const [month, day, year] = value.split('/').map(part => parseInt(part, 10));
-        if (!isNaN(month) && !isNaN(day) && !isNaN(year)) {
-          date = new Date(year, month - 1, day);
-          if (isValid(date)) {
-            return date;
-          }
-        }
-      }
-      
-      // Method 5: Try format detection
-      if (value.match(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/)) {
-        // ISO format
-        date = new Date(value);
-        if (isValid(date)) {
-          return date;
-        }
-      }
-      
-      return null;
     } catch (err) {
       console.error('Error parsing date string:', err);
     }
@@ -529,46 +400,3 @@ export function ensureValidDate(value: any): Date | null {
   
   return null;
 }
-
-/**
- * Clear Firefox-specific date caches
- * This resolves issues with timestamp formatting in Firefox
- */
-export function clearBrowserDateCache(): void {
-  try {
-    // Detect Firefox
-    const isFirefox = typeof navigator !== 'undefined' && navigator.userAgent.toLowerCase().indexOf('firefox') > -1;
-    
-    if (isFirefox) {
-      console.log('Firefox detected, clearing potential date cache issues');
-      
-      // Reset date-related localStorage items that might be causing issues
-      if (typeof localStorage !== 'undefined') {
-        // Get all keys
-        const keysToCheck = [];
-        for (let i = 0; i < localStorage.length; i++) {
-          const key = localStorage.key(i);
-          if (key) keysToCheck.push(key);
-        }
-        
-        // Look for keys that might contain timestamp data
-        const dateRelatedKeys = keysToCheck.filter(key => 
-          key.includes('timestamp') || 
-          key.includes('date') || 
-          key.includes('time') || 
-          key.includes('record')
-        );
-        
-        console.log(`Found ${dateRelatedKeys.length} potentially date-related keys in localStorage`);
-        
-        // Optional: clear these keys if you're sure they're causing problems
-        // dateRelatedKeys.forEach(key => localStorage.removeItem(key));
-      }
-    }
-  } catch (error) {
-    console.error('Error clearing browser date cache:', error);
-  }
-}
-
-// Run the cache clear function on module load
-clearBrowserDateCache();
