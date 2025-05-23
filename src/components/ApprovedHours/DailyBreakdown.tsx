@@ -2,7 +2,7 @@ import React from 'react';
 import { format, differenceInMinutes, parseISO } from 'date-fns';
 import { AlertTriangle, CheckCircle, Clock, Calendar as Calendar2 } from 'lucide-react';
 import { DISPLAY_SHIFT_TIMES } from '../../types';
-import { formatTime24H, formatRecordTime } from '../../utils/dateTimeHelper';
+import { formatTime24H, formatRecordTime, ensureValidDate } from '../../utils/dateTimeHelper';
 import { getEveningShiftCheckoutDisplay } from '../../utils/shiftCalculations';
 
 interface DailyBreakdownProps {
@@ -19,9 +19,22 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records, dou
     
     // If working_week_start is not available, extract from timestamp
     if (!dateKey) {
-      // Use the UTC date portion so nothing shifts under local timezones
-      const utc = parseISO(record.timestamp);
-      dateKey = utc.toISOString().slice(0,10);  // "YYYY-MM-DD"
+      try {
+        // Use the UTC date portion so nothing shifts under local timezones
+        if (record.timestamp) {
+          const utc = typeof record.timestamp === 'string' ? parseISO(record.timestamp) : record.timestamp;
+          if (utc instanceof Date && !isNaN(utc.getTime())) {
+            dateKey = utc.toISOString().slice(0,10);  // "YYYY-MM-DD"
+          } else {
+            dateKey = new Date().toISOString().slice(0,10); // Fallback to today
+          }
+        } else {
+          dateKey = new Date().toISOString().slice(0,10); // Fallback to today
+        }
+      } catch (error) {
+        console.error("Error extracting date key:", error);
+        dateKey = new Date().toISOString().slice(0,10); // Fallback to today
+      }
     }
 
     if (!acc[dateKey]) {
@@ -81,7 +94,7 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records, dou
     );
   }
 
-  if (records.length === 0) {
+  if (!records || records.length === 0) {
     return (
       <div className="bg-gray-50 p-4 text-center">
         <p className="text-sm text-gray-500">No detailed records found for this employee.</p>
@@ -124,7 +137,7 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records, dou
                 <div key={date} className="p-3 border-b border-gray-100 last:border-0">
                   <div className="flex justify-between items-start mb-2">
                     <div className="font-medium text-gray-800">
-                      {format(new Date(date), 'EEE, MMM d, yyyy')}
+                      {date ? format(new Date(date), 'EEE, MMM d, yyyy') : 'Unknown Date'}
                     </div>
                     {isDoubleTime && (
                       <span className="inline-flex items-center justify-center px-2 py-0.5 bg-amber-100 text-amber-800 rounded-full text-xs font-medium">
@@ -157,7 +170,7 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records, dou
               <div key={date} className={`grid grid-cols-8 gap-2 p-3 text-sm ${isDoubleTime ? 'bg-amber-50' : ''}`}>
                 <div className="col-span-2">
                   <div className="font-medium text-gray-800 flex items-center">
-                    {format(new Date(date), 'EEE, MMM d, yyyy')}
+                    {date ? format(new Date(date), 'EEE, MMM d, yyyy') : 'Unknown Date'}
                     {isDoubleTime && (
                       <span className="ml-2 inline-flex items-center justify-center px-2 py-0.5 bg-amber-100 text-amber-800 rounded-full text-xs">
                         <span className="font-bold mr-0.5">2×</span> Double-Time
@@ -212,22 +225,30 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records, dou
             // Get the main check-in and check-out record
             // For check-in, get the earliest
             const checkIn = checkIns.length > 0 ? 
-              checkIns.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())[0] : null;
+              checkIns.sort((a, b) => {
+                const aDate = ensureValidDate(a.timestamp);
+                const bDate = ensureValidDate(b.timestamp);
+                return (aDate?.getTime() || 0) - (bDate?.getTime() || 0);
+              })[0] : null;
             
             // For check-out, get the latest
             const checkOut = checkOuts.length > 0 ? 
-              checkOuts.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())[0] : null;
+              checkOuts.sort((a, b) => {
+                const aDate = ensureValidDate(a.timestamp);
+                const bDate = ensureValidDate(b.timestamp);
+                return (bDate?.getTime() || 0) - (aDate?.getTime() || 0);
+              })[0] : null;
             
             // Get hours - prioritize exact_hours field first
             let hours = 0;
             
             // If we have exact_hours field available, use that (preferred method)
             if (checkIn && checkIn.exact_hours !== null && checkIn.exact_hours !== undefined) {
-              hours = parseFloat(checkIn.exact_hours);
+              hours = parseFloat(checkIn.exact_hours || 0);
             } 
             // If checkout has exact hours, use that as backup
             else if (checkOut && checkOut.exact_hours !== null && checkOut.exact_hours !== undefined) {
-              hours = parseFloat(checkOut.exact_hours);
+              hours = parseFloat(checkOut.exact_hours || 0);
             }
             // Fall back to parsing from notes
             else if (checkIn && checkIn.notes && checkIn.notes.includes("hours:")) {
@@ -255,27 +276,34 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records, dou
             
             // If no stored hours, calculate using the timestamps
             if (hours === 0 && checkIn && checkOut) {
-              const checkInTime = new Date(checkIn.timestamp);
-              const checkOutTime = new Date(checkOut.timestamp);
-              
-              // Calculate total minutes
-              let diffMinutes = differenceInMinutes(checkOutTime, checkInTime);
-              
-              // If time difference is negative, it means checkout is on the next day
-              if (diffMinutes < 0) {
-                diffMinutes += 24 * 60; // Add 24 hours
+              try {
+                // Validate timestamps
+                const checkInTime = ensureValidDate(checkIn.timestamp);
+                const checkOutTime = ensureValidDate(checkOut.timestamp);
+                
+                if (checkInTime && checkOutTime) {
+                  // Calculate total minutes
+                  let diffMinutes = differenceInMinutes(checkOutTime, checkInTime);
+                  
+                  // If time difference is negative, it means checkout is on the next day
+                  if (diffMinutes < 0) {
+                    diffMinutes += 24 * 60; // Add 24 hours
+                  }
+                  
+                  // Convert to hours
+                  hours = diffMinutes / 60;
+                  
+                  // Apply deduction minutes if any
+                  if (checkIn.deduction_minutes) {
+                    hours = Math.max(0, hours - (checkIn.deduction_minutes / 60));
+                  }
+                  
+                  // Round to exactly a 2 decimal number
+                  hours = parseFloat(hours.toFixed(2));
+                }
+              } catch (error) {
+                console.error('Error calculating hours from timestamps:', error);
               }
-              
-              // Convert to hours
-              hours = diffMinutes / 60;
-              
-              // Apply deduction minutes if any
-              if (checkIn.deduction_minutes) {
-                hours = Math.max(0, hours - (checkIn.deduction_minutes / 60));
-              }
-              
-              // Round to exactly a 2 decimal number
-              hours = parseFloat(hours.toFixed(2));
             }
             
             // Calculate double-time hours if applicable
@@ -299,13 +327,24 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records, dou
             // Generate a unique key for this shift group
             const shiftKey = `${date}-${shiftType}`;
             
+            // Get check-in hour safely for later use
+            const checkInTime = ensureValidDate(checkIn?.timestamp);
+            const checkInHour = checkInTime ? checkInTime.getHours() : null;
+            
+            // Determine if this is a late night check-in for night shift
+            const isLateNightShiftCheckIn = 
+              checkInTime && 
+              shiftType === 'night' && 
+              checkInHour !== null && 
+              checkInHour >= 21;
+            
             // Mobile view
             if (typeof window !== 'undefined' && window.innerWidth < 640) {
               return (
                 <div key={shiftKey} className={`p-3 border-b border-gray-100 last:border-0 ${isDoubleTime ? 'bg-amber-50' : ''}`}>
                   <div className="flex justify-between items-start mb-2">
                     <div className="font-medium text-gray-800">
-                      {format(new Date(date), 'EEE, MMM d, yyyy')}
+                      {date ? format(new Date(date), 'EEE, MMM d, yyyy') : 'Unknown Date'}
                     </div>
                     {isDoubleTime && (
                       <span className="inline-flex items-center justify-center px-2 py-0.5 bg-amber-100 text-amber-800 rounded-full text-xs font-medium">
@@ -354,7 +393,7 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records, dou
                         'bg-gray-100 text-gray-800'
                       }`}>
                         {shiftType === 'canteen' 
-                          ? (checkIn && new Date(checkIn.timestamp).getHours() === 7 ? 'Canteen (07:00-16:00)' : 'Canteen (08:00-17:00)') :
+                          ? (checkInHour === 7 ? 'Canteen (07:00-16:00)' : 'Canteen (08:00-17:00)') :
                           shiftType.charAt(0).toUpperCase() + shiftType.slice(1)}
                       </span>
                     )}
@@ -371,7 +410,7 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records, dou
                       )}
                     </span>
                     
-                    {isDoubleTime && (
+                    {isDoubleTime && doubleTimeHours > 0 && (
                       <span className="font-medium text-amber-800 flex items-center px-2 py-0.5 bg-amber-100 rounded-full text-xs">
                         <span className="font-bold mr-1">2×</span>
                         {doubleTimeHours.toFixed(2)} hrs
@@ -392,7 +431,7 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records, dou
               <div key={shiftKey} className={`grid grid-cols-8 gap-2 p-3 text-sm ${isDoubleTime ? 'bg-amber-50' : ''}`}>
                 <div className="col-span-2">
                   <div className="font-medium text-gray-800 flex items-center">
-                    {format(new Date(date), 'EEE, MMM d, yyyy')}
+                    {date ? format(new Date(date), 'EEE, MMM d, yyyy') : 'Unknown Date'}
                     {isDoubleTime && (
                       <span className="ml-2 inline-flex items-center justify-center px-2 py-0.5 bg-amber-100 text-amber-800 rounded-full text-xs">
                         <span className="font-bold mr-0.5">2×</span> Double-Time
@@ -430,7 +469,7 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records, dou
                       'bg-gray-100 text-gray-800'
                     }`}>
                       {shiftType === 'canteen' 
-                        ? (checkIn && new Date(checkIn.timestamp).getHours() === 7 ? 'Canteen (07:00-16:00)' : 'Canteen (08:00-17:00)') :
+                        ? (checkInHour === 7 ? 'Canteen (07:00-16:00)' : 'Canteen (08:00-17:00)') :
                         shiftType.charAt(0).toUpperCase() + shiftType.slice(1)}
                     </span>
                   )}

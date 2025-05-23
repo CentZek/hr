@@ -12,12 +12,16 @@ export function formatTime24H(date: Date | null): string {
   if (!date) return 'Missing';
   
   // First ensure we're working with a proper Date object
-  const validDate = date instanceof Date ? date : new Date(date);
-  if (!isValid(validDate)) return 'Missing';
+  if (!(date instanceof Date) || !isValid(date)) return 'Missing';
 
-  // IMPORTANT: For display purposes, use the local time rather than UTC
-  // This ensures times show correctly in the user's timezone
-  return format(validDate, 'HH:mm');
+  try {
+    // IMPORTANT: For display purposes, use the local time rather than UTC
+    // This ensures times show correctly in the user's timezone
+    return format(date, 'HH:mm');
+  } catch (err) {
+    console.error('Error formatting time:', err);
+    return 'Missing';
+  }
 }
 
 /**
@@ -28,7 +32,14 @@ export function formatTime24H(date: Date | null): string {
  */
 export function formatTimeWithReference(date: Date | null): string {
   if (!date) return 'Missing';
-  return format(date, 'HH:mm');
+  if (!(date instanceof Date) || !isValid(date)) return 'Missing';
+  
+  try {
+    return format(date, 'HH:mm');
+  } catch (err) {
+    console.error('Error formatting time with reference:', err);
+    return 'Missing';
+  }
 }
 
 /**
@@ -51,6 +62,7 @@ export function formatTimeString(timeStr: string): string {
     // Just return the 24-hour format directly
     return timeStr;
   } catch (e) {
+    console.error('Error formatting time string:', e);
     return timeStr;
   }
 }
@@ -62,6 +74,9 @@ export function formatTimeString(timeStr: string): string {
  * @returns Formatted time string
  */
 export function formatRecordTime(record: any, field: 'check_in' | 'check_out'): string {
+  // Guard against null or undefined records
+  if (!record) return 'Missing';
+  
   // For Excel-imported data, prefer the display value
   if (!record.is_manual_entry && record[`display_${field}`] && record[`display_${field}`] !== 'Missing') {
     return record[`display_${field}`];
@@ -93,8 +108,10 @@ export function formatRecordTime(record: any, field: 'check_in' | 'check_out'): 
   // Fallback to the actual timestamp if available
   if (record.timestamp) {
     try {
-      const date = parseISO(record.timestamp);
-      return format(date, 'HH:mm');
+      const date = typeof record.timestamp === 'string' ? parseISO(record.timestamp) : record.timestamp;
+      if (date instanceof Date && isValid(date)) {
+        return format(date, 'HH:mm');
+      }
     } catch (err) {
       console.error("Error formatting time record:", err);
     }
@@ -116,19 +133,42 @@ export function parseShiftTimes(dateStr: string, timeIn: string, timeOut: string
   checkIn: Date; 
   checkOut: Date;
 } {
-  const checkIn = parse(`${dateStr} ${timeIn}`, 'yyyy-MM-dd HH:mm', new Date());
-  let checkOut = parse(`${dateStr} ${timeOut}`, 'yyyy-MM-dd HH:mm', new Date());
-  
-  // For night shifts, always roll over to next day if checkout is in early morning hours
-  if (shiftType === 'night' && checkOut.getHours() < 12) {
-    checkOut = addDays(checkOut, 1);
-  } 
-  // If check-out time is same or earlier than check-in, assume it's next day
-  else if (isBefore(checkOut, checkIn) || checkOut.getTime() === checkIn.getTime()) {
-    checkOut = addDays(checkOut, 1);
+  try {
+    // Validate inputs to prevent errors
+    if (!dateStr || !timeIn || !timeOut) {
+      throw new Error('Invalid date or time parameters');
+    }
+    
+    // Parse dates safely
+    const checkIn = parse(`${dateStr} ${timeIn}`, 'yyyy-MM-dd HH:mm', new Date());
+    if (!isValid(checkIn)) {
+      throw new Error(`Invalid check-in date: ${dateStr} ${timeIn}`);
+    }
+    
+    let checkOut = parse(`${dateStr} ${timeOut}`, 'yyyy-MM-dd HH:mm', new Date());
+    if (!isValid(checkOut)) {
+      throw new Error(`Invalid check-out date: ${dateStr} ${timeOut}`);
+    }
+    
+    // For night shifts, always roll over to next day if checkout is in early morning hours
+    if (shiftType === 'night' && checkOut.getHours() < 12) {
+      checkOut = addDays(checkOut, 1);
+    } 
+    // If check-out time is same or earlier than check-in, assume it's next day
+    else if (isBefore(checkOut, checkIn) || checkOut.getTime() === checkIn.getTime()) {
+      checkOut = addDays(checkOut, 1);
+    }
+    
+    return { checkIn, checkOut };
+  } catch (error) {
+    console.error('Error parsing shift times:', error);
+    // Return current date as fallback to prevent crashes
+    const now = new Date();
+    return { 
+      checkIn: now, 
+      checkOut: addDays(now, 1) 
+    };
   }
-  
-  return { checkIn, checkOut };
 }
 
 /**
@@ -136,21 +176,27 @@ export function parseShiftTimes(dateStr: string, timeIn: string, timeOut: string
  * Always converts to 24-hour format internally
  */
 export function parseTime(timeStr: string, dateStr: string): Date | null {
-  if (!timeStr) return null;
+  if (!timeStr || !dateStr) return null;
   
   try {
     // Handle direct 24-hour input (standard)
     if (timeStr.match(/^\d{1,2}:\d{2}$/)) {
-      return parse(`${dateStr} ${timeStr}`, 'yyyy-MM-dd HH:mm', new Date());
+      const result = parse(`${dateStr} ${timeStr}`, 'yyyy-MM-dd HH:mm', new Date());
+      if (!isValid(result)) throw new Error(`Invalid time: ${timeStr}`);
+      return result;
     }
     
     // Handle 12-hour format with AM/PM if present
     if (timeStr.match(/^\d{1,2}:\d{2}\s*[AaPp][Mm]$/)) {
-      return parse(`${dateStr} ${timeStr}`, 'yyyy-MM-dd hh:mm a', new Date());
+      const result = parse(`${dateStr} ${timeStr}`, 'yyyy-MM-dd hh:mm a', new Date());
+      if (!isValid(result)) throw new Error(`Invalid time: ${timeStr}`);
+      return result;
     }
     
     // Default fallback
-    return parse(`${dateStr} ${timeStr}`, 'yyyy-MM-dd HH:mm', new Date());
+    const result = parse(`${dateStr} ${timeStr}`, 'yyyy-MM-dd HH:mm', new Date());
+    if (!isValid(result)) throw new Error(`Invalid time: ${timeStr}`);
+    return result;
   } catch (e) {
     console.error('Failed to parse time:', e);
     return null;
@@ -206,23 +252,23 @@ export function parseDateTime(dateTimeStr: string): Date | null {
     // Handle both MM/DD/YYYY and YYYY-MM-DD formats
     if (dateMatch[1].length === 4) {
       // YYYY-MM-DD
-      year = parseInt(dateMatch[1]);
-      month = parseInt(dateMatch[2]);
-      day = parseInt(dateMatch[3]);
+      year = parseInt(dateMatch[1], 10);
+      month = parseInt(dateMatch[2], 10);
+      day = parseInt(dateMatch[3], 10);
     } else {
       // MM/DD/YYYY
-      month = parseInt(dateMatch[1]);
-      day = parseInt(dateMatch[2]);
-      year = parseInt(dateMatch[3]);
+      month = parseInt(dateMatch[1], 10);
+      day = parseInt(dateMatch[2], 10);
+      year = parseInt(dateMatch[3], 10);
     }
     
     // Extract time parts, looking for hours, minutes, and AM/PM if present
     const timeMatch = dateTimeStr.match(/(\d{1,2}):(\d{2})(?::(\d{2}))?\s*([aApP][mM])?/);
     if (!timeMatch) return null;
     
-    let hours = parseInt(timeMatch[1]);
-    const minutes = parseInt(timeMatch[2]);
-    const seconds = timeMatch[3] ? parseInt(timeMatch[3]) : 0;
+    let hours = parseInt(timeMatch[1], 10);
+    const minutes = parseInt(timeMatch[2], 10);
+    const seconds = timeMatch[3] ? parseInt(timeMatch[3], 10) : 0;
     
     // Handle AM/PM if present
     const isPM = timeMatch[4]?.toLowerCase() === 'pm';
@@ -262,7 +308,13 @@ export function parseDateTime(dateTimeStr: string): Date | null {
  */
 export function formatDate(date: Date | null): string {
   if (!date) return '';
-  return format(date, 'MM/dd/yyyy');
+  if (!(date instanceof Date) || !isValid(date)) return '';
+  try {
+    return format(date, 'MM/dd/yyyy');
+  } catch (err) {
+    console.error('Error formatting date:', err);
+    return '';
+  }
 }
 
 /**
@@ -270,5 +322,81 @@ export function formatDate(date: Date | null): string {
  */
 export function formatTimeWith24Hour(date: Date | null): string {
   if (!date) return 'Missing';
-  return format(date, 'HH:mm');
+  if (!(date instanceof Date) || !isValid(date)) return 'Missing';
+  try {
+    return format(date, 'HH:mm');
+  } catch (err) {
+    console.error('Error formatting time with 24 hour:', err);
+    return 'Missing';
+  }
+}
+
+/**
+ * Safely get hours from a date object, with validation
+ */
+export function safeGetHours(date: any): number {
+  if (date instanceof Date && isValid(date)) {
+    try {
+      return date.getHours();
+    } catch (err) {
+      console.error('Error getting hours from date:', err);
+    }
+  }
+  return 0;
+}
+
+/**
+ * Safely get minutes from a date object, with validation
+ */
+export function safeGetMinutes(date: any): number {
+  if (date instanceof Date && isValid(date)) {
+    try {
+      return date.getMinutes();
+    } catch (err) {
+      console.error('Error getting minutes from date:', err);
+    }
+  }
+  return 0;
+}
+
+/**
+ * Safely convert any date-like value to a proper Date object
+ */
+export function ensureValidDate(value: any): Date | null {
+  // If it's already a Date
+  if (value instanceof Date && isValid(value)) {
+    return value;
+  }
+  
+  // If it's a string, try to parse it
+  if (typeof value === 'string') {
+    try {
+      const parsed = parseISO(value);
+      if (isValid(parsed)) {
+        return parsed;
+      }
+      
+      // Try alternative parsing
+      const date = new Date(value);
+      if (isValid(date)) {
+        return date;
+      }
+    } catch (err) {
+      console.error('Error parsing date string:', err);
+    }
+  }
+  
+  // If it's a timestamp number
+  if (typeof value === 'number') {
+    try {
+      const date = new Date(value);
+      if (isValid(date)) {
+        return date;
+      }
+    } catch (err) {
+      console.error('Error parsing timestamp:', err);
+    }
+  }
+  
+  return null;
 }
