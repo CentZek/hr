@@ -145,8 +145,11 @@ const EmployeeList: React.FC<EmployeeListProps> = ({
 
   const isLateNightShiftCheckIn = (checkIn: Date | null, shiftType: string | null): boolean => {
     if (!checkIn || shiftType !== 'night') return false;
-    const hour = checkIn.getHours();
-    const minute = checkIn.getMinutes();
+    
+    // Ensure we have a Date object
+    const checkInDate = new Date(checkIn);
+    const hour = checkInDate.getHours();
+    const minute = checkInDate.getMinutes();
     return (hour > 21) || (hour === 21 && minute > 0);
   };
 
@@ -171,21 +174,26 @@ const EmployeeList: React.FC<EmployeeListProps> = ({
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {day.allTimeRecords.sort((a, b) => (a.originalIndex || 0) - (b.originalIndex || 0)).map((record, index) => (
-                <tr key={index} className={record.mislabeled ? 'bg-amber-50' : ''}>
-                  <td className="px-3 py-2 whitespace-nowrap">{record.originalIndex || index}</td>
-                  <td className="px-3 py-2 whitespace-nowrap">{format(record.timestamp, 'MM/dd/yyyy HH:mm:ss')}</td>
-                  <td className={`px-3 py-2 whitespace-nowrap ${record.mislabeled ? 'text-amber-600 font-medium' : ''}`}>
-                    {record.status === 'check_in' ? 'C/In' : 'C/Out'}
-                    {record.mislabeled && record.originalStatus && 
-                      <span className="ml-2 text-xs text-amber-600">(Corrected)</span>
-                    }
-                  </td>
-                  <td className="px-3 py-2 whitespace-nowrap">{record.processed ? 'Yes' : 'No'}</td>
-                  <td className="px-3 py-2 whitespace-nowrap">{record.shift_type || 'unknown'}</td>
-                  <td className="px-3 py-2">{record.notes || ''}</td>
-                </tr>
-              ))}
+              {day.allTimeRecords.sort((a, b) => (a.originalIndex || 0) - (b.originalIndex || 0)).map((record, index) => {
+                // Ensure we have a Date object for the timestamp
+                const timestamp = new Date(record.timestamp);
+                
+                return (
+                  <tr key={index} className={record.mislabeled ? 'bg-amber-50' : ''}>
+                    <td className="px-3 py-2 whitespace-nowrap">{record.originalIndex || index}</td>
+                    <td className="px-3 py-2 whitespace-nowrap">{format(timestamp, 'MM/dd/yyyy HH:mm:ss')}</td>
+                    <td className={`px-3 py-2 whitespace-nowrap ${record.mislabeled ? 'text-amber-600 font-medium' : ''}`}>
+                      {record.status === 'check_in' ? 'C/In' : 'C/Out'}
+                      {record.mislabeled && record.originalStatus && 
+                        <span className="ml-2 text-xs text-amber-600">(Corrected)</span>
+                      }
+                    </td>
+                    <td className="px-3 py-2 whitespace-nowrap">{record.processed ? 'Yes' : 'No'}</td>
+                    <td className="px-3 py-2 whitespace-nowrap">{record.shift_type || 'unknown'}</td>
+                    <td className="px-3 py-2">{record.notes || ''}</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -194,18 +202,22 @@ const EmployeeList: React.FC<EmployeeListProps> = ({
   };
 
   const renderMobileDay = (day: DailyRecord, dayIndex: number, empIndex: number, employee: EmployeeRecord) => {
-    const checkInHour = day.firstCheckIn?.getHours();
+    // Ensure we have Date objects
+    const firstCheckIn = day.firstCheckIn ? new Date(day.firstCheckIn) : null;
+    const lastCheckOut = day.lastCheckOut ? new Date(day.lastCheckOut) : null;
+    
+    const checkInHour = firstCheckIn?.getHours();
     const shiftDisplay = getShiftTypeDisplay(day.shiftType, checkInHour);
     const isOffDay = day.notes === 'OFF-DAY';
     const isManualEntry = day.notes === 'Manual entry';
     const wasCorrected = day.correctedRecords || day.notes.includes('Fixed mislabeled');
-    const isLateNightCheckIn = day.shiftType === 'night' && day.firstCheckIn && isLateNightShiftCheckIn(day.firstCheckIn, day.shiftType);
+    const isLateNightCheckIn = day.shiftType === 'night' && firstCheckIn && isLateNightShiftCheckIn(firstCheckIn, day.shiftType);
     const hasRawData = day.allTimeRecords && day.allTimeRecords.length > 0;
     const isRawDataExpanded = expandedRawData?.empIndex === empIndex && expandedRawData?.dayIndex === dayIndex;
     
     // Display times - use standardized times for shift types when appropriate
-    let checkInDisplay = day.firstCheckIn ? formatTime24H(day.firstCheckIn) : (isOffDay ? 'OFF-DAY' : 'Missing');
-    let checkOutDisplay = day.lastCheckOut ? formatTime24H(day.lastCheckOut) : (isOffDay ? 'OFF-DAY' : 'Missing');
+    let checkInDisplay = firstCheckIn ? formatTime24H(firstCheckIn) : (isOffDay ? 'OFF-DAY' : 'Missing');
+    let checkOutDisplay = lastCheckOut ? formatTime24H(lastCheckOut) : (isOffDay ? 'OFF-DAY' : 'Missing');
     
     // For manual entries and employee-submitted shifts, use the standard display times
     if ((isManualEntry || day.notes?.includes('Employee submitted')) && day.shiftType) {
@@ -295,17 +307,17 @@ const EmployeeList: React.FC<EmployeeListProps> = ({
           <div>
             <div className="text-xs text-gray-500">Check In</div>
             <div className={`text-sm mt-1 ${day.missingCheckIn ? 'text-red-500' : (day.isLate || isLateNightCheckIn) ? 'text-amber-600' : 'text-gray-700'}`}>
-              {day.firstCheckIn ? 
+              {firstCheckIn ? 
                 <>{(day.isLate || isLateNightCheckIn) && <AlertTriangle className="inline w-3 h-3 mr-1 text-amber-500" />}
                 {checkInDisplay}
-                {day.shiftType === 'canteen' && <span className="ml-1 text-xs bg-yellow-100 text-yellow-800 px-1 rounded">{day.firstCheckIn.getHours() === 7 ? '07:00' : '08:00'}</span>}</> : 
+                {day.shiftType === 'canteen' && <span className="ml-1 text-xs bg-yellow-100 text-yellow-800 px-1 rounded">{firstCheckIn.getHours() === 7 ? '07:00' : '08:00'}</span>}</> : 
                 isOffDay ? 'OFF-DAY' : <span className="text-red-500">Missing</span>}
             </div>
           </div>
           <div>
             <div className="text-xs text-gray-500">Check Out</div>
             <div className={`text-sm mt-1 ${day.missingCheckOut ? 'text-red-500' : day.earlyLeave ? 'text-amber-600' : day.excessiveOvertime ? 'text-blue-600' : 'text-gray-700'}`}>
-              {day.lastCheckOut ? 
+              {lastCheckOut ? 
                 <>{day.earlyLeave && <AlertTriangle className="inline w-3 h-3 mr-1 text-amber-500" />}
                 {day.excessiveOvertime && <Clock className="inline w-3 h-3 mr-1 text-blue-500" />}
                 {checkOutDisplay}</> : 
@@ -379,19 +391,23 @@ const EmployeeList: React.FC<EmployeeListProps> = ({
                   {employee.days.map((day, dayIndex) => {
                     if (showApproved && !day.approved) return null;
                     
+                    // Ensure we have Date objects
+                    const firstCheckIn = day.firstCheckIn ? new Date(day.firstCheckIn) : null;
+                    const lastCheckOut = day.lastCheckOut ? new Date(day.lastCheckOut) : null;
+                    
                     const hasMissingRecords = day.missingCheckIn || day.missingCheckOut;
                     const isManualEntry = day.notes === 'Manual entry' || day.notes?.includes('Employee submitted');
                     const isOffDay = day.notes === 'OFF-DAY';
-                    const checkInHour = day.firstCheckIn?.getHours();
+                    const checkInHour = firstCheckIn?.getHours();
                     const shiftDisplay = getShiftTypeDisplay(isOffDay ? 'OFF-DAY' : day.shiftType, checkInHour);
                     const wasCorrected = day.correctedRecords || day.notes?.includes('Fixed mislabeled');
-                    const isLateNightCheckIn = day.shiftType === 'night' && day.firstCheckIn && isLateNightShiftCheckIn(day.firstCheckIn, day.shiftType);
+                    const isLateNightCheckIn = day.shiftType === 'night' && firstCheckIn && isLateNightShiftCheckIn(firstCheckIn, day.shiftType);
                     const hasRawData = day.allTimeRecords && day.allTimeRecords.length > 0;
                     const isRawDataExpanded = expandedRawData?.empIndex === empIndex && expandedRawData?.dayIndex === dayIndex;
                     
                     // Display times - use standardized times for shift types when appropriate
-                    let checkInDisplay = day.firstCheckIn ? formatTime24H(day.firstCheckIn) : (isOffDay ? 'OFF-DAY' : 'Missing');
-                    let checkOutDisplay = day.lastCheckOut ? formatTime24H(day.lastCheckOut) : (isOffDay ? 'OFF-DAY' : 'Missing');
+                    let checkInDisplay = firstCheckIn ? formatTime24H(firstCheckIn) : (isOffDay ? 'OFF-DAY' : 'Missing');
+                    let checkOutDisplay = lastCheckOut ? formatTime24H(lastCheckOut) : (isOffDay ? 'OFF-DAY' : 'Missing');
                     
                     // For manual entries and employee-submitted shifts, use the standard display times
                     if (isManualEntry && day.shiftType) {
@@ -450,17 +466,17 @@ const EmployeeList: React.FC<EmployeeListProps> = ({
                             )}
                           </div>
                           <div className={`flex items-center ${day.missingCheckIn ? 'text-red-500' : (day.isLate || isLateNightCheckIn) ? 'text-amber-600' : 'text-gray-700'}`}>
-                            {day.firstCheckIn ? 
+                            {firstCheckIn ? 
                               <>{(day.isLate || isLateNightCheckIn) && <AlertTriangle className="w-4 h-4 mr-1 text-amber-500" title="Late check-in" />}
                               {checkInDisplay}
-                              {day.shiftType === 'canteen' && 
+                              {day.shiftType === 'canteen' && firstCheckIn && 
                                 <span className="ml-1 text-xs bg-yellow-100 text-yellow-800 px-1 rounded">
-                                  {day.firstCheckIn.getHours() === 7 ? '07:00' : '08:00'}
+                                  {firstCheckIn.getHours() === 7 ? '07:00' : '08:00'}
                                 </span>}</> : 
                               (isOffDay ? 'OFF-DAY' : <span className="text-red-500">Missing</span>)}
                           </div>
                           <div className={`flex items-center ${day.missingCheckOut ? 'text-red-500' : day.earlyLeave ? 'text-amber-600' : day.excessiveOvertime ? 'text-blue-600' : 'text-gray-700'}`}>
-                            {day.lastCheckOut ? 
+                            {lastCheckOut ? 
                               <>{day.earlyLeave && <AlertTriangle className="w-4 h-4 mr-1 text-amber-500" />}
                               {day.excessiveOvertime && <Clock className="w-4 h-4 mr-1 text-blue-500" />}
                               {checkOutDisplay}</> : 

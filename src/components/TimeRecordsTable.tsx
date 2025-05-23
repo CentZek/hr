@@ -61,6 +61,7 @@ const TimeRecordsTable: React.FC<TimeRecordsTableProps> = ({
         // Use working_week_start if available, otherwise use timestamp date
         let dateKey = record.working_week_start || '';
         if (!dateKey) {
+          // Use the UTC date portion so nothing shifts under local timezones
           const utc = parseISO(record.timestamp);
           dateKey = utc.toISOString().slice(0,10);  // "YYYY-MM-DD"
         }

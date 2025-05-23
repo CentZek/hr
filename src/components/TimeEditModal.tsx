@@ -12,11 +12,15 @@ interface TimeEditModalProps {
 }
 
 const TimeEditModal: React.FC<TimeEditModalProps> = ({ employee, day, onClose, onSave }) => {
+  // Ensure we're working with Date objects for the initial values
+  const firstCheckIn = day.firstCheckIn ? new Date(day.firstCheckIn) : null;
+  const lastCheckOut = day.lastCheckOut ? new Date(day.lastCheckOut) : null;
+  
   const [checkInTime, setCheckInTime] = useState<string>(
-    day.firstCheckIn ? format(day.firstCheckIn, 'HH:mm') : ''
+    firstCheckIn ? format(firstCheckIn, 'HH:mm') : ''
   );
   const [checkOutTime, setCheckOutTime] = useState<string>(
-    day.lastCheckOut ? format(day.lastCheckOut, 'HH:mm') : ''
+    lastCheckOut ? format(lastCheckOut, 'HH:mm') : ''
   );
   const [checkInError, setCheckInError] = useState<string>('');
   const [checkOutError, setCheckOutError] = useState<string>('');
@@ -224,7 +228,9 @@ const TimeEditModal: React.FC<TimeEditModalProps> = ({ employee, day, onClose, o
     
     if (day.shiftType === 'canteen') {
       // Check if this is early (7AM) or late (8AM) canteen shift
-      const checkInHour = day.firstCheckIn?.getHours();
+      // Ensure firstCheckIn is a Date object
+      const firstCheckIn = day.firstCheckIn ? new Date(day.firstCheckIn) : null;
+      const checkInHour = firstCheckIn?.getHours();
       
       return (
         <div className="mt-3 bg-blue-50 border border-blue-100 rounded-md p-3 text-sm text-blue-800">
@@ -287,7 +293,7 @@ const TimeEditModal: React.FC<TimeEditModalProps> = ({ employee, day, onClose, o
                 <p className="text-gray-500">Shift Type</p>
                 <p className="font-medium capitalize">
                   {day.shiftType === 'canteen' ? (
-                    day.firstCheckIn?.getHours() === 7 ? 
+                    day.firstCheckIn && new Date(day.firstCheckIn).getHours() === 7 ? 
                       'Canteen (07:00-16:00)' : 
                       'Canteen (08:00-17:00)'
                   ) : (
@@ -334,9 +340,11 @@ const TimeEditModal: React.FC<TimeEditModalProps> = ({ employee, day, onClose, o
               
               {isCanteenShift() && (
                 <p className="mt-1 text-green-700 font-medium">
-                  {day.firstCheckIn?.getHours() === 7 ? 
-                    "Canteen hours (07:00 - 16:00) will be used with 10-minute late threshold." : 
-                    "Canteen hours (08:00 - 17:00) will be used with 10-minute late threshold."}
+                  {day.firstCheckIn ? (
+                    new Date(day.firstCheckIn).getHours() === 7 ? 
+                      "Canteen hours (07:00 - 16:00) will be used with 10-minute late threshold." : 
+                      "Canteen hours (08:00 - 17:00) will be used with 10-minute late threshold."
+                  ) : "Canteen hours will be used with 10-minute late threshold."}
                 </p>
               )}
               
@@ -403,10 +411,10 @@ const TimeEditModal: React.FC<TimeEditModalProps> = ({ employee, day, onClose, o
               {day.shiftType === 'morning' && (
                 <p className="mt-1 text-xs text-gray-500">Expected around 05:00</p>
               )}
-              {day.shiftType === 'canteen' && day.firstCheckIn?.getHours() === 7 && (
+              {day.shiftType === 'canteen' && day.firstCheckIn && new Date(day.firstCheckIn).getHours() === 7 && (
                 <p className="mt-1 text-xs text-gray-500">Expected around 07:00</p>
               )}
-              {day.shiftType === 'canteen' && day.firstCheckIn?.getHours() === 8 && (
+              {day.shiftType === 'canteen' && day.firstCheckIn && new Date(day.firstCheckIn).getHours() === 8 && (
                 <p className="mt-1 text-xs text-gray-500">Expected around 08:00</p>
               )}
               {day.shiftType === 'evening' && (
@@ -448,10 +456,10 @@ const TimeEditModal: React.FC<TimeEditModalProps> = ({ employee, day, onClose, o
               {day.shiftType === 'morning' && (
                 <p className="mt-1 text-xs text-gray-500">Expected around 14:00</p>
               )}
-              {day.shiftType === 'canteen' && day.firstCheckIn?.getHours() === 7 && (
+              {day.shiftType === 'canteen' && day.firstCheckIn && new Date(day.firstCheckIn).getHours() === 7 && (
                 <p className="mt-1 text-xs text-gray-500">Expected around 16:00</p>
               )}
-              {day.shiftType === 'canteen' && day.firstCheckIn?.getHours() === 8 && (
+              {day.shiftType === 'canteen' && day.firstCheckIn && new Date(day.firstCheckIn).getHours() === 8 && (
                 <p className="mt-1 text-xs text-gray-500">Expected around 17:00</p>
               )}
               {day.shiftType === 'evening' && (

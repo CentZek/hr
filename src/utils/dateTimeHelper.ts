@@ -28,7 +28,12 @@ export function formatTime24H(date: Date | null): string {
  */
 export function formatTimeWithReference(date: Date | null): string {
   if (!date) return 'Missing';
-  return format(date, 'HH:mm');
+  
+  // Ensure we're working with a proper Date object
+  const validDate = date instanceof Date ? date : new Date(date);
+  if (!isValid(validDate)) return 'Missing';
+  
+  return format(validDate, 'HH:mm');
 }
 
 /**
@@ -36,7 +41,13 @@ export function formatTimeWithReference(date: Date | null): string {
  * Now standardized to always return 24-hour format
  */
 export function formatTimeWithAMPM(date: Date | null): string {
-  return formatTime24H(date);
+  if (!date) return 'Missing';
+  
+  // Ensure we're working with a proper Date object
+  const validDate = date instanceof Date ? date : new Date(date);
+  if (!isValid(validDate)) return 'Missing';
+  
+  return formatTime24H(validDate);
 }
 
 /**
@@ -93,7 +104,8 @@ export function formatRecordTime(record: any, field: 'check_in' | 'check_out'): 
   // Fallback to the actual timestamp if available
   if (record.timestamp) {
     try {
-      const date = parseISO(record.timestamp);
+      // Ensure we have a proper Date object
+      const date = typeof record.timestamp === 'string' ? parseISO(record.timestamp) : new Date(record.timestamp);
       return format(date, 'HH:mm');
     } catch (err) {
       console.error("Error formatting time record:", err);
@@ -262,7 +274,12 @@ export function parseDateTime(dateTimeStr: string): Date | null {
  */
 export function formatDate(date: Date | null): string {
   if (!date) return '';
-  return format(date, 'MM/dd/yyyy');
+  
+  // Ensure we're working with a proper Date object
+  const validDate = date instanceof Date ? date : new Date(date);
+  if (!isValid(validDate)) return '';
+  
+  return format(validDate, 'MM/dd/yyyy');
 }
 
 /**
@@ -270,5 +287,10 @@ export function formatDate(date: Date | null): string {
  */
 export function formatTimeWith24Hour(date: Date | null): string {
   if (!date) return 'Missing';
-  return format(date, 'HH:mm');
+  
+  // Ensure we're working with a proper Date object
+  const validDate = date instanceof Date ? date : new Date(date);
+  if (!isValid(validDate)) return 'Missing';
+  
+  return format(validDate, 'HH:mm');
 }

@@ -5,11 +5,14 @@ import { formatTime24H } from './dateTimeHelper';
 
 // Determine shift type based on check-in time
 export const determineShiftType = (
-  checkInTime: Date, 
+  checkInTime: Date | string, 
   isNightShiftWorker: boolean = false
 ): 'morning' | 'evening' | 'night' | 'canteen' | 'custom' => {
-  const hour = checkInTime.getHours();
-  const minute = checkInTime.getMinutes();
+  // Ensure we have a Date object
+  const checkIn = new Date(checkInTime);
+  
+  const hour = checkIn.getHours();
+  const minute = checkIn.getMinutes();
   
   // CANTEEN SHIFT DETECTION - Must come first!
   // Changed: Check for canteen shift only between 6:00-7:00 and 6:00-8:00
@@ -60,11 +63,14 @@ export const determineShiftType = (
 };
 
 // Check if a check-in is late
-export const isLateCheckIn = (checkIn: Date, shiftType: 'morning' | 'evening' | 'night' | 'canteen' | 'custom' | null): boolean => {
+export const isLateCheckIn = (checkIn: Date | string, shiftType: 'morning' | 'evening' | 'night' | 'canteen' | 'custom' | null): boolean => {
   if (!shiftType) return false;
   
-  const hour = checkIn.getHours();
-  const minute = checkIn.getMinutes();
+  // Ensure we have a Date object
+  const checkInDate = new Date(checkIn);
+  
+  const hour = checkInDate.getHours();
+  const minute = checkInDate.getMinutes();
   
   // Specific handling for canteen shift - need to determine if 7AM or 8AM canteen staff
   if (shiftType === 'canteen') {
@@ -98,11 +104,14 @@ export const isLateCheckIn = (checkIn: Date, shiftType: 'morning' | 'evening' | 
 };
 
 // Check if a check-out is an early leave
-export const isEarlyLeave = (checkOut: Date, shiftType: 'morning' | 'evening' | 'night' | 'canteen' | 'custom' | null): boolean => {
+export const isEarlyLeave = (checkOut: Date | string, shiftType: 'morning' | 'evening' | 'night' | 'canteen' | 'custom' | null): boolean => {
   if (!shiftType) return false;
   
-  const hour = checkOut.getHours();
-  const minute = checkOut.getMinutes();
+  // Ensure we have a Date object
+  const checkOutDate = new Date(checkOut);
+  
+  const hour = checkOutDate.getHours();
+  const minute = checkOutDate.getMinutes();
   
   // Specific handling for canteen shifts
   if (shiftType === 'canteen') {
@@ -148,39 +157,50 @@ export const isEarlyLeave = (checkOut: Date, shiftType: 'morning' | 'evening' | 
 };
 
 // Calculate hours worked (raw calculation without adjustments)
-export const calculateHoursWorked = (checkInTime: Date, checkOutTime: Date): number => {
+export const calculateHoursWorked = (checkInTime: Date | string, checkOutTime: Date | string): number => {
+  // Ensure we have Date objects
+  const checkIn = new Date(checkInTime);
+  const checkOut = new Date(checkOutTime);
+  
   // If checkout time is earlier than check-in time, it likely means checkout was on the next day
-  if (checkOutTime < checkInTime) {
+  if (checkOut < checkIn) {
     // Add 24 hours to checkout time
-    const adjustedCheckOut = new Date(checkOutTime.getTime() + 24 * 60 * 60 * 1000);
-    return differenceInMinutes(adjustedCheckOut, checkInTime) / 60;
+    const adjustedCheckOut = new Date(checkOut.getTime() + 24 * 60 * 60 * 1000);
+    return differenceInMinutes(adjustedCheckOut, checkIn) / 60;
   }
   
-  return differenceInMinutes(checkOutTime, checkInTime) / 60;
+  return differenceInMinutes(checkOut, checkIn) / 60;
 };
 
 // Calculate payable hours with business rules applied
 export const calculatePayableHours = (
-  checkInTime: Date, 
-  checkOutTime: Date, 
+  checkInTime: Date | string | null, 
+  checkOutTime: Date | string | null, 
   shiftType: 'morning' | 'evening' | 'night' | 'canteen' | 'custom' | null,
   penaltyMinutes: number = 0,
   isManualEdit: boolean = false // New parameter to indicate manual time edits
 ): number => {
+  // Handle null inputs
+  if (!checkInTime || !checkOutTime) return 0;
+  
+  // Ensure we have Date objects
+  const checkIn = new Date(checkInTime);
+  const checkOut = new Date(checkOutTime);
+  
   // If shift type is null, try to determine it
   if (!shiftType) {
-    shiftType = determineShiftType(checkInTime);
+    shiftType = determineShiftType(checkIn);
   }
   
-  console.log(`Calculating payable hours for ${format(checkInTime, 'yyyy-MM-dd HH:mm')} to ${format(checkOutTime, 'yyyy-MM-dd HH:mm')}, shift: ${shiftType}, penalty: ${penaltyMinutes} minutes, isManualEdit: ${isManualEdit}`);
+  console.log(`Calculating payable hours for ${format(checkIn, 'yyyy-MM-dd HH:mm')} to ${format(checkOut, 'yyyy-MM-dd HH:mm')}, shift: ${shiftType}, penalty: ${penaltyMinutes} minutes, isManualEdit: ${isManualEdit}`);
   
   // Handle night shift specially - use specific calculation
   if (shiftType === 'night') {
-    return calculateNightShiftHours(checkInTime, checkOutTime, penaltyMinutes, isManualEdit);
+    return calculateNightShiftHours(checkIn, checkOut, penaltyMinutes, isManualEdit);
   }
   
   // Calculate minutes between check-in and check-out
-  let diffInMinutes = differenceInMinutes(checkOutTime, checkInTime);
+  let diffInMinutes = differenceInMinutes(checkOut, checkIn);
   
   // Log the raw time difference before penalty
   console.log(`Raw time difference: ${diffInMinutes} minutes (${(diffInMinutes/60).toFixed(2)} hours)`);
@@ -226,7 +246,7 @@ export const calculatePayableHours = (
     
     if (shiftType === 'canteen') {
       // Check if this is a 7AM shift or 8AM shift
-      const checkInHour = checkInTime.getHours();
+      const checkInHour = checkIn.getHours();
       if (checkInHour <= 7) {
         // 7AM shift
         earlyLeaveHour = 15; // 3 PM
@@ -248,8 +268,8 @@ export const calculatePayableHours = (
     
     // Check if checkout is after early leave time
     if (
-      checkOutTime.getHours() > earlyLeaveHour || 
-      (checkOutTime.getHours() === earlyLeaveHour && checkOutTime.getMinutes() >= earlyLeaveMinute)
+      checkOut.getHours() > earlyLeaveHour || 
+      (checkOut.getHours() === earlyLeaveHour && checkOut.getMinutes() >= earlyLeaveMinute)
     ) {
       // If they checked out after the early leave time, give full 9 hours
       console.log(`Checked out after early leave time: giving 9 hours`);
@@ -284,16 +304,20 @@ export const calculatePayableHours = (
 
 // Calculate night shift hours with special handling for cross-day shifts
 export const calculateNightShiftHours = (
-  checkInTime: Date, 
-  checkOutTime: Date,
+  checkInTime: Date | string, 
+  checkOutTime: Date | string,
   penaltyMinutes: number = 0,
   isManualEdit: boolean = false // New parameter to indicate manual time edits
 ): number => {
-  console.log(`Calculating night shift hours for ${format(checkInTime, 'yyyy-MM-dd HH:mm')} to ${format(checkOutTime, 'yyyy-MM-dd HH:mm')}, penalty: ${penaltyMinutes} minutes, isManualEdit: ${isManualEdit}`);
+  // Ensure we have Date objects
+  const checkInOriginal = new Date(checkInTime);
+  const checkOutOriginal = new Date(checkOutTime);
+  
+  console.log(`Calculating night shift hours for ${format(checkInOriginal, 'yyyy-MM-dd HH:mm')} to ${format(checkOutOriginal, 'yyyy-MM-dd HH:mm')}, penalty: ${penaltyMinutes} minutes, isManualEdit: ${isManualEdit}`);
   
   // Create copies to avoid modifying original dates
-  const checkIn = new Date(checkInTime);
-  let checkOut = new Date(checkOutTime);
+  const checkIn = new Date(checkInOriginal);
+  let checkOut = new Date(checkOutOriginal);
   
   // If both times are same day and checkout is earlier, assume it's next day
   if (isSameDay(checkIn, checkOut) && checkIn > checkOut) {
@@ -322,13 +346,13 @@ export const calculateNightShiftHours = (
     if (dayDiff > 1) {
       checkOut = new Date(checkIn);
       checkOut.setDate(checkOut.getDate() + 1);
-      checkOut.setHours(checkOutTime.getHours(), checkOutTime.getMinutes(), checkOutTime.getSeconds());
+      checkOut.setHours(checkOutOriginal.getHours(), checkOutOriginal.getMinutes(), checkOutOriginal.getSeconds());
       console.log(`Adjusted checkout for excessive days: ${format(checkOut, 'yyyy-MM-dd HH:mm')}`);
     } else if (dayDiff < 0) {
       // If checkout appears to be before check-in, move it to the next day
       checkOut = new Date(checkIn);
       checkOut.setDate(checkOut.getDate() + 1);
-      checkOut.setHours(checkOutTime.getHours(), checkOutTime.getMinutes(), checkOutTime.getSeconds());
+      checkOut.setHours(checkOutOriginal.getHours(), checkOutOriginal.getMinutes(), checkOutOriginal.getSeconds());
       console.log(`Adjusted checkout that appeared to be before checkin: ${format(checkOut, 'yyyy-MM-dd HH:mm')}`);
     }
   }
@@ -409,8 +433,11 @@ export const calculateNightShiftHours = (
 };
 
 // Check if checkout time represents excessive overtime
-export const isExcessiveOvertime = (checkOut: Date, shiftType: 'morning' | 'evening' | 'night' | 'canteen' | 'custom' | null): boolean => {
+export const isExcessiveOvertime = (checkOut: Date | string, shiftType: 'morning' | 'evening' | 'night' | 'canteen' | 'custom' | null): boolean => {
   if (!shiftType) return false;
+  
+  // Ensure we have a Date object
+  const checkOutDate = new Date(checkOut);
   
   // Get expected end time
   let endHour = SHIFT_TIMES[shiftType].end.hour;
@@ -420,7 +447,7 @@ export const isExcessiveOvertime = (checkOut: Date, shiftType: 'morning' | 'even
   
   // For night shifts, we need to handle hours around midnight differently
   if (shiftType === 'night') {
-    const hour = checkOut.getHours();
+    const hour = checkOutDate.getHours();
     
     // For night shift, normal checkout is 6 AM
     // If checkout is after 7 AM, consider it excessive
@@ -433,7 +460,7 @@ export const isExcessiveOvertime = (checkOut: Date, shiftType: 'morning' | 'even
   
   // For canteen shifts, determine based on start time pattern
   if (shiftType === 'canteen') {
-    const hour = checkOut.getHours();
+    const hour = checkOutDate.getHours();
     
     // If checkout is after 5:30 PM for 7AM shift, or after 6:30 PM for 8AM shift
     // For simplicity, we'll consider after 6 PM as excessive for all canteen shifts
@@ -445,7 +472,7 @@ export const isExcessiveOvertime = (checkOut: Date, shiftType: 'morning' | 'even
   }
   
   // For other shifts, check if checkout hour is at least 1 hour after expected end
-  if (checkOut.getHours() >= overtimeHour) {
+  if (checkOutDate.getHours() >= overtimeHour) {
     return true;
   }
   
@@ -460,7 +487,9 @@ export const isLikelyNightShiftWorker = (records: TimeRecord[]): boolean => {
   const nightCheckIns = records.filter(record => {
     if (record.status !== 'check_in') return false;
     
-    const hour = record.timestamp.getHours();
+    // Ensure we have a Date object
+    const timestamp = new Date(record.timestamp);
+    const hour = timestamp.getHours();
     return (hour >= 20) || (hour >= 0 && hour < 4); // 8 PM - 4 AM
   }).length;
   
@@ -471,7 +500,9 @@ export const isLikelyNightShiftWorker = (records: TimeRecord[]): boolean => {
   const earlyMorningCheckOuts = records.filter(record => {
     if (record.status !== 'check_out') return false;
     
-    const hour = record.timestamp.getHours();
+    // Ensure we have a Date object
+    const timestamp = new Date(record.timestamp);
+    const hour = timestamp.getHours();
     return hour >= 5 && hour <= 8; // 5 AM - 8 AM
   }).length;
   
@@ -482,8 +513,10 @@ export const isLikelyNightShiftWorker = (records: TimeRecord[]): boolean => {
 };
 
 // Check if time falls within a morning shift time range
-export const hasMorningShiftTimeRange = (timestamp: Date): boolean => {
-  const hour = timestamp.getHours();
+export const hasMorningShiftTimeRange = (timestamp: Date | string): boolean => {
+  // Ensure we have a Date object
+  const date = new Date(timestamp);
+  const hour = date.getHours();
   return (hour >= 5 && hour <= 7) || (hour >= 13 && hour <= 15);
 };
 
@@ -496,17 +529,19 @@ export const isMorningShiftPattern = (records: TimeRecord[]): number => {
   
   // Get days with data that match morning shift criteria
   for (const record of records) {
-    const hour = record.timestamp.getHours();
+    // Ensure we have a Date object
+    const timestamp = new Date(record.timestamp);
+    const hour = timestamp.getHours();
     
     // Check-ins between 5-8 AM are likely morning shift
     if (record.status === 'check_in' && hour >= 5 && hour <= 8) {
-      const date = format(record.timestamp, 'yyyy-MM-dd');
+      const date = format(timestamp, 'yyyy-MM-dd');
       morningCheckInDays.add(date);
     }
     
     // Check-outs between 1-3 PM are likely morning shift
     if (record.status === 'check_out' && hour >= 13 && hour <= 15) {
-      const date = format(record.timestamp, 'yyyy-MM-dd');
+      const date = format(timestamp, 'yyyy-MM-dd');
       morningCheckInDays.add(date);
     }
   }
@@ -516,14 +551,18 @@ export const isMorningShiftPattern = (records: TimeRecord[]): number => {
 };
 
 // Identify if a timestamp is likely a night shift check-out (5-7 AM)
-export const isLikelyNightShiftCheckOut = (timestamp: Date): boolean => {
-  const hour = getHours(timestamp);
+export const isLikelyNightShiftCheckOut = (timestamp: Date | string): boolean => {
+  // Ensure we have a Date object
+  const date = new Date(timestamp);
+  const hour = date.getHours();
   return hour >= 5 && hour <= 7; // Early morning hours typical for night shift checkout
 };
 
 // Check if timestamp should be handled as a possible night shift
-export const shouldHandleAsPossibleNightShift = (timestamp: Date): boolean => {
-  const hour = getHours(timestamp);
+export const shouldHandleAsPossibleNightShift = (timestamp: Date | string): boolean => {
+  // Ensure we have a Date object
+  const date = new Date(timestamp);
+  const hour = date.getHours();
   
   // Early morning times (5-7 AM) are commonly associated with night shifts
   if (hour >= 5 && hour <= 7) {
@@ -539,21 +578,29 @@ export const shouldHandleAsPossibleNightShift = (timestamp: Date): boolean => {
 };
 
 // Check if a timestamp is likely a night shift check-in
-export const isNightShiftCheckIn = (timestamp: Date): boolean => {
-  const hour = timestamp.getHours();
+export const isNightShiftCheckIn = (timestamp: Date | string): boolean => {
+  // Ensure we have a Date object
+  const date = new Date(timestamp);
+  const hour = date.getHours();
   return hour >= 20 && hour <= 23; // Between 8 PM and 11 PM
 };
 
 // Check if a timestamp is likely a night shift check-out
-export const isNightShiftCheckOut = (timestamp: Date): boolean => {
-  const hour = timestamp.getHours();
+export const isNightShiftCheckOut = (timestamp: Date | string): boolean => {
+  // Ensure we have a Date object
+  const date = new Date(timestamp);
+  const hour = date.getHours();
   return hour >= 5 && hour <= 8; // Between 5 AM and 8 AM
 };
 
 // Check for a night shift pattern in records
-export const isNightShiftPattern = (checkInTime: Date, checkOutTime: Date): boolean => {
-  const checkInHour = checkInTime.getHours();
-  const checkOutHour = checkOutTime.getHours();
+export const isNightShiftPattern = (checkInTime: Date | string, checkOutTime: Date | string): boolean => {
+  // Ensure we have Date objects
+  const checkIn = new Date(checkInTime);
+  const checkOut = new Date(checkOutTime);
+  
+  const checkInHour = checkIn.getHours();
+  const checkOutHour = checkOut.getHours();
   
   // Night shift pattern: check-in in evening (8-11 PM), check-out in early morning (5-8 AM)
   return (checkInHour >= 20 && checkInHour <= 23) && 
@@ -562,8 +609,9 @@ export const isNightShiftPattern = (checkInTime: Date, checkOutTime: Date): bool
 
 // Detect if a record is likely from a night shift
 export const isLikelyFromNightShift = (record: any): boolean => {
-  const timestamp = record.timestamp;
-  const hour = getHours(timestamp);
+  // Ensure we have a Date object
+  const timestamp = new Date(record.timestamp);
+  const hour = timestamp.getHours();
   
   // Night shifts typically check in between 20:00-22:00 and out between 05:00-07:00
   if (record.status === 'check_in') {
@@ -577,8 +625,14 @@ export const isLikelyFromNightShift = (record: any): boolean => {
 
 // Find matching records that could form a night shift pair
 export const findNightShiftPair = (records: any[]): { checkIn: any | null, checkOut: any | null } => {
+  // Ensure all records have Date objects for timestamps
+  const recordsWithDates = records.map(r => ({
+    ...r,
+    timestamp: new Date(r.timestamp)
+  }));
+  
   // Sort records by timestamp
-  const sortedRecords = [...records].sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+  const sortedRecords = [...recordsWithDates].sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
   
   // Try to find night shift check-in (evening) and check-out (morning next day)
   let nightCheckIn = null;
@@ -586,7 +640,7 @@ export const findNightShiftPair = (records: any[]): { checkIn: any | null, check
   
   // Find potential check-ins (evening hours)
   for (const record of sortedRecords) {
-    const hour = getHours(record.timestamp);
+    const hour = record.timestamp.getHours();
     if (hour >= 20 && hour <= 22) {
       if (record.status === 'check_in') {
         nightCheckIn = record;
@@ -605,7 +659,7 @@ export const findNightShiftPair = (records: any[]): { checkIn: any | null, check
     
     for (const record of sortedRecords) {
       const recordDate = format(record.timestamp, 'yyyy-MM-dd');
-      const hour = getHours(record.timestamp);
+      const hour = record.timestamp.getHours();
       
       // Look for records on the next day with early morning hours
       if (recordDate > checkInDate && hour >= 5 && hour <= 7) {
@@ -632,8 +686,10 @@ export const isEveningShiftPattern = (records: TimeRecord[]): boolean => {
   const eveningCheckIns = records.filter(r => {
     if (r.status !== 'check_in') return false;
     
-    const hour = r.timestamp.getHours();
-    const minute = r.timestamp.getMinutes();
+    // Ensure we have a Date object
+    const timestamp = new Date(r.timestamp);
+    const hour = timestamp.getHours();
+    const minute = timestamp.getMinutes();
     
     return (hour === 12 && minute >= 30) || hour === 13 || (hour === 14 && minute === 0);
   }).length;
@@ -642,7 +698,9 @@ export const isEveningShiftPattern = (records: TimeRecord[]): boolean => {
   const eveningCheckOuts = records.filter(r => {
     if (r.status !== 'check_out') return false;
     
-    const hour = r.timestamp.getHours();
+    // Ensure we have a Date object
+    const timestamp = new Date(r.timestamp);
+    const hour = timestamp.getHours();
     return hour >= 21 && hour <= 22;
   }).length;
   
@@ -660,11 +718,13 @@ export const hadEveningShiftOnDate = (records: TimeRecord[], dateStr: string): b
   const eveningCheckIn = records.some(r => {
     if (r.status !== 'check_in') return false;
     
-    const recordDate = format(r.timestamp, 'yyyy-MM-dd');
+    // Ensure we have a Date object
+    const timestamp = new Date(r.timestamp);
+    const recordDate = format(timestamp, 'yyyy-MM-dd');
     if (recordDate !== dateStr) return false;
     
-    const hour = r.timestamp.getHours();
-    const minute = r.timestamp.getMinutes();
+    const hour = timestamp.getHours();
+    const minute = timestamp.getMinutes();
     
     return (hour === 12 && minute >= 30) || hour === 13 || (hour === 14 && minute === 0);
   });
@@ -673,10 +733,12 @@ export const hadEveningShiftOnDate = (records: TimeRecord[], dateStr: string): b
   const eveningCheckOut = records.some(r => {
     if (r.status !== 'check_out') return false;
     
-    const recordDate = format(r.timestamp, 'yyyy-MM-dd');
+    // Ensure we have a Date object
+    const timestamp = new Date(r.timestamp);
+    const recordDate = format(timestamp, 'yyyy-MM-dd');
     if (recordDate !== dateStr) return false;
     
-    const hour = r.timestamp.getHours();
+    const hour = timestamp.getHours();
     
     return hour >= 21 && hour <= 22;
   });
