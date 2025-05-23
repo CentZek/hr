@@ -11,6 +11,12 @@ interface ShiftDetailProps {
 }
 
 const ShiftDetail: React.FC<ShiftDetailProps> = ({ shift, onDelete, onClose }) => {
+  // Ensure we have Date objects
+  const ensureDate = (dateInput: Date | string | null): Date | null => {
+    if (!dateInput) return null;
+    return dateInput instanceof Date ? dateInput : new Date(dateInput);
+  };
+
   // Format the time string for display
   const formatTimeDisplay = (timeStr: string) => {
     if (!timeStr) return '';

@@ -23,6 +23,12 @@ const HolidayCalendar: React.FC<HolidayCalendarProps> = ({ onHolidaysUpdated }) 
   const [isDeleting, setIsDeleting] = useState<Record<string, boolean>>({});
   const [error, setError] = useState('');
 
+  // Ensure we're working with Date objects
+  const ensureDate = (dateInput: Date | string | null): Date | null => {
+    if (!dateInput) return null;
+    return dateInput instanceof Date ? dateInput : new Date(dateInput);
+  };
+
   // Fetch holidays from database
   useEffect(() => {
     fetchHolidays();
@@ -158,9 +164,10 @@ const HolidayCalendar: React.FC<HolidayCalendarProps> = ({ onHolidaysUpdated }) 
 
   // Check if a date is a holiday
   const isHoliday = (date: Date): boolean => {
-    return holidays.some(holiday => 
-      isSameDay(parseISO(holiday.date), date)
-    );
+    return holidays.some(holiday => {
+      const holidayDate = ensureDate(holiday.date);
+      return holidayDate && isSameDay(holidayDate, date);
+    });
   };
 
   // Check if a date is double-time (Friday or holiday)
@@ -336,9 +343,10 @@ const HolidayCalendar: React.FC<HolidayCalendarProps> = ({ onHolidaysUpdated }) 
                   <button
                     type="button"
                     onClick={() => {
-                      const holiday = holidays.find(h => 
-                        isSameDay(parseISO(h.date), selectedDate)
-                      );
+                      const holiday = holidays.find(h => {
+                        const holidayDate = ensureDate(h.date);
+                        return holidayDate && isSameDay(holidayDate, selectedDate);
+                      });
                       if (holiday) {
                         handleDeleteHoliday(holiday.id);
                       }
@@ -386,40 +394,44 @@ const HolidayCalendar: React.FC<HolidayCalendarProps> = ({ onHolidaysUpdated }) 
             </div>
           ) : (
             <div className="space-y-2 max-h-48 overflow-y-auto">
-              {holidays.map((holiday) => (
-                <div
-                  key={holiday.id}
-                  className="flex justify-between items-start p-2 bg-gray-50 rounded hover:bg-gray-100"
-                >
-                  <div>
-                    <div className="text-sm font-medium text-gray-900">
-                      {format(parseISO(holiday.date), 'MMMM d, yyyy')}
-                      <span className="ml-2 text-xs bg-red-100 text-red-800 px-1.5 py-0.5 rounded-full font-bold">
-                        2×
-                      </span>
-                      {isFriday(parseISO(holiday.date)) && (
-                        <span className="ml-1 text-xs text-amber-600">
-                          (Friday)
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  
-                  <button
-                    type="button"
-                    onClick={() => handleDeleteHoliday(holiday.id)}
-                    disabled={isDeleting[holiday.id]}
-                    className="p-1 text-gray-400 hover:text-red-500 rounded-full hover:bg-red-50"
-                    title="Delete holiday"
+              {holidays.map((holiday) => {
+                const holidayDate = ensureDate(holiday.date);
+                
+                return (
+                  <div
+                    key={holiday.id}
+                    className="flex justify-between items-start p-2 bg-gray-50 rounded hover:bg-gray-100"
                   >
-                    {isDeleting[holiday.id] ? (
-                      <span className="animate-spin h-4 w-4 border-2 border-gray-400 border-t-transparent rounded-full"></span>
-                    ) : (
-                      <Trash2 className="w-4 h-4" />
-                    )}
-                  </button>
-                </div>
-              ))}
+                    <div>
+                      <div className="text-sm font-medium text-gray-900">
+                        {holidayDate ? format(holidayDate, 'MMMM d, yyyy') : 'Unknown Date'}
+                        <span className="ml-2 text-xs bg-red-100 text-red-800 px-1.5 py-0.5 rounded-full font-bold">
+                          2×
+                        </span>
+                        {holidayDate && isFriday(holidayDate) && (
+                          <span className="ml-1 text-xs text-amber-600">
+                            (Friday)
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteHoliday(holiday.id)}
+                      disabled={isDeleting[holiday.id]}
+                      className="p-1 text-gray-400 hover:text-red-500 rounded-full hover:bg-red-50"
+                      title="Delete holiday"
+                    >
+                      {isDeleting[holiday.id] ? (
+                        <span className="animate-spin h-4 w-4 border-2 border-gray-400 border-t-transparent rounded-full"></span>
+                      ) : (
+                        <Trash2 className="w-4 h-4" />
+                      )}
+                    </button>
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>

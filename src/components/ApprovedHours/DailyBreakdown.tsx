@@ -12,6 +12,12 @@ interface DailyBreakdownProps {
 }
 
 const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records, doubleDays = [] }) => {
+  // Ensure we have Date objects
+  const ensureDate = (dateInput: Date | string | null): Date | null => {
+    if (!dateInput) return null;
+    return dateInput instanceof Date ? dateInput : new Date(dateInput);
+  };
+
   // Group records by date for better display
   const recordsByDate = records.reduce((acc: any, record: any) => {
     // FIXED: Always use working_week_start as the key for grouping
@@ -255,27 +261,29 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records, dou
             
             // If no stored hours, calculate using the timestamps
             if (hours === 0 && checkIn && checkOut) {
-              const checkInTime = new Date(checkIn.timestamp);
-              const checkOutTime = new Date(checkOut.timestamp);
+              const checkInTime = ensureDate(checkIn.timestamp);
+              const checkOutTime = ensureDate(checkOut.timestamp);
               
-              // Calculate total minutes
-              let diffMinutes = differenceInMinutes(checkOutTime, checkInTime);
-              
-              // If time difference is negative, it means checkout is on the next day
-              if (diffMinutes < 0) {
-                diffMinutes += 24 * 60; // Add 24 hours
+              if (checkInTime && checkOutTime) {
+                // Calculate total minutes
+                let diffMinutes = differenceInMinutes(checkOutTime, checkInTime);
+                
+                // If time difference is negative, it means checkout is on the next day
+                if (diffMinutes < 0) {
+                  diffMinutes += 24 * 60; // Add 24 hours
+                }
+                
+                // Convert to hours
+                hours = diffMinutes / 60;
+                
+                // Apply deduction minutes if any
+                if (checkIn.deduction_minutes) {
+                  hours = Math.max(0, hours - (checkIn.deduction_minutes / 60));
+                }
+                
+                // Round to exactly a 2 decimal number
+                hours = parseFloat(hours.toFixed(2));
               }
-              
-              // Convert to hours
-              hours = diffMinutes / 60;
-              
-              // Apply deduction minutes if any
-              if (checkIn.deduction_minutes) {
-                hours = Math.max(0, hours - (checkIn.deduction_minutes / 60));
-              }
-              
-              // Round to exactly a 2 decimal number
-              hours = parseFloat(hours.toFixed(2));
             }
             
             // Calculate double-time hours if applicable
@@ -354,7 +362,7 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records, dou
                         'bg-gray-100 text-gray-800'
                       }`}>
                         {shiftType === 'canteen' 
-                          ? (checkIn && new Date(checkIn.timestamp).getHours() === 7 ? 'Canteen (07:00-16:00)' : 'Canteen (08:00-17:00)') :
+                          ? (checkIn && ensureDate(checkIn.timestamp)?.getHours() === 7 ? 'Canteen (07:00-16:00)' : 'Canteen (08:00-17:00)') :
                           shiftType.charAt(0).toUpperCase() + shiftType.slice(1)}
                       </span>
                     )}
@@ -430,7 +438,7 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records, dou
                       'bg-gray-100 text-gray-800'
                     }`}>
                       {shiftType === 'canteen' 
-                        ? (checkIn && new Date(checkIn.timestamp).getHours() === 7 ? 'Canteen (07:00-16:00)' : 'Canteen (08:00-17:00)') :
+                        ? (checkIn && ensureDate(checkIn.timestamp)?.getHours() === 7 ? 'Canteen (07:00-16:00)' : 'Canteen (08:00-17:00)') :
                         shiftType.charAt(0).toUpperCase() + shiftType.slice(1)}
                     </span>
                   )}

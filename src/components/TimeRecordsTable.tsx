@@ -37,6 +37,12 @@ const TimeRecordsTable: React.FC<TimeRecordsTableProps> = ({
 }) => {
   const [isMobile, setIsMobile] = useState(false);
 
+  // Ensure we have a Date object
+  const ensureDate = (dateInput: Date | string | null): Date | null => {
+    if (!dateInput) return null;
+    return dateInput instanceof Date ? dateInput : new Date(dateInput);
+  };
+
   // Check if we're on mobile
   useEffect(() => {
     const checkIfMobile = () => {
@@ -172,11 +178,14 @@ const TimeRecordsTable: React.FC<TimeRecordsTableProps> = ({
           let hasExcessiveHours = false;
           
           if (earliestCheckIn && latestCheckOut) {
-            const checkInTime = new Date(earliestCheckIn.timestamp);
-            const checkOutTime = new Date(latestCheckOut.timestamp);
-            const diffMs = checkOutTime.getTime() - checkInTime.getTime();
-            exactHours = diffMs / (1000 * 60 * 60); // Convert ms to hours
-            hasExcessiveHours = exactHours > 12;
+            const checkInTime = ensureDate(earliestCheckIn.timestamp);
+            const checkOutTime = ensureDate(latestCheckOut.timestamp);
+            
+            if (checkInTime && checkOutTime) {
+              const diffMs = checkOutTime.getTime() - checkInTime.getTime();
+              exactHours = diffMs / (1000 * 60 * 60); // Convert ms to hours
+              hasExcessiveHours = exactHours > 12;
+            }
           }
           
           // Flag: Count records to check if it's a single datapoint or has 3 records but not night shift
@@ -332,14 +341,14 @@ const TimeRecordsTable: React.FC<TimeRecordsTableProps> = ({
                       <span className={`px-2 py-1 text-xs font-medium rounded-full ${
                         record.shiftType === 'morning' ? 'bg-blue-100 text-blue-800' : 
                         record.shiftType === 'evening' ? 'bg-orange-100 text-orange-800' : 
-                        record.shiftType === 'night' ? 'bg-purple-100 text-purple-800' : 
+                        record.shiftType === 'night' ? 'bg-purple-100 text-purple-800' :
                         record.shiftType === 'canteen' ? 'bg-yellow-100 text-yellow-800' :
                         'bg-gray-100 text-gray-800'
                       }`}>
                         {record.shiftType === 'canteen' 
-                          ? (record.checkIn && new Date(record.checkIn.timestamp).getHours() === 7)
-                            ? 'Canteen (07:00-16:00)'
-                            : 'Canteen (08:00-17:00)'
+                          ? (record.checkIn && ensureDate(record.checkIn.timestamp)?.getHours() === 7 
+                              ? 'Canteen (07:00-16:00)'
+                              : 'Canteen (08:00-17:00)')
                           : record.shiftType && typeof record.shiftType === 'string'
                             ? record.shiftType.charAt(0).toUpperCase() + record.shiftType.slice(1)
                             : 'Unknown'}
@@ -461,7 +470,7 @@ const TimeRecordsTable: React.FC<TimeRecordsTableProps> = ({
                       'bg-gray-100 text-gray-800'
                     }`}>
                       {record.shiftType === 'canteen' 
-                        ? (record.checkIn && new Date(record.checkIn.timestamp).getHours() === 7)
+                        ? (record.checkIn && ensureDate(record.checkIn.timestamp)?.getHours() === 7)
                           ? 'Canteen (07:00-16:00)'
                           : 'Canteen (08:00-17:00)'
                         : record.shiftType && typeof record.shiftType === 'string'
