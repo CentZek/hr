@@ -10,8 +10,7 @@ import { EmployeeRecord, DailyRecord } from '../types';
 import { handleExcelFile, exportToExcel } from '../utils/excelHandlers';
 import { calculatePayableHours, determineShiftType } from '../utils/shiftCalculations';
 import { addManualEntryToRecords, calculateStats, processRecordsAfterSave } from '../utils/dataHandlers';
-import { detectBrowser, getBrowserVersion, checkBrowserCompatibility, isIndexedDBSupported } from '../utils/browserDetection';
-import { StorageType } from '../utils/storage';
+import { detectBrowser, getBrowserVersion, checkBrowserCompatibility } from '../utils/browserDetection';
 
 // Import services
 import { saveRecordsToDatabase, fetchManualTimeRecords, fetchPendingEmployeeShifts } from '../services/database';
@@ -27,8 +26,6 @@ import UserCredentialsModal from '../components/UserCredentialsModal';
 import EmployeeShiftRequest from '../components/EmployeeShiftRequest';
 import TimeRecordsTable from '../components/TimeRecordsTable';
 import ApproveAllConfirmationDialog from '../components/ApproveAllConfirmationDialog';
-import StorageErrorBanner from '../components/StorageErrorBanner';
-import ErrorBoundary from '../components/ErrorBoundary';
 
 // Import context
 import { useAppContext } from '../context/AppContext';
@@ -41,10 +38,7 @@ function HrPage() {
     currentFileName, setCurrentFileName,
     totalEmployees, setTotalEmployees,
     totalDays, setTotalDays,
-    clearData,
-    storageError,
-    retryStorage,
-    storageType
+    clearData
   } = useAppContext();
 
   // Browser detection
@@ -87,10 +81,6 @@ function HrPage() {
   // Approve All confirmation dialog state
   const [isApproveAllDialogOpen, setIsApproveAllDialogOpen] = useState(false);
   const [isApprovingAll, setIsApprovingAll] = useState(false);
-  
-  // Recovery state
-  const [isRecoveryMode, setIsRecoveryMode] = useState(false);
-  const [recoveryMessage, setRecoveryMessage] = useState<string | null>(null);
 
   // Check browser compatibility
   useEffect(() => {
@@ -109,26 +99,13 @@ function HrPage() {
       
       if (!isCompatible) {
         console.warn('Browser compatibility issues detected:', issues);
-        setRecoveryMessage('Your browser may not be fully compatible. Consider using Chrome, Firefox, or Edge for the best experience.');
       }
       
       console.log('Browser detection:', { browser, versionInfo, issues });
-      console.log('Storage type being used:', storageType);
-      
-      // Check if we're using a fallback storage method
-      if (storageType !== StorageType.LOCAL_STORAGE) {
-        if (storageType === StorageType.INDEXED_DB) {
-          console.log('Using IndexedDB storage as primary method');
-        } else if (storageType === StorageType.SESSION_STORAGE) {
-          setRecoveryMessage('Using temporary session storage. Your data will be lost when you close this tab.');
-        } else if (storageType === StorageType.MEMORY) {
-          setRecoveryMessage('Using in-memory storage. Your data will be lost when you refresh or close this page.');
-        }
-      }
     } catch (error) {
       console.error('Error during browser detection:', error);
     }
-  }, [storageType]);
+  }, []);
 
   // Check if screen is mobile
   useEffect(() => {
@@ -230,7 +207,6 @@ function HrPage() {
     }
   };
 
-  // Handle file upload with more robust error handling
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) {
@@ -244,12 +220,6 @@ function HrPage() {
     const loadingToast = toast.loading('Processing file...');
     
     try {
-      // Attempt data recovery if needed
-      if (isRecoveryMode) {
-        setIsRecoveryMode(false);
-        setRecoveryMessage(null);
-      }
-      
       const records = await handleExcelFile(file);
       setEmployeeRecords(records);
       
@@ -263,25 +233,7 @@ function HrPage() {
     } catch (error) {
       console.error('Error processing file:', error);
       toast.dismiss(loadingToast);
-      
-      // More descriptive error messages
-      let errorMessage = 'Error processing file';
-      if (error instanceof Error) {
-        errorMessage = error.message;
-        
-        // Try to detect specific issues
-        if (errorMessage.includes('memory') || errorMessage.includes('heap')) {
-          errorMessage = 'File is too large to process in this browser. Try using Chrome or splitting the file into smaller parts.';
-        } else if (errorMessage.includes('parse') || errorMessage.includes('format')) {
-          errorMessage = 'File format not recognized. Please ensure you are uploading a valid Excel file (.xlsx/.xls).';
-        }
-      }
-      
-      toast.error(errorMessage);
-      
-      // Attempt recovery
-      setIsRecoveryMode(true);
-      setRecoveryMessage('There was an error processing your file. Try a different browser or a smaller file.');
+      toast.error(error instanceof Error ? error.message : 'Error processing file');
     } finally {
       setIsUploading(false);
       // Reset the file input
@@ -451,13 +403,8 @@ function HrPage() {
   };
 
   const handleExportAll = () => {
-    try {
-      exportToExcel(employeeRecords);
-      toast.success(`Exported to file`);
-    } catch (error) {
-      console.error('Error exporting data:', error);
-      toast.error('Failed to export data. Please try again or use a different browser.');
-    }
+    exportToExcel(employeeRecords);
+    toast.success(`Exported to file`);
   };
 
   const handleSaveToDatabase = async () => {
@@ -502,7 +449,7 @@ function HrPage() {
       setTotalEmployees(updatedEmpCount);
       setTotalDays(updatedDaysCount);
 
-      // Refresh manually approved records from database
+      // FIXED: Refresh manually approved records from database instead of manually updating state
       await refreshData();
       
       toast.dismiss(loadingToast);
@@ -645,14 +592,14 @@ function HrPage() {
     // Set hasUploadedFile to true to ensure proper display
     setHasUploadedFile(true);
     
-    // Refresh manual records - Get fresh data from database
+    // FIXED: Refresh manual records - Get fresh data from database instead of manually updating state
     await refreshData();
     
     // Show success message
     toast.success(`Added ${employeeData.name}'s submitted shift to the Face ID Data`);
   };
 
-  // Handle saving manual time entry with improved error handling
+  // Handle saving manual time entry
   const handleManualEntrySave = async (recordData: any) => {
     setIsManualEntryOpen(false);
     
@@ -731,325 +678,241 @@ function HrPage() {
   }
 
   return (
-    <ErrorBoundary>
-      <div className="min-h-screen bg-gray-50">
-        {/* Navigation tabs */}
-        <NavigationTabs />
+    <div className="min-h-screen bg-gray-50">
+      {/* Navigation tabs */}
+      <NavigationTabs />
 
-        {/* Main content */}
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          <div className="bg-white rounded-lg shadow-sm border border-gray-100">
-            {/* Card header */}
-            <div className="p-6 border-b border-gray-100">
-              <div className="flex items-center justify-between flex-wrap gap-2">
-                <div className="flex items-center">
-                  <Clock className="w-5 h-5 text-purple-600 mr-2" />
-                  <h1 className="text-lg font-medium text-gray-800">
-                    Face ID Data Processor
-                  </h1>
+      {/* Main content */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="bg-white rounded-lg shadow-sm border border-gray-100">
+          {/* Card header */}
+          <div className="p-6 border-b border-gray-100">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <div className="flex items-center">
+                <Clock className="w-5 h-5 text-purple-600 mr-2" />
+                <h1 className="text-lg font-medium text-gray-800">
+                  Face ID Data Processor
+                </h1>
+              </div>
+              <div className="flex flex-wrap items-center gap-3">
+                <button
+                  onClick={() => navigate('/')}
+                  className="text-gray-600 hover:text-gray-800 font-medium flex items-center"
+                >
+                  <Home className="w-4 h-4 mr-1" />
+                  <span className="hidden sm:inline">Back to Home</span>
+                  <span className="sm:hidden">Home</span>
+                </button>
+                <button
+                  onClick={() => setIsUserCredentialsOpen(true)}
+                  className="text-green-600 hover:text-green-800 font-medium flex items-center"
+                >
+                  <KeyRound className="w-4 h-4 mr-1" />
+                  <span className="hidden sm:inline">Manage User Credentials</span>
+                  <span className="sm:hidden">Users</span>
+                </button>
+                <button
+                  onClick={handleRunMigrations}
+                  disabled={isMigrating}
+                  className="text-blue-600 hover:text-blue-800 font-medium flex items-center disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <Database className="w-4 h-4 mr-1" />
+                  {isMigrating ? 
+                    <span className="hidden sm:inline">Initializing...</span> : 
+                    <span className="hidden sm:inline">Initialize System</span>
+                  }
+                  {isMigrating ? 
+                    <span className="sm:hidden">Init...</span> : 
+                    <span className="sm:hidden">Init</span>
+                  }
+                </button>
+                <button
+                  onClick={() => navigate('/approved-hours')}
+                  className="text-purple-600 hover:text-purple-800 font-medium whitespace-nowrap"
+                >
+                  <span className="hidden sm:inline">View Approved Hours</span>
+                  <span className="sm:hidden">Approved</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Card content */}
+          <div className="p-6 space-y-6">
+            {/* Browser compatibility warning */}
+            {(browserInfo.ie || compatibilityIssues.length > 0 || browserInfo.isLegacy) && (
+              <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4 flex items-start">
+                <AlertTriangle className="w-5 h-5 text-yellow-500 mr-3 mt-0.5 flex-shrink-0" />
+                <div className="text-sm text-yellow-700">
+                  <p className="font-medium">Browser Compatibility Warning</p>
+                  <p>For the best experience, please use a modern browser like Chrome, Firefox, or Edge. Some features may not work correctly in your current browser ({browserVersion.name || 'Unknown'} {browserVersion.version || ''}).</p>
+                  {compatibilityIssues.length > 0 && (
+                    <div className="mt-2">
+                      <p className="font-medium">Detected issues:</p>
+                      <ul className="list-disc pl-5 mt-1">
+                        {compatibilityIssues.map((issue, index) => (
+                          <li key={index}>{issue}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  <button 
+                    onClick={() => window.location.reload()}
+                    className="mt-2 px-3 py-1 bg-yellow-100 text-yellow-700 rounded-md hover:bg-yellow-200 text-sm"
+                  >
+                    Reload Page
+                  </button>
                 </div>
-                <div className="flex flex-wrap items-center gap-3">
-                  <button
-                    onClick={() => navigate('/')}
-                    className="text-gray-600 hover:text-gray-800 font-medium flex items-center"
+              </div>
+            )}
+            
+            {/* Connection error message */}
+            {connectionError && (
+              <div className="bg-red-50 border border-red-200 rounded-md p-4 flex items-start">
+                <AlertTriangle className="w-5 h-5 text-red-500 mr-3 mt-0.5 flex-shrink-0" />
+                <div className="text-sm text-red-700">
+                  <p className="font-medium">Database Connection Error</p>
+                  <p>{connectionError}</p>
+                  <p className="mt-2">Please check your Supabase connection settings and ensure your database is accessible.</p>
+                  <button 
+                    onClick={checkConnection}
+                    className="mt-2 px-3 py-1 bg-red-100 text-red-700 rounded-md hover:bg-red-200 text-sm"
                   >
-                    <Home className="w-4 h-4 mr-1" />
-                    <span className="hidden sm:inline">Back to Home</span>
-                    <span className="sm:hidden">Home</span>
-                  </button>
-                  <button
-                    onClick={() => setIsUserCredentialsOpen(true)}
-                    className="text-green-600 hover:text-green-800 font-medium flex items-center"
-                  >
-                    <KeyRound className="w-4 h-4 mr-1" />
-                    <span className="hidden sm:inline">Manage User Credentials</span>
-                    <span className="sm:hidden">Users</span>
-                  </button>
-                  <button
-                    onClick={handleRunMigrations}
-                    disabled={isMigrating}
-                    className="text-blue-600 hover:text-blue-800 font-medium flex items-center disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    <Database className="w-4 h-4 mr-1" />
-                    {isMigrating ? 
-                      <span className="hidden sm:inline">Initializing...</span> : 
-                      <span className="hidden sm:inline">Initialize System</span>
-                    }
-                    {isMigrating ? 
-                      <span className="sm:hidden">Init...</span> : 
-                      <span className="sm:hidden">Init</span>
-                    }
-                  </button>
-                  <button
-                    onClick={() => navigate('/approved-hours')}
-                    className="text-purple-600 hover:text-purple-800 font-medium whitespace-nowrap"
-                  >
-                    <span className="hidden sm:inline">View Approved Hours</span>
-                    <span className="sm:hidden">Approved</span>
+                    Retry Connection
                   </button>
                 </div>
+              </div>
+            )}
+
+            {/* Info box */}
+            <div className="bg-pink-50 border border-pink-100 rounded-md p-4 flex items-start">
+              <AlertCircle className="w-5 h-5 text-pink-500 mr-3 mt-0.5 flex-shrink-0" />
+              <div className="text-sm text-pink-800">
+                <p>Upload Face ID data to process check-in and check-out times. Shift times are:</p>
+                <ul className="list-disc pl-5 mt-2 space-y-1">
+                  <li><strong>Morning shift:</strong> 05:00 AM - 02:00 PM (allowed check-out from 01:30 PM)</li>
+                  <li><strong>Evening shift:</strong> 01:00 PM - 10:00 PM (allowed check-out from 09:30 PM)</li>
+                  <li><strong>Night shift:</strong> 09:00 PM - 06:00 AM (allowed check-out from 05:30 AM)</li>
+                </ul>
+                <p className="mt-2"><strong>Note:</strong> Check-ins between 4:30 AM and 5:00 AM are considered part of the morning shift.</p>
               </div>
             </div>
 
-            {/* Card content */}
-            <div className="p-6 space-y-6">
-              {/* Storage error banner */}
-              {storageError && (
-                <StorageErrorBanner 
-                  error={storageError}
-                  onRetry={retryStorage}
-                />
-              )}
-              
-              {/* Recovery message */}
-              {recoveryMessage && (
-                <div className="bg-blue-50 border border-blue-200 rounded-md p-4 flex items-start">
-                  <AlertCircle className="w-5 h-5 text-blue-500 mr-3 mt-0.5 flex-shrink-0" />
-                  <div className="text-sm text-blue-700">
-                    <p className="font-medium">Important Information</p>
-                    <p>{recoveryMessage}</p>
-                    {storageType !== StorageType.LOCAL_STORAGE && (
-                      <p className="mt-2">
-                        Current storage method: <span className="font-medium">{storageType}</span>
-                        {storageType === StorageType.MEMORY && (
-                          <span className="text-red-600 font-medium"> (your data will be lost when you close this page)</span>
-                        )}
-                        {storageType === StorageType.SESSION_STORAGE && (
-                          <span className="text-amber-600 font-medium"> (your data will be lost when you close this tab)</span>
-                        )}
-                      </p>
-                    )}
-                  </div>
-                </div>
-              )}
-              
-              {/* Browser compatibility warning */}
-              {(browserInfo.ie || compatibilityIssues.length > 0 || browserInfo.isLegacy) && (
-                <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4 flex items-start">
-                  <AlertTriangle className="w-5 h-5 text-yellow-500 mr-3 mt-0.5 flex-shrink-0" />
-                  <div className="text-sm text-yellow-700">
-                    <p className="font-medium">Browser Compatibility Warning</p>
-                    <p>For the best experience, please use a modern browser like Chrome, Firefox, or Edge. Some features may not work correctly in your current browser ({browserVersion.name || 'Unknown'} {browserVersion.version || ''}).</p>
-                    {compatibilityIssues.length > 0 && (
-                      <div className="mt-2">
-                        <p className="font-medium">Detected issues:</p>
-                        <ul className="list-disc pl-5 mt-1">
-                          {compatibilityIssues.map((issue, index) => (
-                            <li key={index}>{issue}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-                    <button 
-                      onClick={() => window.location.reload()}
-                      className="mt-2 px-3 py-1 bg-yellow-100 text-yellow-700 rounded-md hover:bg-yellow-200 text-sm"
-                    >
-                      Reload Page
-                    </button>
-                  </div>
-                </div>
-              )}
-              
-              {/* Connection error message */}
-              {connectionError && (
-                <div className="bg-red-50 border border-red-200 rounded-md p-4 flex items-start">
-                  <AlertTriangle className="w-5 h-5 text-red-500 mr-3 mt-0.5 flex-shrink-0" />
-                  <div className="text-sm text-red-700">
-                    <p className="font-medium">Database Connection Error</p>
-                    <p>{connectionError}</p>
-                    <p className="mt-2">Please check your Supabase connection settings and ensure your database is accessible.</p>
-                    <button 
-                      onClick={checkConnection}
-                      className="mt-2 px-3 py-1 bg-red-100 text-red-700 rounded-md hover:bg-red-200 text-sm"
-                    >
-                      Retry Connection
-                    </button>
-                  </div>
-                </div>
-              )}
+            {/* Employee Shift Requests Section */}
+            <EmployeeShiftRequest onShiftApproved={handleEmployeeShiftApproved} />
 
-              {/* Info box */}
-              <div className="bg-pink-50 border border-pink-100 rounded-md p-4 flex items-start">
-                <AlertCircle className="w-5 h-5 text-pink-500 mr-3 mt-0.5 flex-shrink-0" />
-                <div className="text-sm text-pink-800">
-                  <p>Upload Face ID data to process check-in and check-out times. Shift times are:</p>
-                  <ul className="list-disc pl-5 mt-2 space-y-1">
-                    <li><strong>Morning shift:</strong> 05:00 AM - 02:00 PM (allowed check-out from 01:30 PM)</li>
-                    <li><strong>Evening shift:</strong> 01:00 PM - 10:00 PM (allowed check-out from 09:30 PM)</li>
-                    <li><strong>Night shift:</strong> 09:00 PM - 06:00 AM (allowed check-out from 05:30 AM)</li>
-                  </ul>
-                  <p className="mt-2"><strong>Note:</strong> Check-ins between 4:30 AM and 5:00 AM are considered part of the morning shift.</p>
+            {/* Manual Time Records Section */}
+            {manualRecords.length > 0 && (
+              <TimeRecordsTable 
+                records={manualRecords}
+                isLoading={loadingManualRecords}
+                title="Recent Manual & Employee-Submitted Records"
+              />
+            )}
+
+            {/* Error section for failed records */}
+            {savingErrors.length > 0 && (
+              <div className="bg-red-50 border border-red-100 rounded-md p-4">
+                <div className="flex items-center mb-2">
+                  <AlertCircle className="w-5 h-5 text-red-500 mr-2" />
+                  <h3 className="text-red-800 font-medium">Failed to save {savingErrors.length} records</h3>
                 </div>
-              </div>
-
-              {/* Employee Shift Requests Section */}
-              <EmployeeShiftRequest onShiftApproved={handleEmployeeShiftApproved} />
-
-              {/* Manual Time Records Section */}
-              {manualRecords.length > 0 && (
-                <TimeRecordsTable 
-                  records={manualRecords}
-                  isLoading={loadingManualRecords}
-                  title="Recent Manual & Employee-Submitted Records"
-                />
-              )}
-
-              {/* Error section for failed records */}
-              {savingErrors.length > 0 && (
-                <div className="bg-red-50 border border-red-100 rounded-md p-4">
-                  <div className="flex items-center mb-2">
-                    <AlertCircle className="w-5 h-5 text-red-500 mr-2" />
-                    <h3 className="text-red-800 font-medium">Failed to save {savingErrors.length} records</h3>
-                  </div>
-                  <div className="max-h-40 overflow-auto text-sm">
-                    <table className="w-full border-collapse">
-                      <thead>
-                        <tr className="text-left border-b border-red-200">
-                          <th className="py-2 px-3">Employee</th>
-                          <th className="py-2 px-3">Date</th>
-                          <th className="py-2 px-3">Error</th>
+                <div className="max-h-40 overflow-auto text-sm">
+                  <table className="w-full border-collapse">
+                    <thead>
+                      <tr className="text-left border-b border-red-200">
+                        <th className="py-2 px-3">Employee</th>
+                        <th className="py-2 px-3">Date</th>
+                        <th className="py-2 px-3">Error</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {savingErrors.map((err, index) => (
+                        <tr key={index} className="border-b border-red-100">
+                          <td className="py-2 px-3">{err.employeeName}</td>
+                          <td className="py-2 px-3">{err.date}</td>
+                          <td className="py-2 px-3 text-red-700">{err.error}</td>
                         </tr>
-                      </thead>
-                      <tbody>
-                        {savingErrors.map((err, index) => (
-                          <tr key={index} className="border-b border-red-100">
-                            <td className="py-2 px-3">{err.employeeName}</td>
-                            <td className="py-2 px-3">{err.date}</td>
-                            <td className="py-2 px-3 text-red-700">{err.error}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
-              )}
-
-              {/* Upload section */}
-              <div>
-                <div className="text-sm font-medium text-gray-700 mb-2 flex justify-between items-center">
-                  <span>Upload Face ID Data File (Excel)</span>
-                  <button
-                    onClick={() => setIsManualEntryOpen(true)}
-                    className="text-blue-600 hover:text-blue-800 flex items-center text-sm font-medium"
-                  >
-                    <PlusCircle className="w-4 h-4 mr-1" />
-                    <span className="hidden sm:inline">Add Record Manually</span>
-                    <span className="sm:hidden">Add Manual</span>
-                  </button>
-                </div>
-                <button 
-                  onClick={() => document.getElementById('file-upload')?.click()}
-                  disabled={isUploading}
-                  className="w-full bg-purple-600 hover:bg-purple-700 focus:ring-4 focus:ring-purple-200 
-                    text-white rounded-md py-2.5 px-4 flex items-center justify-center
-                    disabled:opacity-70 disabled:cursor-not-allowed transition-colors"
-                >
-                  <Upload className="w-4 h-4 mr-2" />
-                  {isUploading ? 'Processing...' : 'Select File'}
-                </button>
-                <input
-                  type="file"
-                  accept=".xlsx,.xls"
-                  onChange={handleFileUpload}
-                  className="hidden"
-                  id="file-upload"
-                  disabled={isUploading}
-                />
-                {currentFileName && (
-                  <div className="mt-2 text-sm text-gray-500 text-right text-wrap-balance">
-                    {currentFileName}
-                  </div>
-                )}
               </div>
+            )}
 
-              {/* Recent Manual Entry Notification */}
-              {recentManualEntry && (
-                <div className="bg-green-50 border border-green-100 rounded-md p-4 flex items-start">
-                  <CheckCircle className="w-5 h-5 text-green-500 mr-3 mt-0.5 flex-shrink-0" />
-                  <div className="text-sm text-green-800">
-                    <p className="font-medium">Manual entry added successfully</p>
-                    <p>The manual time record has been added and is now visible in the employee list below.</p>
-                  </div>
+            {/* Upload section */}
+            <div>
+              <div className="text-sm font-medium text-gray-700 mb-2 flex justify-between items-center">
+                <span>Upload Face ID Data File (Excel)</span>
+                <button
+                  onClick={() => setIsManualEntryOpen(true)}
+                  className="text-blue-600 hover:text-blue-800 flex items-center text-sm font-medium"
+                >
+                  <PlusCircle className="w-4 h-4 mr-1" />
+                  <span className="hidden sm:inline">Add Record Manually</span>
+                  <span className="sm:hidden">Add Manual</span>
+                </button>
+              </div>
+              <button 
+                onClick={() => document.getElementById('file-upload')?.click()}
+                disabled={isUploading}
+                className="w-full bg-purple-600 hover:bg-purple-700 focus:ring-4 focus:ring-purple-200 
+                  text-white rounded-md py-2.5 px-4 flex items-center justify-center
+                  disabled:opacity-70 disabled:cursor-not-allowed transition-colors"
+              >
+                <Upload className="w-4 h-4 mr-2" />
+                {isUploading ? 'Processing...' : 'Select File'}
+              </button>
+              <input
+                type="file"
+                accept=".xlsx,.xls"
+                onChange={handleFileUpload}
+                className="hidden"
+                id="file-upload"
+                disabled={isUploading}
+              />
+              {currentFileName && (
+                <div className="mt-2 text-sm text-gray-500 text-right text-wrap-balance">
+                  {currentFileName}
                 </div>
               )}
+            </div>
 
-              {/* Results Section */}
-              {employeeRecords.length > 0 ? (
-                <div className="space-y-4">
-                  {/* Summary and controls */}
-                  <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-y-3">
-                    <div className="text-sm text-gray-600">
-                      Processed {totalEmployees} Employees • {totalDays} Days
-                      <label className="ml-4 inline-flex items-center cursor-pointer">
-                        <input 
-                          type="checkbox" 
-                          checked={showApproved} 
-                          onChange={() => setShowApproved(!showApproved)}
-                          className="h-4 w-4 text-purple-600 focus:ring-purple-500 border-gray-300 rounded"
-                        />
-                        <span className="ml-2 text-sm text-gray-700">Show Approved</span>
-                      </label>
-                    </div>
-                    
-                    <div className="grid grid-cols-2 sm:flex gap-2">
-                      {/* First row of buttons (mobile only) */}
-                      <div className="col-span-2 flex gap-2 sm:hidden">
-                        <button
-                          onClick={handleReset}
-                          className="flex-1 inline-flex items-center justify-center px-3 py-1.5 border border-gray-300 text-sm leading-5 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
-                        >
-                          <RefreshCw className="w-4 h-4 mr-1" />
-                          Reset
-                        </button>
-                        
-                        <button
-                          onClick={() => setIsManualEntryOpen(true)}
-                          className="flex-1 inline-flex items-center justify-center px-3 py-1.5 border border-transparent text-sm leading-5 font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-                        >
-                          <PlusCircle className="w-4 h-4 mr-1" />
-                          Add
-                        </button>
-                      </div>
-                      
-                      {/* Second row of buttons (mobile only) */}
-                      <div className="col-span-2 flex gap-2 sm:hidden">
-                        <button
-                          onClick={handleExportAll}
-                          className="flex-1 inline-flex items-center justify-center px-3 py-1.5 border border-gray-300 text-sm leading-5 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
-                        >
-                          <Download className="w-4 h-4 mr-1" />
-                          Export
-                        </button>
-                        
-                        <button
-                          onClick={() => setIsApproveAllDialogOpen(true)}
-                          className="flex-1 inline-flex items-center justify-center px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white text-sm rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
-                        >
-                          <CheckCircle className="w-4 h-4 mr-1" />
-                          Approve
-                        </button>
-                      </div>
-                      
-                      {/* Third row (full-width Save button on mobile) */}
-                      <button
-                        onClick={handleSaveToDatabase}
-                        disabled={isSaving || !employeeRecords.some(emp => emp.days.some(d => d.approved)) || !!connectionError}
-                        className="col-span-2 sm:col-span-1 inline-flex items-center justify-center px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white text-sm rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        {isSaving ? (
-                          <>
-                            <span className="inline-block h-4 w-4 rounded-full border-2 border-white border-t-transparent animate-spin mr-2"></span>
-                            {isMobile ? 'Saving...' : 'Saving Approved Records...'}
-                          </>
-                        ) : (
-                          isMobile ? 'Save Records' : 'Save Approved Records'
-                        )}
-                      </button>
-                      
-                      {/* Desktop-only buttons */}
+            {/* Recent Manual Entry Notification */}
+            {recentManualEntry && (
+              <div className="bg-green-50 border border-green-100 rounded-md p-4 flex items-start">
+                <CheckCircle className="w-5 h-5 text-green-500 mr-3 mt-0.5 flex-shrink-0" />
+                <div className="text-sm text-green-800">
+                  <p className="font-medium">Manual entry added successfully</p>
+                  <p>The manual time record has been added and is now visible in the employee list below.</p>
+                </div>
+              </div>
+            )}
+
+            {/* Results Section */}
+            {employeeRecords.length > 0 ? (
+              <div className="space-y-4">
+                {/* Summary and controls */}
+                <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-y-3">
+                  <div className="text-sm text-gray-600">
+                    Processed {totalEmployees} Employees • {totalDays} Days
+                    <label className="ml-4 inline-flex items-center cursor-pointer">
+                      <input 
+                        type="checkbox" 
+                        checked={showApproved} 
+                        onChange={() => setShowApproved(!showApproved)}
+                        className="h-4 w-4 text-purple-600 focus:ring-purple-500 border-gray-300 rounded"
+                      />
+                      <span className="ml-2 text-sm text-gray-700">Show Approved</span>
+                    </label>
+                  </div>
+                  
+                  <div className="grid grid-cols-2 sm:flex gap-2">
+                    {/* First row of buttons (mobile only) */}
+                    <div className="col-span-2 flex gap-2 sm:hidden">
                       <button
                         onClick={handleReset}
-                        className="hidden sm:inline-flex items-center px-3 py-1.5 border border-gray-300 text-sm leading-5 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
+                        className="flex-1 inline-flex items-center justify-center px-3 py-1.5 border border-gray-300 text-sm leading-5 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
                       >
                         <RefreshCw className="w-4 h-4 mr-1" />
                         Reset
@@ -1057,78 +920,130 @@ function HrPage() {
                       
                       <button
                         onClick={() => setIsManualEntryOpen(true)}
-                        className="hidden sm:inline-flex items-center px-3 py-1.5 border border-transparent text-sm leading-5 font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                        className="flex-1 inline-flex items-center justify-center px-3 py-1.5 border border-transparent text-sm leading-5 font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
                       >
                         <PlusCircle className="w-4 h-4 mr-1" />
-                        Add Manual Entry
+                        Add
                       </button>
-                      
+                    </div>
+                    
+                    {/* Second row of buttons (mobile only) */}
+                    <div className="col-span-2 flex gap-2 sm:hidden">
                       <button
                         onClick={handleExportAll}
-                        className="hidden sm:inline-flex items-center px-3 py-1.5 border border-gray-300 text-sm leading-5 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
+                        className="flex-1 inline-flex items-center justify-center px-3 py-1.5 border border-gray-300 text-sm leading-5 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
                       >
                         <Download className="w-4 h-4 mr-1" />
-                        Export All
+                        Export
                       </button>
                       
                       <button
                         onClick={() => setIsApproveAllDialogOpen(true)}
-                        className="hidden sm:inline-flex items-center px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white text-sm rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+                        className="flex-1 inline-flex items-center justify-center px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white text-sm rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
                       >
                         <CheckCircle className="w-4 h-4 mr-1" />
-                        Approve All
+                        Approve
                       </button>
                     </div>
+                    
+                    {/* Third row (full-width Save button on mobile) */}
+                    <button
+                      onClick={handleSaveToDatabase}
+                      disabled={isSaving || !employeeRecords.some(emp => emp.days.some(d => d.approved)) || !!connectionError}
+                      className="col-span-2 sm:col-span-1 inline-flex items-center justify-center px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white text-sm rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {isSaving ? (
+                        <>
+                          <span className="inline-block h-4 w-4 rounded-full border-2 border-white border-t-transparent animate-spin mr-2"></span>
+                          {isMobile ? 'Saving...' : 'Saving Approved Records...'}
+                        </>
+                      ) : (
+                        isMobile ? 'Save Records' : 'Save Approved Records'
+                      )}
+                    </button>
+                    
+                    {/* Desktop-only buttons */}
+                    <button
+                      onClick={handleReset}
+                      className="hidden sm:inline-flex items-center px-3 py-1.5 border border-gray-300 text-sm leading-5 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
+                    >
+                      <RefreshCw className="w-4 h-4 mr-1" />
+                      Reset
+                    </button>
+                    
+                    <button
+                      onClick={() => setIsManualEntryOpen(true)}
+                      className="hidden sm:inline-flex items-center px-3 py-1.5 border border-transparent text-sm leading-5 font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                    >
+                      <PlusCircle className="w-4 h-4 mr-1" />
+                      Add Manual Entry
+                    </button>
+                    
+                    <button
+                      onClick={handleExportAll}
+                      className="hidden sm:inline-flex items-center px-3 py-1.5 border border-gray-300 text-sm leading-5 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
+                    >
+                      <Download className="w-4 h-4 mr-1" />
+                      Export All
+                    </button>
+                    
+                    <button
+                      onClick={() => setIsApproveAllDialogOpen(true)}
+                      className="hidden sm:inline-flex items-center px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white text-sm rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+                    >
+                      <CheckCircle className="w-4 h-4 mr-1" />
+                      Approve All
+                    </button>
                   </div>
-                  
-                  {/* Employee List */}
-                  <EmployeeList 
-                    employeeRecords={employeeRecords}
-                    showApproved={showApproved}
-                    toggleEmployeeExpanded={toggleEmployeeExpanded}
-                    handleToggleApproveDay={handleToggleApproveDay}
-                    handleApproveAllForEmployee={handleApproveAllForEmployee}
-                    handleApplyPenalty={handleApplyPenalty}
-                    handleEditTime={handleEditTime}
-                  />
                 </div>
-              ) : (
-                // Empty state
-                <EmptyState 
-                  hasUploadedFile={hasUploadedFile}
-                  onUploadClick={() => document.getElementById('file-upload')?.click()}
-                  onManualEntryClick={() => setIsManualEntryOpen(true)}
+                
+                {/* Employee List */}
+                <EmployeeList 
+                  employeeRecords={employeeRecords}
+                  showApproved={showApproved}
+                  toggleEmployeeExpanded={toggleEmployeeExpanded}
+                  handleToggleApproveDay={handleToggleApproveDay}
+                  handleApproveAllForEmployee={handleApproveAllForEmployee}
+                  handleApplyPenalty={handleApplyPenalty}
+                  handleEditTime={handleEditTime}
                 />
-              )}
-            </div>
+              </div>
+            ) : (
+              // Empty state
+              <EmptyState 
+                hasUploadedFile={hasUploadedFile}
+                onUploadClick={() => document.getElementById('file-upload')?.click()}
+                onManualEntryClick={() => setIsManualEntryOpen(true)}
+              />
+            )}
           </div>
         </div>
-        
-        {/* Manual Entry Modal */}
-        <ManualEntryModal
-          isOpen={isManualEntryOpen}
-          onClose={() => setIsManualEntryOpen(false)}
-          onSave={handleManualEntrySave}
-        />
-        
-        {/* User Credentials Modal */}
-        <UserCredentialsModal
-          isOpen={isUserCredentialsOpen}
-          onClose={() => setIsUserCredentialsOpen(false)}
-        />
-        
-        {/* Approve All Confirmation Dialog */}
-        <ApproveAllConfirmationDialog
-          isOpen={isApproveAllDialogOpen}
-          onClose={() => setIsApproveAllDialogOpen(false)}
-          onConfirm={handleApproveAll}
-          totalRecords={totalDays}
-          isProcessing={isApprovingAll}
-        />
-        
-        <Toaster position="top-right" />
       </div>
-    </ErrorBoundary>
+      
+      {/* Manual Entry Modal */}
+      <ManualEntryModal
+        isOpen={isManualEntryOpen}
+        onClose={() => setIsManualEntryOpen(false)}
+        onSave={handleManualEntrySave}
+      />
+      
+      {/* User Credentials Modal */}
+      <UserCredentialsModal
+        isOpen={isUserCredentialsOpen}
+        onClose={() => setIsUserCredentialsOpen(false)}
+      />
+      
+      {/* Approve All Confirmation Dialog */}
+      <ApproveAllConfirmationDialog
+        isOpen={isApproveAllDialogOpen}
+        onClose={() => setIsApproveAllDialogOpen(false)}
+        onConfirm={handleApproveAll}
+        totalRecords={totalDays}
+        isProcessing={isApprovingAll}
+      />
+      
+      <Toaster position="top-right" />
+    </div>
   );
 }
 

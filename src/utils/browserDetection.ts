@@ -94,11 +94,9 @@ export const isWebWorkerSupported = (): boolean => {
 
 export const isLocalStorageSupported = (): boolean => {
   try {
-    const testKey = '_test_' + Math.random();
-    localStorage.setItem(testKey, 'test');
-    const result = localStorage.getItem(testKey) === 'test';
-    localStorage.removeItem(testKey);
-    return result;
+    localStorage.setItem('test', 'test');
+    localStorage.removeItem('test');
+    return true;
   } catch (e) {
     return false;
   }
@@ -110,11 +108,9 @@ export const isPromiseSupported = (): boolean => {
 
 export const isSessionStorageSupported = (): boolean => {
   try {
-    const testKey = '_test_' + Math.random();
-    sessionStorage.setItem(testKey, 'test');
-    const result = sessionStorage.getItem(testKey) === 'test';
-    sessionStorage.removeItem(testKey);
-    return result;
+    sessionStorage.setItem('test', 'test');
+    sessionStorage.removeItem('test');
+    return true;
   } catch (e) {
     return false;
   }
@@ -122,17 +118,6 @@ export const isSessionStorageSupported = (): boolean => {
 
 export const isFetchSupported = (): boolean => {
   return typeof fetch !== 'undefined';
-};
-
-export const isIndexedDBSupported = (): boolean => {
-  try {
-    return typeof window !== 'undefined' && 
-           typeof window.indexedDB !== 'undefined' && 
-           typeof window.IDBTransaction !== 'undefined' &&
-           typeof window.IDBKeyRange !== 'undefined';
-  } catch (e) {
-    return false;
-  }
 };
 
 // Check for overall browser compatibility
@@ -150,21 +135,17 @@ export const checkBrowserCompatibility = (): {
     issues.push("Fetch API is not supported");
   }
   
-  if (!isLocalStorageSupported() && !isSessionStorageSupported() && !isIndexedDBSupported()) {
-    issues.push("No supported storage mechanism available (localStorage, sessionStorage, or IndexedDB)");
+  if (!isLocalStorageSupported()) {
+    issues.push("LocalStorage is not supported");
+  }
+  
+  if (!isSessionStorageSupported()) {
+    issues.push("SessionStorage is not supported");
   }
   
   const browserInfo = detectBrowser();
   if (browserInfo.ie) {
     issues.push("Internet Explorer is not supported");
-  }
-  
-  if (typeof Int32Array === 'undefined' || typeof Uint8Array === 'undefined') {
-    issues.push("TypedArrays not supported (needed for Excel processing)");
-  }
-  
-  if (typeof Blob === 'undefined' || typeof FileReader === 'undefined') {
-    issues.push("File API not supported (needed for Excel file handling)");
   }
   
   return {
