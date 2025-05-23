@@ -1,8 +1,8 @@
 import React from 'react';
-import { format, differenceInMinutes, parseISO, isValid } from 'date-fns';
+import { format, differenceInMinutes, parseISO } from 'date-fns';
 import { AlertTriangle, CheckCircle, Clock, Calendar as Calendar2 } from 'lucide-react';
 import { DISPLAY_SHIFT_TIMES } from '../../types';
-import { formatTime24H, formatRecordTime, ensureValidDate, safeGetHours } from '../../utils/dateTimeHelper';
+import { formatTime24H, formatRecordTime, ensureValidDate } from '../../utils/dateTimeHelper';
 import { getEveningShiftCheckoutDisplay } from '../../utils/shiftCalculations';
 
 interface DailyBreakdownProps {
@@ -13,75 +13,62 @@ interface DailyBreakdownProps {
 
 const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records, doubleDays = [] }) => {
   // Group records by date for better display
-  const recordsByDate = React.useMemo(() => {
-    if (!records || !Array.isArray(records)) {
-      console.warn('Invalid records passed to DailyBreakdown:', records);
-      return {};
-    }
+  const recordsByDate = records.reduce((acc: any, record: any) => {
+    // FIXED: Always use working_week_start as the key for grouping
+    let dateKey = record.working_week_start || '';
     
-    const acc: Record<string, any[]> = {};
-    
-    records.forEach(record => {
-      if (!record) return; // Skip invalid records
-      
-      // FIXED: Always use working_week_start as the key for grouping
-      let dateKey = record.working_week_start || '';
-      
-      // If working_week_start is not available, extract from timestamp
-      if (!dateKey) {
-        try {
-          // Use the UTC date portion so nothing shifts under local timezones
-          if (record.timestamp) {
-            const timestamp = record.timestamp;
-            const utc = typeof timestamp === 'string' ? parseISO(timestamp) : timestamp;
-            if (utc instanceof Date && isValid(utc)) {
-              dateKey = utc.toISOString().slice(0,10);  // "YYYY-MM-DD"
-            } else {
-              dateKey = new Date().toISOString().slice(0,10); // Fallback to today
-            }
+    // If working_week_start is not available, extract from timestamp
+    if (!dateKey) {
+      try {
+        // Use the UTC date portion so nothing shifts under local timezones
+        if (record.timestamp) {
+          const utc = typeof record.timestamp === 'string' ? parseISO(record.timestamp) : record.timestamp;
+          if (utc instanceof Date && !isNaN(utc.getTime())) {
+            dateKey = utc.toISOString().slice(0,10);  // "YYYY-MM-DD"
           } else {
             dateKey = new Date().toISOString().slice(0,10); // Fallback to today
           }
-        } catch (error) {
-          console.error("Error extracting date key:", error);
+        } else {
           dateKey = new Date().toISOString().slice(0,10); // Fallback to today
         }
-      }
-
-      if (!acc[dateKey]) {
-        acc[dateKey] = [];
-      }
-      
-      try {
-        acc[dateKey].push(record);
       } catch (error) {
-        console.error(`Error adding record to group for date ${dateKey}:`, error);
+        console.error("Error extracting date key:", error);
+        dateKey = new Date().toISOString().slice(0,10); // Fallback to today
       }
-    });
-    
+    }
+
+    if (!acc[dateKey]) {
+      acc[dateKey] = [];
+    }
+    acc[dateKey].push(record);
     return acc;
-  }, [records]);
+  }, {});
 
   // FIXED: Get standardized display time based on shift type
-  const getStandardDisplayTime = (shiftType: string | null, timeType: 'start' | 'end'): string => {
-    if (!shiftType || !['morning', 'evening', 'night', 'canteen'].includes(shiftType)) return '—';
+  const getStandardDisplayTime = (shiftType: string, timeType: 'start' | 'end'): string => {
+    if (!shiftType || !['morning', 'evening', 'night', 'canteen'].includes(shiftType)) {
+      return '—';
+    }
     
-    const displayTimes = {
-      morning: { startTime: '05:00', endTime: '14:00' },
-      evening: { startTime: '13:00', endTime: '22:00' },
-      night: { startTime: '21:00', endTime: '06:00' },
-      canteen: { startTime: '07:00', endTime: '16:00' } // Default to early canteen
-    };
+    if (shiftType === 'morning') {
+      return timeType === 'start' ? '05:00' : '14:00';
+    }
+    if (shiftType === 'evening') {
+      return timeType === 'start' ? '13:00' : '22:00';
+    }
+    if (shiftType === 'night') {
+      return timeType === 'start' ? '21:00' : '06:00';
+    }
+    if (shiftType === 'canteen') {
+      return timeType === 'start' ? '07:00' : '16:00';
+    }
     
-    return timeType === 'start' ? 
-      displayTimes[shiftType as keyof typeof displayTimes].startTime : 
-      displayTimes[shiftType as keyof typeof displayTimes].endTime;
+    return '—';
   };
 
   // Format time in 24-hour format with preference for display values
   const formatTimeDisplay = (timestamp: string | null, record: any, timeType: 'in' | 'out'): string => {
     if (!timestamp) return '–';
-    if (!record) return '–';
     
     try {
       // Use our new helper function that prioritizes display values for Excel imports
@@ -95,21 +82,7 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records, dou
 
   // Check if a date is a double-time day (Friday or holiday)
   const isDoubleTimeDay = (dateStr: string): boolean => {
-    if (!dateStr) return false;
     return doubleDays.includes(dateStr);
-  };
-
-  const isLateNightShiftCheckIn = (date: Date | null, shiftType: string | null): boolean => {
-    if (!date || !shiftType) return false;
-    if (shiftType !== 'night') return false;
-    
-    try {
-      const hour = safeGetHours(date);
-      return hour >= 21; // 9 PM or later
-    } catch (error) {
-      console.error("Error checking if late night shift check in:", error);
-      return false;
-    }
   };
 
   if (isLoading) {
@@ -150,15 +123,13 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records, dou
 
         {/* Records by date */}
         {Object.entries(recordsByDate).map(([date, dayRecords]: [string, any[]]) => {
-          if (!date || !Array.isArray(dayRecords)) return null;
-          
           // Check if this is an off day
-          const isOffDay = dayRecords.some(r => r && r.status === 'off_day');
+          const isOffDay = dayRecords.some(r => r.status === 'off_day');
           const isDoubleTime = isDoubleTimeDay(date);
           
           if (isOffDay) {
             // Display off day record
-            const offDayRecord = dayRecords.find(r => r && r.status === 'off_day');
+            const offDayRecord = dayRecords.find(r => r.status === 'off_day');
             
             // Mobile view
             if (typeof window !== 'undefined' && window.innerWidth < 640) {
@@ -238,55 +209,34 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records, dou
           const recordsByShiftType: Record<string, any[]> = {};
           
           dayRecords.forEach(record => {
-            if (!record) return; // Skip invalid records
-            
             const shiftType = record.shift_type || 'unknown';
             if (!recordsByShiftType[shiftType]) {
               recordsByShiftType[shiftType] = [];
             }
-            
-            try {
-              recordsByShiftType[shiftType].push(record);
-            } catch (error) {
-              console.error(`Error adding record to shift type group ${shiftType}:`, error);
-            }
+            recordsByShiftType[shiftType].push(record);
           });
           
-          // Process each shift type separately
+          // Process each shift type
           return Object.entries(recordsByShiftType).map(([shiftType, shiftRecords]) => {
-            if (!Array.isArray(shiftRecords) || shiftRecords.length === 0) return null;
-            
             // Get check-in and check-out records
-            const checkIns = shiftRecords.filter(r => r && r.status === 'check_in');
-            const checkOuts = shiftRecords.filter(r => r && r.status === 'check_out');
+            const checkIns = shiftRecords.filter(r => r.status === 'check_in');
+            const checkOuts = shiftRecords.filter(r => r.status === 'check_out');
             
             // Get the main check-in and check-out record
             // For check-in, get the earliest
             const checkIn = checkIns.length > 0 ? 
               checkIns.sort((a, b) => {
-                // Safely ensure we have Date objects
                 const aDate = ensureValidDate(a.timestamp);
                 const bDate = ensureValidDate(b.timestamp);
-                
-                // Compare if both are valid dates, otherwise preserve original order
-                if (aDate && bDate) {
-                  return aDate.getTime() - bDate.getTime();
-                }
-                return 0;
+                return (aDate?.getTime() || 0) - (bDate?.getTime() || 0);
               })[0] : null;
             
             // For check-out, get the latest
             const checkOut = checkOuts.length > 0 ? 
               checkOuts.sort((a, b) => {
-                // Safely ensure we have Date objects
                 const aDate = ensureValidDate(a.timestamp);
                 const bDate = ensureValidDate(b.timestamp);
-                
-                // Compare if both are valid dates, otherwise preserve original order
-                if (aDate && bDate) {
-                  return bDate.getTime() - aDate.getTime();
-                }
-                return 0;
+                return (bDate?.getTime() || 0) - (aDate?.getTime() || 0);
               })[0] : null;
             
             // Get hours - prioritize exact_hours field first
@@ -382,7 +332,8 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records, dou
             const checkInHour = checkInTime ? checkInTime.getHours() : null;
             
             // Determine if this is a late night check-in for night shift
-            const isLateNightCheckIn = checkInTime && 
+            const isLateNightShiftCheckIn = 
+              checkInTime && 
               shiftType === 'night' && 
               checkInHour !== null && 
               checkInHour >= 21;
