@@ -1,9 +1,35 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Users, FileText, DollarSign, User } from 'lucide-react';
+import { Users, FileText, DollarSign, User, Trash2, AlertTriangle } from 'lucide-react';
 import AnimatedClock from '../components/AnimatedClock';
+import StorageClearModal from '../components/StorageClearModal';
+import { clearBrowserStorage, checkIfStorageClearNeeded } from '../utils/browserFix';
+import { detectBrowser } from '../utils/browserDetection';
 
 const LandingPage: React.FC = () => {
+  const [storageIssueDetected, setStorageIssueDetected] = useState(false);
+  const [isStorageClearModalOpen, setIsStorageClearModalOpen] = useState(false);
+  const [isFirefox, setIsFirefox] = useState(false);
+  
+  useEffect(() => {
+    // Check if we're running in Firefox
+    const browser = detectBrowser();
+    setIsFirefox(browser.firefox);
+    
+    // Check for storage issues
+    const hasStorageIssue = checkIfStorageClearNeeded();
+    setStorageIssueDetected(hasStorageIssue);
+    
+    // If this is Firefox and we've detected issues, prompt for storage clear
+    if (browser.firefox && hasStorageIssue) {
+      setIsStorageClearModalOpen(true);
+    }
+  }, []);
+  
+  const handleStorageClear = () => {
+    clearBrowserStorage();
+  };
+
   return (
     <div className="min-h-screen bg-[#e6eaff] flex flex-col items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
       <div className="w-full max-w-4xl">
@@ -14,6 +40,25 @@ const LandingPage: React.FC = () => {
           </div>
           <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2 text-center">Employee Work Hour Tracker</h1>
           <p className="text-sm text-gray-600 text-center">Select your role to continue to the platform</p>
+          
+          {/* Firefox storage issue warning */}
+          {isFirefox && (
+            <div className="mt-4 w-full max-w-md bg-amber-50 border border-amber-200 rounded-lg p-4 flex items-start">
+              <AlertTriangle className="w-5 h-5 text-amber-600 mr-2 flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm text-amber-800">
+                  <span className="font-medium">Firefox Browser Detected:</span> If you have trouble accessing certain pages, try clearing browser data.
+                </p>
+                <button
+                  onClick={() => setIsStorageClearModalOpen(true)}
+                  className="mt-2 inline-flex items-center text-xs px-2 py-1 rounded bg-amber-200 text-amber-800 hover:bg-amber-300"
+                >
+                  <Trash2 className="w-3 h-3 mr-1" />
+                  Clear Browser Data
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Main Card Layout */}
@@ -71,6 +116,13 @@ const LandingPage: React.FC = () => {
           © 2025 Employee Work Hour Tracker. All rights reserved.
         </div>
       </div>
+      
+      {/* Storage Clear Modal */}
+      <StorageClearModal
+        isOpen={isStorageClearModalOpen}
+        onClose={() => setIsStorageClearModalOpen(false)}
+        onClear={handleStorageClear}
+      />
     </div>
   );
 };
