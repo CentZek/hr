@@ -719,7 +719,7 @@ export const fetchPendingEmployeeShifts = async (): Promise<any[]> => {
 };
 
 // Delete all time records
-export const deleteAllTimeRecords = async (dateFilter: string = '', employeeFilter: string = ''): Promise<{
+export const deleteAllTimeRecords = async (dateFilter: string = '', employeeFilter: string = '', preserveApproved: boolean = false): Promise<{
   success: boolean;
   message: string;
   count: number;
@@ -762,6 +762,25 @@ export const deleteAllTimeRecords = async (dateFilter: string = '', employeeFilt
       }
     }
     
+    // If preserveApproved is true, only delete non-approved records
+    if (preserveApproved) {
+      // We need to get all approved record IDs and exclude them
+      const { data: approvedRecords, error: approvedError } = await supabase
+        .from('time_records')
+        .select('id')
+        .eq('notes', 'like', '%approved%');
+        
+      if (approvedError) throw approvedError;
+      
+      if (approvedRecords && approvedRecords.length > 0) {
+        // Extract IDs
+        const approvedIds = approvedRecords.map(record => record.id);
+        
+        // Exclude these IDs from deletion
+        query = query.not('id', 'in', approvedIds);
+      }
+    }
+    
     // Get count first
     const { count, error: countError } = await supabase
       .from('time_records')
@@ -795,11 +814,11 @@ export const resetAllDatabaseData = async (): Promise<{
   message: string;
 }> => {
   try {
-    // Delete from all related tables
+    // Delete from all related tables EXCEPT approved records
     
-    // First, delete time_records
+    // First, delete time_records but preserve approved records
     const { success: timeRecordsDeleted, count: timeRecordsCount, message: timeRecordsMessage } = 
-      await deleteAllTimeRecords();
+      await deleteAllTimeRecords('', '', true); // Pass true to preserve approved records
     
     if (!timeRecordsDeleted) {
       return {
@@ -849,7 +868,7 @@ export const resetAllDatabaseData = async (): Promise<{
     
     return {
       success: true,
-      message: `Reset complete. Deleted ${timeRecordsCount} time records.`
+      message: `Reset complete. Deleted ${timeRecordsCount} non-approved time records.`
     };
   } catch (error) {
     console.error('Error resetting database:', error);
