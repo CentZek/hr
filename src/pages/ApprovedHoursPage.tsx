@@ -99,7 +99,6 @@ const ApprovedHoursPage: React.FC = () => {
             }
           } catch (error) {
             console.error('Error parsing filter month:', error);
-            // Use current month as fallback
             start = safeFormat(startOfMonth(new Date()), 'yyyy-MM-dd');
             end = safeFormat(endOfMonth(new Date()), 'yyyy-MM-dd');
           }
