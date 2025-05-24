@@ -770,3 +770,84 @@ export const deleteAllTimeRecords = async (
     };
   }
 };
+
+// Reset all database data - a full cleanup for starting fresh
+export const resetAllDatabaseData = async (): Promise<{
+  success: boolean;
+  message: string;
+  count: number;
+}> => {
+  try {
+    let totalCount = 0;
+    
+    // Step 1: Get counts from all tables for reporting
+    const { count: fileCount, error: fileCountError } = await supabase
+      .from('processed_excel_files')
+      .select('*', { count: 'exact', head: true });
+    
+    if (fileCountError) throw fileCountError;
+    totalCount += fileCount || 0;
+    
+    const { count: timeRecordCount, error: timeCountError } = await supabase
+      .from('time_records')
+      .select('*', { count: 'exact', head: true });
+    
+    if (timeCountError) throw timeCountError;
+    totalCount += timeRecordCount || 0;
+    
+    const { count: shiftCount, error: shiftCountError } = await supabase
+      .from('employee_shifts')
+      .select('*', { count: 'exact', head: true });
+    
+    if (shiftCountError) throw shiftCountError;
+    totalCount += shiftCount || 0;
+    
+    const { count: empCount, error: empCountError } = await supabase
+      .from('processed_employee_data')
+      .select('*', { count: 'exact', head: true });
+    
+    if (empCountError) throw empCountError;
+    totalCount += empCount || 0;
+    
+    const { count: dailyCount, error: dailyCountError } = await supabase
+      .from('processed_daily_records')
+      .select('*', { count: 'exact', head: true });
+    
+    if (dailyCountError) throw dailyCountError;
+    totalCount += dailyCount || 0;
+    
+    // Step 2: Delete all time_records first (no cascade)
+    const { error: timeRecordsError } = await supabase
+      .from('time_records')
+      .delete();
+    
+    if (timeRecordsError) throw timeRecordsError;
+    
+    // Step 3: Delete all employee_shifts
+    const { error: shiftsError } = await supabase
+      .from('employee_shifts')
+      .delete();
+    
+    if (shiftsError) throw shiftsError;
+    
+    // Step 4: Delete processed_excel_files (will cascade delete processed_employee_data and processed_daily_records)
+    const { error: filesError } = await supabase
+      .from('processed_excel_files')
+      .delete();
+    
+    if (filesError) throw filesError;
+    
+    return {
+      success: true,
+      message: `Successfully reset database. Deleted ${totalCount} records.`,
+      count: totalCount
+    };
+  } catch (error) {
+    console.error('Error resetting database:', error);
+    return {
+      success: false,
+      message: error instanceof Error ? error.message : 'Unknown error during database reset',
+      count: 0
+    };
+  }
+};

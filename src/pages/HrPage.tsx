@@ -12,7 +12,7 @@ import { calculatePayableHours, determineShiftType } from '../utils/shiftCalcula
 import { addManualEntryToRecords, calculateStats, processRecordsAfterSave } from '../utils/dataHandlers';
 
 // Import services
-import { saveRecordsToDatabase, fetchManualTimeRecords, fetchPendingEmployeeShifts } from '../services/database';
+import { saveRecordsToDatabase, fetchManualTimeRecords, fetchPendingEmployeeShifts, resetAllDatabaseData } from '../services/database';
 import { runAllMigrations, checkSupabaseConnection } from '../services/migrationService';
 import { supabase } from '../lib/supabase';
 
@@ -25,6 +25,7 @@ import UserCredentialsModal from '../components/UserCredentialsModal';
 import EmployeeShiftRequest from '../components/EmployeeShiftRequest';
 import TimeRecordsTable from '../components/TimeRecordsTable';
 import ApproveAllConfirmationDialog from '../components/ApproveAllConfirmationDialog';
+import ConfirmDialog from '../components/ConfirmDialog';
 
 // Import context
 import { useAppContext } from '../context/AppContext';
@@ -60,6 +61,10 @@ function HrPage() {
   // Approve All confirmation dialog state
   const [isApproveAllDialogOpen, setIsApproveAllDialogOpen] = useState(false);
   const [isApprovingAll, setIsApprovingAll] = useState(false);
+  
+  // Reset confirmation dialog state
+  const [isResetConfirmOpen, setIsResetConfirmOpen] = useState(false);
+  const [isResetting, setIsResetting] = useState(false);
 
   // Check if screen is mobile
   useEffect(() => {
@@ -329,14 +334,34 @@ function HrPage() {
   };
 
   const handleReset = () => {
-    if (confirm('Are you sure you want to reset all data? This cannot be undone.')) {
-      // Use the updated clearData function that deletes from Supabase
-      clearData()
-        .then(() => toast.success('All data reset'))
-        .catch((error) => {
-          console.error('Error resetting data:', error);
-          toast.error('Failed to reset data');
-        });
+    setIsResetConfirmOpen(true);
+  };
+  
+  const confirmReset = async () => {
+    setIsResetting(true);
+    const loadingToast = toast.loading('Resetting database...');
+    
+    try {
+      // Use the new resetAllDatabaseData function
+      const result = await resetAllDatabaseData();
+      
+      if (result.success) {
+        // Clear local state
+        clearData();
+        setManualRecords([]);
+        toast.dismiss(loadingToast);
+        toast.success(`${result.message} All data has been reset.`);
+      } else {
+        toast.dismiss(loadingToast);
+        toast.error(`Reset failed: ${result.message}`);
+      }
+    } catch (error) {
+      console.error('Error during reset:', error);
+      toast.dismiss(loadingToast);
+      toast.error('An unexpected error occurred during reset.');
+    } finally {
+      setIsResetting(false);
+      setIsResetConfirmOpen(false);
     }
   };
 
@@ -941,6 +966,19 @@ function HrPage() {
         onConfirm={handleApproveAll}
         totalRecords={totalDays}
         isProcessing={isApprovingAll}
+      />
+      
+      {/* Reset Confirmation Dialog */}
+      <ConfirmDialog 
+        isOpen={isResetConfirmOpen}
+        onClose={() => setIsResetConfirmOpen(false)}
+        onConfirm={confirmReset}
+        title="Reset All Data"
+        message="This will delete ALL data from the database, including all time records, processed files, and employee shifts. This action cannot be undone. Are you sure you want to proceed?"
+        isProcessing={isResetting}
+        confirmButtonText="Yes, Reset Everything"
+        cancelButtonText="Cancel"
+        type="danger"
       />
       
       <Toaster position="top-right" />
