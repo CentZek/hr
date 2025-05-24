@@ -111,14 +111,9 @@ export const getActiveProcessedFile = async (): Promise<{
       .eq('is_active', true)
       .order('uploaded_at', { ascending: false })
       .limit(1)
-      .single();
+      .maybeSingle();
 
-    if (error) {
-      // If no data found, return null without throwing an error
-      if (error.code === 'PGRST116') return null;
-      throw error;
-    }
-
+    if (error) throw error;
     if (!data) return null;
 
     return {
