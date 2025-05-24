@@ -6,7 +6,7 @@ import { parseShiftTimes } from '../utils/dateTimeHelper';
 import { isDoubleTimeDay, getDoubleTimeDays } from '../services/holidayService';
 
 // Fetch approved hours summary
-export const fetchApprovedHours = async (monthFilter: string = ''): Promise<{
+export const fetchApprovedHours = async (startDate: string = '', endDate: string = ''): Promise<{
   data: any[];
   totalHoursSum: number;
 }> => {
@@ -29,15 +29,10 @@ export const fetchApprovedHours = async (monthFilter: string = ''): Promise<{
       .in('status', ['check_in', 'off_day'])  // Include both check-in and off-day records
       .not('exact_hours', 'is', null);
     
-    // Apply month filter if provided
-    if (monthFilter) {
-      const [year, month] = monthFilter.split('-');
-      const startDate = startOfMonth(new Date(parseInt(year), parseInt(month) - 1, 1));
-      const endDate = endOfMonth(startDate);
-      
-      query = query
-        .gte('timestamp', format(startDate, 'yyyy-MM-dd'))
-        .lte('timestamp', format(endDate, 'yyyy-MM-dd'));
+    // Apply date filter if provided
+    if (startDate && endDate) {
+      // Filter by working_week_start if available, otherwise by timestamp
+      query = query.or(`working_week_start.gte.${startDate},working_week_start.lte.${endDate},timestamp.gte.${startDate},timestamp.lte.${endDate}`);
     }
     
     const { data, error } = await query;
@@ -104,7 +99,7 @@ export const fetchApprovedHours = async (monthFilter: string = ''): Promise<{
     });
     
     // Add OFF-DAY records separately
-    const { data: offDayData, error: offDayError } = await supabase
+    const offDayQuery = supabase
       .from('time_records')
       .select(`
         employee_id,
@@ -118,6 +113,13 @@ export const fetchApprovedHours = async (monthFilter: string = ''): Promise<{
         )
       `)
       .eq('status', 'off_day');
+    
+    // Apply date filter if provided
+    if (startDate && endDate) {
+      offDayQuery.or(`working_week_start.gte.${startDate},working_week_start.lte.${endDate},timestamp.gte.${startDate},timestamp.lte.${endDate}`);
+    }
+    
+    const { data: offDayData, error: offDayError } = await offDayQuery;
     
     if (offDayError) throw offDayError;
     
@@ -154,17 +156,11 @@ export const fetchApprovedHours = async (monthFilter: string = ''): Promise<{
       }
     });
     
-    // Calculate double-time hours for each employee
-    const startDate = monthFilter 
-      ? format(startOfMonth(new Date(parseInt(monthFilter.split('-')[0]), parseInt(monthFilter.split('-')[1]) - 1, 1)), 'yyyy-MM-dd')
-      : format(subDays(new Date(), 365), 'yyyy-MM-dd'); // Default to last 365 days
-      
-    const endDate = monthFilter
-      ? format(endOfMonth(new Date(parseInt(monthFilter.split('-')[0]), parseInt(monthFilter.split('-')[1]) - 1, 1)), 'yyyy-MM-dd')
-      : format(addDays(new Date(), 30), 'yyyy-MM-dd'); // Default to 30 days in the future
-    
     // Get all double-time days in the date range
-    const doubleDays = await getDoubleTimeDays(startDate, endDate);
+    const doubleDays = await getDoubleTimeDays(
+      startDate || format(subDays(new Date(), 365), 'yyyy-MM-dd'),
+      endDate || format(addDays(new Date(), 30), 'yyyy-MM-dd')
+    );
     
     // Convert to array and calculate days and double-time hours
     const result = Array.from(employeeSummary.values()).map(emp => {
@@ -202,7 +198,7 @@ export const fetchApprovedHours = async (monthFilter: string = ''): Promise<{
 };
 
 // Fetch employee details for approved hours
-export const fetchEmployeeDetails = async (employeeId: string, monthFilter: string = ''): Promise<{
+export const fetchEmployeeDetails = async (employeeId: string, startDate: string = '', endDate: string = ''): Promise<{
   data: any[];
 }> => {
   try {
@@ -233,15 +229,10 @@ export const fetchEmployeeDetails = async (employeeId: string, monthFilter: stri
       .eq('employee_id', employeeId)
       .order('timestamp', { ascending: true });
     
-    // Apply month filter if provided
-    if (monthFilter) {
-      const [year, month] = monthFilter.split('-');
-      const startDate = startOfMonth(new Date(parseInt(year), parseInt(month) - 1, 1));
-      const endDate = endOfMonth(startDate);
-      
-      query = query
-        .gte('timestamp', format(startDate, 'yyyy-MM-dd'))
-        .lte('timestamp', format(endDate, 'yyyy-MM-dd'));
+    // Apply date filter if provided
+    if (startDate && endDate) {
+      // Filter by working_week_start if available, otherwise by timestamp
+      query.or(`working_week_start.gte.${startDate},working_week_start.lte.${endDate},timestamp.gte.${startDate},timestamp.lte.${endDate}`);
     }
     
     const { data, error } = await query;
@@ -692,88 +683,73 @@ export const fetchPendingEmployeeShifts = async (): Promise<any[]> => {
   }
 };
 
-// Delete all time records
-export const deleteAllTimeRecords = async (monthFilter: string = ''): Promise<{
+// Delete time records based on filters
+export const deleteAllTimeRecords = async (
+  startDate: string = '',
+  endDate: string = '',
+  employeeIds?: string[]
+): Promise<{
   success: boolean;
   message: string;
   count: number;
 }> => {
   try {
-    if (monthFilter) {
-      // Delete records for specific month
-      const [year, month] = monthFilter.split('-');
-      const startDate = startOfMonth(new Date(parseInt(year), parseInt(month) - 1, 1));
-      const endDate = endOfMonth(startDate);
-      
-      // Get count first
-      const { count, error: countError } = await supabase
-        .from('time_records')
-        .select('*', { count: 'exact', head: true })
-        .gte('timestamp', format(startDate, 'yyyy-MM-dd'))
-        .lte('timestamp', format(endDate, 'yyyy-MM-dd'));
-      
-      if (countError) throw countError;
-      
-      // Then delete
-      const { error } = await supabase
-        .from('time_records')
-        .delete()
-        .gte('timestamp', format(startDate, 'yyyy-MM-dd'))
-        .lte('timestamp', format(endDate, 'yyyy-MM-dd'));
-      
-      if (error) throw error;
-      
-      return {
-        success: true,
-        message: `Deleted ${count} records for ${format(startDate, 'MMMM yyyy')}`,
-        count: count || 0
-      };
-    } else {
-      // For the reset function - delete all processed excel data
-      // This will cascade delete to processed_employee_data and processed_daily_records
-
-      // First get a count of records to be deleted
-      const { count: fileCount, error: countError } = await supabase
-        .from('processed_excel_files')
-        .select('*', { count: 'exact', head: true });
-      
-      if (countError) throw countError;
-
-      // Get count of time records
-      const { count: timeRecordsCount, error: timeCountError } = await supabase
-        .from('time_records')
-        .select('*', { count: 'exact', head: true });
-
-      if (timeCountError) throw timeCountError;
-      
-      // Delete from processed_excel_files - this should cascade to processed_employee_data and processed_daily_records
-      const { error: deleteFileError } = await supabase
-        .from('processed_excel_files')
-        .delete();
-      
-      if (deleteFileError) {
-        console.error('Error deleting from processed_excel_files:', deleteFileError);
-        throw deleteFileError;
-      }
-
-      // Delete from time_records 
-      const { error: deleteTimeError } = await supabase
-        .from('time_records')
-        .delete();
-
-      if (deleteTimeError) {
-        console.error('Error deleting from time_records:', deleteTimeError);
-        throw deleteTimeError;
-      }
-      
-      const totalCount = (fileCount || 0) + (timeRecordsCount || 0);
-      
-      return {
-        success: true,
-        message: `Deleted all records from the database`,
-        count: totalCount
-      };
+    // Build the query with appropriate filters
+    let query = supabase.from('time_records').delete();
+    
+    // Apply date range filter if provided
+    if (startDate && endDate) {
+      // Filter by working_week_start if available, otherwise by timestamp
+      query = query.or(`working_week_start.gte.${startDate},working_week_start.lte.${endDate},timestamp.gte.${startDate},timestamp.lte.${endDate}`);
     }
+    
+    // Apply employee filter if provided
+    if (employeeIds && employeeIds.length > 0) {
+      query = query.in('employee_id', employeeIds);
+    }
+    
+    // First get a count of records that will be deleted
+    let countQuery = supabase
+      .from('time_records')
+      .select('*', { count: 'exact', head: true });
+      
+    if (startDate && endDate) {
+      countQuery = countQuery.or(`working_week_start.gte.${startDate},working_week_start.lte.${endDate},timestamp.gte.${startDate},timestamp.lte.${endDate}`);
+    }
+    
+    if (employeeIds && employeeIds.length > 0) {
+      countQuery = countQuery.in('employee_id', employeeIds);
+    }
+    
+    const { count, error: countError } = await countQuery;
+    
+    if (countError) throw countError;
+    
+    // Execute the delete operation
+    const { error } = await query;
+    
+    if (error) throw error;
+    
+    // Build a descriptive message
+    let message = 'Successfully deleted';
+    
+    if (employeeIds && employeeIds.length > 0) {
+      message += ` records for ${employeeIds.length} employee(s)`;
+    } else {
+      message += ' records for all employees';
+    }
+    
+    if (startDate && endDate) {
+      message += ` from ${startDate} to ${endDate}`;
+    } else {
+      message += ' for all time';
+    }
+    
+    return {
+      success: true,
+      message,
+      count: count || 0
+    };
   } catch (error) {
     console.error('Error deleting time records:', error);
     return {
