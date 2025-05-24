@@ -788,3 +788,74 @@ export const deleteAllTimeRecords = async (dateFilter: string = '', employeeFilt
     };
   }
 };
+
+// Reset all database data
+export const resetAllDatabaseData = async (): Promise<{
+  success: boolean;
+  message: string;
+}> => {
+  try {
+    // Delete from all related tables
+    
+    // First, delete time_records
+    const { success: timeRecordsDeleted, count: timeRecordsCount, message: timeRecordsMessage } = 
+      await deleteAllTimeRecords();
+    
+    if (!timeRecordsDeleted) {
+      return {
+        success: false,
+        message: `Failed to delete time records: ${timeRecordsMessage}`
+      };
+    }
+    
+    // Delete processed_excel_files (this will cascade to processed_employee_data and processed_daily_records)
+    const { data: filesDeleted, error: filesError } = await supabase
+      .from('processed_excel_files')
+      .delete()
+      .neq('id', '00000000-0000-0000-0000-000000000000'); // Delete all
+    
+    if (filesError) {
+      return {
+        success: false,
+        message: `Failed to delete processed files: ${filesError.message}`
+      };
+    }
+    
+    // Delete employee_shifts
+    const { data: shiftsDeleted, error: shiftsError } = await supabase
+      .from('employee_shifts')
+      .delete()
+      .neq('id', '00000000-0000-0000-0000-000000000000'); // Delete all
+    
+    if (shiftsError) {
+      return {
+        success: false,
+        message: `Failed to delete employee shifts: ${shiftsError.message}`
+      };
+    }
+    
+    // Delete employee_shift_patterns
+    const { data: patternsDeleted, error: patternsError } = await supabase
+      .from('employee_shift_patterns')
+      .delete()
+      .neq('id', '00000000-0000-0000-0000-000000000000'); // Delete all
+    
+    if (patternsError) {
+      return {
+        success: false,
+        message: `Failed to delete shift patterns: ${patternsError.message}`
+      };
+    }
+    
+    return {
+      success: true,
+      message: `Reset complete. Deleted ${timeRecordsCount} time records.`
+    };
+  } catch (error) {
+    console.error('Error resetting database:', error);
+    return {
+      success: false,
+      message: error instanceof Error ? error.message : 'Unknown error during reset'
+    };
+  }
+};
