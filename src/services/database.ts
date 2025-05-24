@@ -35,16 +35,29 @@ export const fetchApprovedHours = async (dateFilter: string = ''): Promise<{
         // Custom date range: startDate|endDate
         const [startDate, endDate] = dateFilter.split('|');
         
-        query = query
-          .or(`working_week_start.gte.${startDate},working_week_start.lte.${endDate},timestamp.gte.${startDate},timestamp.lte.${endDate}`);
+        if (startDate && endDate && isValid(parseISO(startDate)) && isValid(parseISO(endDate))) {
+          query = query
+            .or(`working_week_start.gte.${startDate},working_week_start.lte.${endDate},timestamp.gte.${startDate},timestamp.lte.${endDate}`);
+        }
       } else {
         // Month filter: YYYY-MM
-        const [year, month] = dateFilter.split('-');
-        const startDate = startOfMonth(new Date(parseInt(year), parseInt(month) - 1, 1));
-        const endDate = endOfMonth(startDate);
-        
-        query = query
-          .or(`working_week_start.gte.${format(startDate, 'yyyy-MM-dd')},working_week_start.lte.${format(endDate, 'yyyy-MM-dd')},timestamp.gte.${format(startDate, 'yyyy-MM-dd')},timestamp.lte.${format(endDate, 'yyyy-MM-dd')}`);
+        try {
+          const [year, month] = dateFilter.split('-');
+          if (year && month) {
+            const startDate = startOfMonth(new Date(parseInt(year), parseInt(month) - 1, 1));
+            const endDate = endOfMonth(startDate);
+            
+            if (isValid(startDate) && isValid(endDate)) {
+              const startStr = format(startDate, 'yyyy-MM-dd');
+              const endStr = format(endDate, 'yyyy-MM-dd');
+              
+              query = query
+                .or(`working_week_start.gte.${startStr},working_week_start.lte.${endStr},timestamp.gte.${startStr},timestamp.lte.${endStr}`);
+            }
+          }
+        } catch (err) {
+          console.error('Error parsing month filter:', err);
+        }
       }
     }
     
@@ -171,9 +184,24 @@ export const fetchApprovedHours = async (dateFilter: string = ''): Promise<{
         [startDate, endDate] = dateFilter.split('|');
       } else {
         // Month filter
-        const [year, month] = dateFilter.split('-');
-        startDate = format(startOfMonth(new Date(parseInt(year), parseInt(month) - 1, 1)), 'yyyy-MM-dd');
-        endDate = format(endOfMonth(new Date(parseInt(year), parseInt(month) - 1, 1)), 'yyyy-MM-dd');
+        try {
+          const [year, month] = dateFilter.split('-');
+          if (year && month) {
+            const monthDate = new Date(parseInt(year), parseInt(month) - 1, 1);
+            if (isValid(monthDate)) {
+              startDate = format(startOfMonth(monthDate), 'yyyy-MM-dd');
+              endDate = format(endOfMonth(monthDate), 'yyyy-MM-dd');
+            } else {
+              // Default to recent month if dates are invalid
+              startDate = format(subDays(new Date(), 30), 'yyyy-MM-dd');
+              endDate = format(new Date(), 'yyyy-MM-dd');
+            }
+          }
+        } catch (err) {
+          console.error('Error parsing month filter:', err);
+          startDate = format(subDays(new Date(), 30), 'yyyy-MM-dd');
+          endDate = format(new Date(), 'yyyy-MM-dd');
+        }
       }
     } else {
       // Default to last 365 days
@@ -257,16 +285,27 @@ export const fetchEmployeeDetails = async (employeeId: string, dateFilter: strin
         // Custom date range: startDate|endDate
         const [startDate, endDate] = dateFilter.split('|');
         
-        query = query
-          .or(`working_week_start.gte.${startDate},working_week_start.lte.${endDate},timestamp.gte.${startDate},timestamp.lte.${endDate}`);
+        if (startDate && endDate && isValid(parseISO(startDate)) && isValid(parseISO(endDate))) {
+          query = query
+            .or(`working_week_start.gte.${startDate},working_week_start.lte.${endDate},timestamp.gte.${startDate},timestamp.lte.${endDate}`);
+        }
       } else {
         // Month filter: YYYY-MM
-        const [year, month] = dateFilter.split('-');
-        const startDate = startOfMonth(new Date(parseInt(year), parseInt(month) - 1, 1));
-        const endDate = endOfMonth(startDate);
-        
-        query = query
-          .or(`working_week_start.gte.${format(startDate, 'yyyy-MM-dd')},working_week_start.lte.${format(endDate, 'yyyy-MM-dd')},timestamp.gte.${format(startDate, 'yyyy-MM-dd')},timestamp.lte.${format(endDate, 'yyyy-MM-dd')}`);
+        try {
+          const [year, month] = dateFilter.split('-');
+          if (year && month) {
+            const monthDate = new Date(parseInt(year), parseInt(month) - 1, 1);
+            if (isValid(monthDate)) {
+              const startDate = format(startOfMonth(monthDate), 'yyyy-MM-dd');
+              const endDate = format(endOfMonth(monthDate), 'yyyy-MM-dd');
+              
+              query = query
+                .or(`working_week_start.gte.${startDate},working_week_start.lte.${endDate},timestamp.gte.${startDate},timestamp.lte.${endDate}`);
+            }
+          }
+        } catch (err) {
+          console.error('Error parsing month filter:', err);
+        }
       }
     }
     
@@ -733,16 +772,30 @@ export const deleteAllTimeRecords = async (dateFilter: string = '', employeeFilt
         // Custom date range: startDate|endDate
         const [startDate, endDate] = dateFilter.split('|');
         
-        query = query
-          .or(`working_week_start.gte.${startDate},working_week_start.lte.${endDate},timestamp.gte.${startDate},timestamp.lte.${endDate}`);
+        if (startDate && endDate && isValid(parseISO(startDate)) && isValid(parseISO(endDate))) {
+          query = query
+            .or(`working_week_start.gte.${startDate},working_week_start.lte.${endDate},timestamp.gte.${startDate},timestamp.lte.${endDate}`);
+        } else {
+          throw new Error('Invalid date range specified');
+        }
       } else {
         // Month filter: YYYY-MM
-        const [year, month] = dateFilter.split('-');
-        const startDate = startOfMonth(new Date(parseInt(year), parseInt(month) - 1, 1));
-        const endDate = endOfMonth(startDate);
-        
-        query = query
-          .or(`working_week_start.gte.${format(startDate, 'yyyy-MM-dd')},working_week_start.lte.${format(endDate, 'yyyy-MM-dd')},timestamp.gte.${format(startDate, 'yyyy-MM-dd')},timestamp.lte.${format(endDate, 'yyyy-MM-dd')}`);
+        try {
+          const [year, month] = dateFilter.split('-');
+          if (year && month) {
+            const monthDate = new Date(parseInt(year), parseInt(month) - 1, 1);
+            if (isValid(monthDate)) {
+              const startDate = format(startOfMonth(monthDate), 'yyyy-MM-dd');
+              const endDate = format(endOfMonth(monthDate), 'yyyy-MM-dd');
+              
+              query = query
+                .or(`working_week_start.gte.${startDate},working_week_start.lte.${endDate},timestamp.gte.${startDate},timestamp.lte.${endDate}`);
+            }
+          }
+        } catch (err) {
+          console.error('Error parsing month filter:', err);
+          throw new Error('Invalid month format');
+        }
       }
     } else {
       // If no date filter, we need a WHERE clause to delete all records
@@ -768,7 +821,7 @@ export const deleteAllTimeRecords = async (dateFilter: string = '', employeeFilt
       const { data: approvedRecords, error: approvedError } = await supabase
         .from('time_records')
         .select('id')
-        .eq('notes', 'like', '%approved%');
+        .ilike('notes', '%approved%');
         
       if (approvedError) throw approvedError;
       

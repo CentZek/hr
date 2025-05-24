@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { format, subMonths, isSameDay, startOfMonth, endOfMonth, parseISO, isWithinInterval, isValid } from 'date-fns';
+import { format, subMonths, isSameDay, startOfMonth, endOfMonth, parseISO, isValid } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
 import { Clock, ArrowLeft, Download, Users, Calendar, Filter, Trash2, Home, Calendar as Calendar2, User, X, ChevronLeft, ChevronRight } from 'lucide-react';
 import toast, { Toaster } from 'react-hot-toast';
@@ -390,7 +390,6 @@ const ApprovedHoursPage: React.FC = () => {
         start = safeFormat(subMonths(new Date(), 12), 'yyyy-MM-dd');
         end = safeFormat(new Date(new Date().getFullYear() + 1, 11, 31), 'yyyy-MM-dd');
       } else if (filterMonth === "custom") {
-        // Validate dates before using them
         if (startDate && endDate && isValid(parseISO(startDate)) && isValid(parseISO(endDate))) {
           start = startDate;
           end = endDate;

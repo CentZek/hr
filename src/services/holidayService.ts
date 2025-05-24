@@ -1,5 +1,5 @@
 import { supabase } from '../lib/supabase';
-import { format, isFriday, parseISO } from 'date-fns';
+import { format, isFriday, parseISO, isValid } from 'date-fns';
 import { Holiday } from '../types';
 
 // Fetch all holidays from the database
@@ -53,6 +53,12 @@ export const deleteHoliday = async (id: string): Promise<void> => {
 // Check if a date is a double-time day (Friday or holiday)
 export const isDoubleTimeDay = async (dateStr: string): Promise<boolean> => {
   try {
+    // Validate the date before proceeding
+    if (!dateStr || !isValid(parseISO(dateStr))) {
+      console.warn('Invalid date provided to isDoubleTimeDay:', dateStr);
+      return false;
+    }
+    
     const date = parseISO(dateStr);
     
     // First check if it's a Friday
@@ -81,8 +87,14 @@ let doubleTimeDaysCache: Record<string, boolean> = {};
 let lastCacheRefresh: number = 0;
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
-// Get all double-time days (Fridays and holidays) for a given month range
+// Get all double-time days (Fridays and holidays) for a given date range
 export const getDoubleTimeDays = async (startDate: string, endDate: string): Promise<string[]> => {
+  // Validate input dates
+  if (!startDate || !endDate || !isValid(parseISO(startDate)) || !isValid(parseISO(endDate))) {
+    console.warn('Invalid date range provided to getDoubleTimeDays:', { startDate, endDate });
+    return [];
+  }
+  
   // Check if cache needs refresh
   const now = Date.now();
   if (now - lastCacheRefresh > CACHE_TTL) {
@@ -142,6 +154,10 @@ export const calculateDoubleTimeHours = (hours: number, dateStr: string, cachedD
   }
   
   // Otherwise, check if it's a Friday
+  if (!dateStr || !isValid(parseISO(dateStr))) {
+    return hours; // If invalid date, return original hours
+  }
+  
   const date = parseISO(dateStr);
   if (isFriday(date)) {
     return hours * 2;
