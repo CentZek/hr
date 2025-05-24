@@ -10,7 +10,6 @@ import { EmployeeRecord, DailyRecord } from '../types';
 import { handleExcelFile, exportToExcel } from '../utils/excelHandlers';
 import { calculatePayableHours, determineShiftType } from '../utils/shiftCalculations';
 import { addManualEntryToRecords, calculateStats, processRecordsAfterSave } from '../utils/dataHandlers';
-import { detectBrowser, getBrowserVersion, checkBrowserCompatibility } from '../utils/browserDetection';
 
 // Import services
 import { saveRecordsToDatabase, fetchManualTimeRecords, fetchPendingEmployeeShifts } from '../services/database';
@@ -31,36 +30,27 @@ import ApproveAllConfirmationDialog from '../components/ApproveAllConfirmationDi
 import { useAppContext } from '../context/AppContext';
 
 function HrPage() {
+  // Add browser detection
+  const browserInfo = React.useMemo(() => {
+    const userAgent = window.navigator.userAgent;
+    const browsers = {
+      chrome: /chrome/i.test(userAgent) && !/edg/i.test(userAgent),
+      firefox: /firefox/i.test(userAgent),
+      safari: /safari/i.test(userAgent) && !/chrome/i.test(userAgent),
+      edge: /edg/i.test(userAgent),
+      ie: /msie|trident/i.test(userAgent),
+    };
+    return browsers;
+  }, []);
+
   const navigate = useNavigate();
   const {
     employeeRecords, setEmployeeRecords,
     hasUploadedFile, setHasUploadedFile,
     currentFileName, setCurrentFileName,
     totalEmployees, setTotalEmployees,
-    totalDays, setTotalDays,
-    clearData
+    totalDays, setTotalDays
   } = useAppContext();
-
-  // Browser detection
-  const [browserInfo, setBrowserInfo] = useState<Record<string, boolean>>({
-    chrome: false,
-    firefox: false,
-    safari: false,
-    edge: false,
-    ie: false,
-    isModern: true,
-    isLegacy: false
-  });
-  
-  // Browser version info
-  const [browserVersion, setBrowserVersion] = useState<Record<string, string | null>>({
-    name: null,
-    version: null,
-    fullUserAgent: null
-  });
-  
-  // Compatibility issues
-  const [compatibilityIssues, setCompatibilityIssues] = useState<string[]>([]);
   
   const [isUploading, setIsUploading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -81,31 +71,6 @@ function HrPage() {
   // Approve All confirmation dialog state
   const [isApproveAllDialogOpen, setIsApproveAllDialogOpen] = useState(false);
   const [isApprovingAll, setIsApprovingAll] = useState(false);
-
-  // Check browser compatibility
-  useEffect(() => {
-    try {
-      // Detect browser
-      const browser = detectBrowser();
-      setBrowserInfo(browser);
-      
-      // Get browser version
-      const versionInfo = getBrowserVersion();
-      setBrowserVersion(versionInfo);
-      
-      // Check for compatibility issues
-      const { isCompatible, issues } = checkBrowserCompatibility();
-      setCompatibilityIssues(issues);
-      
-      if (!isCompatible) {
-        console.warn('Browser compatibility issues detected:', issues);
-      }
-      
-      console.log('Browser detection:', { browser, versionInfo, issues });
-    } catch (error) {
-      console.error('Error during browser detection:', error);
-    }
-  }, []);
 
   // Check if screen is mobile
   useEffect(() => {
@@ -186,13 +151,11 @@ function HrPage() {
     
     // Log browser info to help debug issues
     console.log('Browser information:', browserInfo);
-    console.log('Browser version:', browserVersion);
-    console.log('Compatibility issues:', compatibilityIssues);
     
     // Initialize the system
     initializeSystem();
     fetchManualRecords();
-  }, [browserInfo, browserVersion, compatibilityIssues]);
+  }, [browserInfo]);
 
   // Refresh manual records and pending shifts after changes
   const refreshData = async () => {
@@ -395,7 +358,11 @@ function HrPage() {
 
   const handleReset = () => {
     if (confirm('Are you sure you want to reset all data? This cannot be undone.')) {
-      clearData();
+      setEmployeeRecords([]);
+      setTotalEmployees(0);
+      setTotalDays(0);
+      setHasUploadedFile(false);
+      setCurrentFileName('');
       setRecentManualEntry(null);
       setSavingErrors([]);
       toast.success('All data reset');
@@ -740,22 +707,12 @@ function HrPage() {
           {/* Card content */}
           <div className="p-6 space-y-6">
             {/* Browser compatibility warning */}
-            {(browserInfo.ie || compatibilityIssues.length > 0 || browserInfo.isLegacy) && (
+            {(browserInfo.ie || (!browserInfo.chrome && !browserInfo.firefox && !browserInfo.edge)) && (
               <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4 flex items-start">
                 <AlertTriangle className="w-5 h-5 text-yellow-500 mr-3 mt-0.5 flex-shrink-0" />
                 <div className="text-sm text-yellow-700">
                   <p className="font-medium">Browser Compatibility Warning</p>
-                  <p>For the best experience, please use a modern browser like Chrome, Firefox, or Edge. Some features may not work correctly in your current browser ({browserVersion.name || 'Unknown'} {browserVersion.version || ''}).</p>
-                  {compatibilityIssues.length > 0 && (
-                    <div className="mt-2">
-                      <p className="font-medium">Detected issues:</p>
-                      <ul className="list-disc pl-5 mt-1">
-                        {compatibilityIssues.map((issue, index) => (
-                          <li key={index}>{issue}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
+                  <p>For the best experience, please use a modern browser like Chrome, Firefox, or Edge. Some features may not work correctly in your current browser.</p>
                   <button 
                     onClick={() => window.location.reload()}
                     className="mt-2 px-3 py-1 bg-yellow-100 text-yellow-700 rounded-md hover:bg-yellow-200 text-sm"

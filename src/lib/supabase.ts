@@ -15,7 +15,7 @@ const options = {
     persistSession: true,
   },
   global: {
-    fetch: (...args: any[]) => {
+    fetch: (...args) => {
       // Add retry logic for network errors
       return fetch(...args).catch(err => {
         console.warn('Supabase fetch error, retrying:', err);
