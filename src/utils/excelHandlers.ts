@@ -52,41 +52,80 @@ export const handleExcelFile = async (file: File): Promise<EmployeeRecord[]> => 
 // Process raw data from Excel
 const processRawData = (jsonData: any[]): TimeRecord[] => {
   const records: TimeRecord[] = [];
-  const requiredColumns = ['Department', 'Name', 'Employee Number', 'Timestamp', 'Status'];
   
-  // Check if the first row has required columns
+  // Define column mappings to handle different column name formats
+  const columnMappings = {
+    department: ['department', 'dept', 'division'],
+    name: ['name', 'employee name', 'emp name', 'full name'],
+    employeeNumber: ['employee number', 'emp number', 'employee no', 'emp no', 'no.', 'number', 'emp#', 'employee#', 'id'],
+    timestamp: ['timestamp', 'date/time', 'datetime', 'time', 'date', 'check time', 'punch time'],
+    status: ['status', 'check status', 'c/in', 'c/out', 'checkin/out', 'check type']
+  };
+  
+  // Check if the first row has required columns using flexible matching
   const firstRow = jsonData[0];
-  const hasRequiredColumns = requiredColumns.every(column => 
-    Object.keys(firstRow).some(key => key.includes(column))
-  );
   
-  if (!hasRequiredColumns) {
-    throw new Error('The Excel file is missing required columns. Please make sure it includes: ' + 
-      requiredColumns.join(', '));
+  // Log for debugging
+  console.log('First row headers:', Object.keys(firstRow));
+  
+  // Convert all keys to lowercase for case-insensitive matching
+  const normalizedKeys = Object.keys(firstRow).map(k => k.toLowerCase());
+  
+  // Check if all required column types are present
+  const missingColumns = [];
+  
+  for (const [columnType, possibleNames] of Object.entries(columnMappings)) {
+    const found = normalizedKeys.some(key => 
+      possibleNames.some(name => key.includes(name.toLowerCase()))
+    );
+    
+    if (!found) {
+      missingColumns.push(columnType);
+    }
   }
   
-  // Normalize column names (they might have different capitalizations or extra spaces)
-  const normalizeColumnName = (key: string): string => {
-    key = key.toLowerCase();
-    if (key.includes('department')) return 'department';
-    if (key.includes('name') && !key.includes('employee')) return 'name';
-    if (key.includes('employee') && key.includes('number')) return 'employeeNumber';
-    if (key.includes('timestamp')) return 'timestamp';
-    if (key.includes('status')) return 'status';
-    return key;
-  };
+  if (missingColumns.length > 0) {
+    throw new Error(`The Excel file is missing required columns: ${missingColumns.join(', ')}. Please check your file format.`);
+  }
   
   // Process each row
   jsonData.forEach((row, index) => {
-    const normalizedRow: any = {};
+    // Extract data using flexible column matching
+    let department = '';
+    let name = '';
+    let employeeNumber = '';
+    let timestampValue = '';
+    let status = '';
     
-    // Normalize column names
-    Object.keys(row).forEach(key => {
-      normalizedRow[normalizeColumnName(key)] = row[key];
-    });
+    // Find and extract each field using the mappings
+    for (const key of Object.keys(row)) {
+      const normalizedKey = key.toLowerCase();
+      
+      // Department field
+      if (columnMappings.department.some(col => normalizedKey.includes(col))) {
+        department = row[key];
+      }
+      // Name field
+      else if (columnMappings.name.some(col => normalizedKey.includes(col))) {
+        name = row[key];
+      }
+      // Employee Number field
+      else if (columnMappings.employeeNumber.some(col => normalizedKey.includes(col))) {
+        employeeNumber = row[key];
+      }
+      // Timestamp field
+      else if (columnMappings.timestamp.some(col => normalizedKey.includes(col))) {
+        timestampValue = row[key];
+      }
+      // Status field
+      else if (columnMappings.status.some(col => normalizedKey.includes(col))) {
+        status = row[key];
+      }
+    }
     
     // Skip rows without the required data
-    if (!normalizedRow.name || !normalizedRow.timestamp || !normalizedRow.status) {
+    if (!name || !timestampValue || !status) {
+      console.log(`Skipping row ${index + 2}: Missing required data`);
       return;
     }
     
@@ -94,9 +133,9 @@ const processRawData = (jsonData: any[]): TimeRecord[] => {
     let timestamp: Date;
     try {
       // Try different formats
-      if (typeof normalizedRow.timestamp === 'string') {
+      if (typeof timestampValue === 'string') {
         // Try as ISO string first
-        timestamp = new Date(normalizedRow.timestamp);
+        timestamp = new Date(timestampValue);
         
         // If invalid, try parsing with format
         if (isNaN(timestamp.getTime())) {
@@ -112,16 +151,16 @@ const processRawData = (jsonData: any[]): TimeRecord[] => {
           // Try each format until one works
           for (const fmt of formats) {
             try {
-              timestamp = parse(normalizedRow.timestamp, fmt, new Date());
+              timestamp = parse(timestampValue, fmt, new Date());
               if (!isNaN(timestamp.getTime())) break;
             } catch (e) {
               // Try next format
             }
           }
         }
-      } else if (typeof normalizedRow.timestamp === 'number') {
+      } else if (typeof timestampValue === 'number') {
         // If it's a number, try to parse as Excel serial date
-        timestamp = XLSX.SSF.parse_date_code(normalizedRow.timestamp);
+        timestamp = XLSX.SSF.parse_date_code(timestampValue);
       } else {
         // Default to current date if all else fails
         timestamp = new Date();
@@ -138,18 +177,21 @@ const processRawData = (jsonData: any[]): TimeRecord[] => {
     }
     
     // Normalize the status
-    const status = normalizeStatus(normalizedRow.status);
+    const normalizedStatus = normalizeStatus(status);
     
     // Skip rows with invalid status
-    if (!status) return;
+    if (!normalizedStatus) {
+      console.log(`Skipping row ${index + 2}: Invalid status "${status}"`);
+      return;
+    }
     
     // Create the record
     const record: TimeRecord = {
-      department: normalizedRow.department || '',
-      name: normalizedRow.name,
-      employeeNumber: (normalizedRow.employeeNumber || '').toString(),
+      department: department || '',
+      name: name,
+      employeeNumber: (employeeNumber || '').toString(),
       timestamp,
-      status,
+      status: normalizedStatus,
       originalIndex: index
     };
     
@@ -163,11 +205,11 @@ const processRawData = (jsonData: any[]): TimeRecord[] => {
 const normalizeStatus = (status: string): 'check_in' | 'check_out' | '' => {
   if (!status) return '';
   
-  status = status.toLowerCase();
+  status = status.toString().toLowerCase();
   
-  if (status.includes('in') || status === 'i') {
+  if (status.includes('in') || status === 'i' || status === 'c/in') {
     return 'check_in';
-  } else if (status.includes('out') || status === 'o') {
+  } else if (status.includes('out') || status === 'o' || status === 'c/out') {
     return 'check_out';
   }
   
