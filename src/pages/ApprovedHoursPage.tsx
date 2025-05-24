@@ -169,17 +169,16 @@ const ApprovedHoursPage: React.FC = () => {
               const hours = employee.hours_by_date?.[dateStr] || 0;
               if (doubleDays.includes(dateStr)) {
                 employeeDoubleTime += hours;
-                doubleTimeHours += hours; // Add the bonus hours (base hours already counted)
-                regularHours += hours; // Base hours
+                doubleTimeHours += hours; // Add to total double-time hours
+                employeeRegularTime += hours; // Also count as regular hours
               } else {
                 employeeRegularTime += hours;
-                regularHours += hours;
               }
             });
-          } else {
-            // If detailed data is not available, just add to regular hours
-            regularHours += employee.total_hours || 0;
           }
+          
+          // Add employee's regular hours to total
+          regularHours += employeeRegularTime;
           
           // Attach double-time hours to employee record for display
           employee.double_time_hours = employeeDoubleTime;
@@ -590,7 +589,7 @@ const ApprovedHoursPage: React.FC = () => {
                 </button>
               </div>
             </div>
-            
+
             {/* Holiday Calendar (conditionally displayed) */}
             {showCalendar && (
               <div className="mb-6">
