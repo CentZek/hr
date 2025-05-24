@@ -2,11 +2,6 @@ import { supabase } from '../lib/supabase';
 import { format, isFriday, parseISO } from 'date-fns';
 import { Holiday } from '../types';
 
-// Ensure we have a Date object
-const ensureDate = (dateInput: Date | string): Date => {
-  return dateInput instanceof Date ? dateInput : parseISO(dateInput);
-};
-
 // Fetch all holidays from the database
 export const fetchHolidays = async (): Promise<Holiday[]> => {
   try {
@@ -58,8 +53,7 @@ export const deleteHoliday = async (id: string): Promise<void> => {
 // Check if a date is a double-time day (Friday or holiday)
 export const isDoubleTimeDay = async (dateStr: string): Promise<boolean> => {
   try {
-    // Ensure we have a Date object
-    const date = ensureDate(dateStr);
+    const date = parseISO(dateStr);
     
     // First check if it's a Friday
     if (isFriday(date)) {
@@ -108,12 +102,12 @@ export const getDoubleTimeDays = async (startDate: string, endDate: string): Pro
     // Create an array of holiday dates
     const holidayDates = holidays?.map(h => h.date) || [];
     
-    // Ensure we have Date objects
-    const start = ensureDate(startDate);
-    const end = ensureDate(endDate);
+    // For each date in the range, check if it's a Friday
+    const start = parseISO(startDate);
+    const end = parseISO(endDate);
     
     const allDates: string[] = [];
-    let current = new Date(start);
+    let current = start;
     
     while (current <= end) {
       const dateStr = format(current, 'yyyy-MM-dd');
@@ -148,7 +142,7 @@ export const calculateDoubleTimeHours = (hours: number, dateStr: string, cachedD
   }
   
   // Otherwise, check if it's a Friday
-  const date = ensureDate(dateStr);
+  const date = parseISO(dateStr);
   if (isFriday(date)) {
     return hours * 2;
   }

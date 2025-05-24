@@ -4,12 +4,6 @@
 import { DailyRecord } from '../types';
 import { calculatePayableHours, determineShiftType } from './shiftCalculations';
 
-// Ensure we have a Date object
-const ensureDate = (dateInput: Date | string | null): Date | null => {
-  if (!dateInput) return null;
-  return dateInput instanceof Date ? dateInput : new Date(dateInput);
-};
-
 // Apply a penalty to a specific day
 export const applyPenaltyToDay = (day: DailyRecord, penaltyMinutes: number): DailyRecord => {
   const updatedDay = { ...day };
@@ -19,12 +13,8 @@ export const applyPenaltyToDay = (day: DailyRecord, penaltyMinutes: number): Dai
   
   // Recalculate hours worked with the penalty applied
   if (updatedDay.firstCheckIn && updatedDay.lastCheckOut) {
-    // Ensure we have Date objects
-    const firstCheckIn = ensureDate(updatedDay.firstCheckIn);
-    const lastCheckOut = ensureDate(updatedDay.lastCheckOut);
-    
     // Derive shift type if missing
-    const shiftType = updatedDay.shiftType || determineShiftType(firstCheckIn!);
+    const shiftType = updatedDay.shiftType || determineShiftType(updatedDay.firstCheckIn);
     
     // Update the shift type if it was missing
     if (!updatedDay.shiftType) {
@@ -35,8 +25,8 @@ export const applyPenaltyToDay = (day: DailyRecord, penaltyMinutes: number): Dai
     
     // Calculate new hours with penalty applied
     updatedDay.hoursWorked = calculatePayableHours(
-      firstCheckIn, 
-      lastCheckOut, 
+      updatedDay.firstCheckIn, 
+      updatedDay.lastCheckOut, 
       shiftType, 
       penaltyMinutes,
       true // Mark as manual edit to use exact time calculation
@@ -53,18 +43,14 @@ export const applyPenaltyToDay = (day: DailyRecord, penaltyMinutes: number): Dai
 // Update check-in and check-out times for a day
 export const updateTimeRecords = (
   day: DailyRecord,
-  checkIn: Date | string | null,
-  checkOut: Date | string | null
+  checkIn: Date | null,
+  checkOut: Date | null
 ): DailyRecord => {
   const updatedDay = { ...day };
   let didUpdate = false;
   
-  // Ensure we have proper Date objects (or null)
-  const checkInDate = checkIn ? ensureDate(checkIn) : null;
-  const checkOutDate = checkOut ? ensureDate(checkOut) : null;
-  
   // If both check-in and check-out are null, mark as OFF-DAY
-  if (checkInDate === null && checkOutDate === null) {
+  if (checkIn === null && checkOut === null) {
     updatedDay.firstCheckIn = null;
     updatedDay.lastCheckOut = null;
     updatedDay.missingCheckIn = true;
@@ -81,18 +67,14 @@ export const updateTimeRecords = (
   }
   
   // Update check-in and check-out times
-  if (checkInDate !== null && (!updatedDay.firstCheckIn || 
-      (updatedDay.firstCheckIn instanceof Date && checkInDate.getTime() !== updatedDay.firstCheckIn.getTime()) ||
-      (!(updatedDay.firstCheckIn instanceof Date)))) {
-    updatedDay.firstCheckIn = checkInDate;
+  if (checkIn !== null && (!updatedDay.firstCheckIn || checkIn.getTime() !== updatedDay.firstCheckIn.getTime())) {
+    updatedDay.firstCheckIn = checkIn;
     updatedDay.missingCheckIn = false;
     didUpdate = true;
   }
   
-  if (checkOutDate !== null && (!updatedDay.lastCheckOut || 
-      (updatedDay.lastCheckOut instanceof Date && checkOutDate.getTime() !== updatedDay.lastCheckOut.getTime()) ||
-      (!(updatedDay.lastCheckOut instanceof Date)))) {
-    updatedDay.lastCheckOut = checkOutDate;
+  if (checkOut !== null && (!updatedDay.lastCheckOut || checkOut.getTime() !== updatedDay.lastCheckOut.getTime())) {
+    updatedDay.lastCheckOut = checkOut;
     updatedDay.missingCheckOut = false;
     didUpdate = true;
   }
@@ -104,16 +86,12 @@ export const updateTimeRecords = (
   
   // Recalculate hours and flags
   if (updatedDay.firstCheckIn && updatedDay.lastCheckOut && didUpdate) {
-    // Ensure we have Date objects
-    const firstCheckIn = ensureDate(updatedDay.firstCheckIn);
-    const lastCheckOut = ensureDate(updatedDay.lastCheckOut);
-    
-    const shiftType = updatedDay.shiftType || determineShiftType(firstCheckIn!);
+    const shiftType = updatedDay.shiftType || determineShiftType(updatedDay.firstCheckIn);
     
     // Always recalculate hours when either check-in or check-out changes
     updatedDay.hoursWorked = calculatePayableHours(
-      firstCheckIn, 
-      lastCheckOut, 
+      updatedDay.firstCheckIn, 
+      updatedDay.lastCheckOut, 
       shiftType,
       updatedDay.penaltyMinutes,
       true // Mark as manual edit to use exact time calculation

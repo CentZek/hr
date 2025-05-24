@@ -17,12 +17,6 @@ const EmployeeShiftRequest: React.FC<EmployeeShiftRequestProps> = ({ onShiftAppr
   const [isProcessing, setIsProcessing] = useState<Record<string, boolean>>({});
   const [isMobile, setIsMobile] = useState(false);
 
-  // Ensure we have Date objects
-  const ensureDate = (dateInput: Date | string | null): Date | null => {
-    if (!dateInput) return null;
-    return dateInput instanceof Date ? dateInput : new Date(dateInput);
-  };
-
   useEffect(() => {
     const checkIfMobile = () => setIsMobile(window.innerWidth < 640);
     checkIfMobile();
@@ -260,56 +254,52 @@ const EmployeeShiftRequest: React.FC<EmployeeShiftRequestProps> = ({ onShiftAppr
         </div>
 
         <div className="divide-y divide-gray-200">
-          {employeeShiftRequests.map(shift => {
-            const shiftDate = parseISO(shift.date);
-            
-            return (
-              <div key={shift.id} className="p-3 hover:bg-gray-50">
-                <div className="flex flex-col">
-                  <div className="mb-2">
-                    <div className="flex flex-wrap justify-between gap-1 mb-1">
-                      <p className="font-medium text-wrap-balance">{shift.employees.name}</p>
-                      <p className="text-xs text-gray-500">#{shift.employees.employee_number}</p>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-2 mb-2">
-                      <span className="text-xs text-gray-700">{format(shiftDate, 'EEE, MMM d')}</span>
-                      <span className={`px-1.5 py-0.5 text-xs rounded-full ${
-                        shift.shift_type === 'morning' ? 'bg-blue-100 text-blue-800' : 
-                        shift.shift_type === 'evening' ? 'bg-orange-100 text-orange-800' : 
-                        'bg-purple-100 text-purple-800'
-                      }`}>{shift.shift_type.charAt(0).toUpperCase() + shift.shift_type.slice(1)}</span>
-                    </div>
-                    <div className="text-xs">
-                      <span className="text-gray-600">{getShiftTimeDisplay(shift.shift_type, 'start')} - {getShiftTimeDisplay(shift.shift_type, 'end')}</span>
-                    </div>
-                    {shift.notes && <p className="text-xs text-gray-600 mt-2 text-break-word">Note: {shift.notes}</p>}
+          {employeeShiftRequests.map(shift => (
+            <div key={shift.id} className="p-3 hover:bg-gray-50">
+              <div className="flex flex-col">
+                <div className="mb-2">
+                  <div className="flex flex-wrap justify-between gap-1 mb-1">
+                    <p className="font-medium text-wrap-balance">{shift.employees.name}</p>
+                    <p className="text-xs text-gray-500">#{shift.employees.employee_number}</p>
                   </div>
-                  <div className="flex gap-2 mt-2">
-                    <button
-                      onClick={() => handleApproveShift(shift)}
-                      disabled={isProcessing[shift.id]}
-                      className="flex-1 flex justify-center items-center px-3 py-1.5 bg-green-100 text-green-700 rounded text-sm hover:bg-green-200 disabled:opacity-50"
-                    >
-                      {isProcessing[shift.id] ? 
-                        <span className="animate-spin h-3 w-3 border-2 border-t-transparent border-green-700 rounded-full mr-1"></span> : 
-                        <CheckCircle className="w-3 h-3 mr-1" />}
-                      Approve
-                    </button>
-                    <button
-                      onClick={() => handleRejectShift(shift.id, shift.employees.name)}
-                      disabled={isProcessing[shift.id]}
-                      className="flex-1 flex justify-center items-center px-3 py-1.5 bg-red-100 text-red-700 rounded text-sm hover:bg-red-200 disabled:opacity-50"
-                    >
-                      {isProcessing[shift.id] ? 
-                        <span className="animate-spin h-3 w-3 border-2 border-t-transparent border-red-700 rounded-full mr-1"></span> : 
-                        <XCircle className="w-3 h-3 mr-1" />}
-                      Reject
-                    </button>
+                  <div className="flex flex-wrap items-center gap-2 mb-2">
+                    <span className="text-xs text-gray-700">{format(parseISO(shift.date), 'EEE, MMM d')}</span>
+                    <span className={`px-1.5 py-0.5 text-xs rounded-full ${
+                      shift.shift_type === 'morning' ? 'bg-blue-100 text-blue-800' : 
+                      shift.shift_type === 'evening' ? 'bg-orange-100 text-orange-800' : 
+                      'bg-purple-100 text-purple-800'
+                    }`}>{shift.shift_type.charAt(0).toUpperCase() + shift.shift_type.slice(1)}</span>
                   </div>
+                  <div className="text-xs">
+                    <span className="text-gray-600">{getShiftTimeDisplay(shift.shift_type, 'start')} - {getShiftTimeDisplay(shift.shift_type, 'end')}</span>
+                  </div>
+                  {shift.notes && <p className="text-xs text-gray-600 mt-2 text-break-word">Note: {shift.notes}</p>}
+                </div>
+                <div className="flex gap-2 mt-2">
+                  <button
+                    onClick={() => handleApproveShift(shift)}
+                    disabled={isProcessing[shift.id]}
+                    className="flex-1 flex justify-center items-center px-3 py-1.5 bg-green-100 text-green-700 rounded text-sm hover:bg-green-200 disabled:opacity-50"
+                  >
+                    {isProcessing[shift.id] ? 
+                      <span className="animate-spin h-3 w-3 border-2 border-t-transparent border-green-700 rounded-full mr-1"></span> : 
+                      <CheckCircle className="w-3 h-3 mr-1" />}
+                    Approve
+                  </button>
+                  <button
+                    onClick={() => handleRejectShift(shift.id, shift.employees.name)}
+                    disabled={isProcessing[shift.id]}
+                    className="flex-1 flex justify-center items-center px-3 py-1.5 bg-red-100 text-red-700 rounded text-sm hover:bg-red-200 disabled:opacity-50"
+                  >
+                    {isProcessing[shift.id] ? 
+                      <span className="animate-spin h-3 w-3 border-2 border-t-transparent border-red-700 rounded-full mr-1"></span> : 
+                      <XCircle className="w-3 h-3 mr-1" />}
+                    Reject
+                  </button>
                 </div>
               </div>
-            );
-          })}
+            </div>
+          ))}
         </div>
       </div>
     );
@@ -326,63 +316,59 @@ const EmployeeShiftRequest: React.FC<EmployeeShiftRequestProps> = ({ onShiftAppr
       </div>
 
       <div className="divide-y divide-gray-200">
-        {employeeShiftRequests.map(shift => {
-          const shiftDate = parseISO(shift.date);
-          
-          return (
-            <div key={shift.id} className="p-4 hover:bg-gray-50">
-              <div className="flex justify-between items-start">
-                <div>
-                  <div className="flex items-center mb-1">
-                    <p className="font-medium text-gray-900">{shift.employees.name}</p>
-                    <p className="text-xs text-gray-500 ml-2">#{shift.employees.employee_number}</p>
-                  </div>
-                  <div className="flex items-center mt-1 space-x-2">
-                    <span className="text-sm text-gray-700">{format(shiftDate, 'EEEE, MMMM d, yyyy')}</span>
-                    <span className={`px-1.5 py-0.5 text-xs rounded-full ${
-                      shift.shift_type === 'morning' ? 'bg-blue-100 text-blue-800' : 
-                      shift.shift_type === 'evening' ? 'bg-orange-100 text-orange-800' : 
-                      'bg-purple-100 text-purple-800'
-                    }`}>{shift.shift_type.charAt(0).toUpperCase() + shift.shift_type.slice(1)}</span>
-                  </div>
-                  <div className="grid grid-cols-2 gap-4 mt-2 text-sm">
-                    <div>
-                      <p className="text-xs text-gray-500">Start Time</p>
-                      <p className="font-medium">{getShiftTimeDisplay(shift.shift_type, 'start')}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-gray-500">End Time</p>
-                      <p className="font-medium">{getShiftTimeDisplay(shift.shift_type, 'end')}</p>
-                    </div>
-                  </div>
-                  {shift.notes && <p className="text-xs text-gray-600 mt-2">Note: {shift.notes}</p>}
+        {employeeShiftRequests.map(shift => (
+          <div key={shift.id} className="p-4 hover:bg-gray-50">
+            <div className="flex justify-between items-start">
+              <div>
+                <div className="flex items-center mb-1">
+                  <p className="font-medium text-gray-900">{shift.employees.name}</p>
+                  <p className="text-xs text-gray-500 ml-2">#{shift.employees.employee_number}</p>
                 </div>
-                <div className="flex space-x-2">
-                  <button
-                    onClick={() => handleApproveShift(shift)}
-                    disabled={isProcessing[shift.id]}
-                    className="inline-flex items-center px-2 py-1 bg-green-100 text-green-700 rounded text-xs hover:bg-green-200 disabled:opacity-50"
-                  >
-                    {isProcessing[shift.id] ? 
-                      <span className="animate-spin h-3 w-3 border-2 border-t-transparent border-green-700 rounded-full mr-1"></span> : 
-                      <CheckCircle className="w-3 h-3 mr-1" />}
-                    Approve
-                  </button>
-                  <button
-                    onClick={() => handleRejectShift(shift.id, shift.employees.name)}
-                    disabled={isProcessing[shift.id]}
-                    className="inline-flex items-center px-2 py-1 bg-red-100 text-red-700 rounded text-xs hover:bg-red-200 disabled:opacity-50"
-                  >
-                    {isProcessing[shift.id] ? 
-                      <span className="animate-spin h-3 w-3 border-2 border-t-transparent border-red-700 rounded-full mr-1"></span> : 
-                      <XCircle className="w-3 h-3 mr-1" />}
-                    Reject
-                  </button>
+                <div className="flex items-center mt-1 space-x-2">
+                  <span className="text-sm text-gray-700">{format(parseISO(shift.date), 'EEEE, MMMM d, yyyy')}</span>
+                  <span className={`px-1.5 py-0.5 text-xs rounded-full ${
+                    shift.shift_type === 'morning' ? 'bg-blue-100 text-blue-800' : 
+                    shift.shift_type === 'evening' ? 'bg-orange-100 text-orange-800' : 
+                    'bg-purple-100 text-purple-800'
+                  }`}>{shift.shift_type.charAt(0).toUpperCase() + shift.shift_type.slice(1)}</span>
                 </div>
+                <div className="grid grid-cols-2 gap-4 mt-2 text-sm">
+                  <div>
+                    <p className="text-xs text-gray-500">Start Time</p>
+                    <p className="font-medium">{getShiftTimeDisplay(shift.shift_type, 'start')}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500">End Time</p>
+                    <p className="font-medium">{getShiftTimeDisplay(shift.shift_type, 'end')}</p>
+                  </div>
+                </div>
+                {shift.notes && <p className="text-xs text-gray-600 mt-2">Note: {shift.notes}</p>}
+              </div>
+              <div className="flex space-x-2">
+                <button
+                  onClick={() => handleApproveShift(shift)}
+                  disabled={isProcessing[shift.id]}
+                  className="inline-flex items-center px-2 py-1 bg-green-100 text-green-700 rounded text-xs hover:bg-green-200 disabled:opacity-50"
+                >
+                  {isProcessing[shift.id] ? 
+                    <span className="animate-spin h-3 w-3 border-2 border-t-transparent border-green-700 rounded-full mr-1"></span> : 
+                    <CheckCircle className="w-3 h-3 mr-1" />}
+                  Approve
+                </button>
+                <button
+                  onClick={() => handleRejectShift(shift.id, shift.employees.name)}
+                  disabled={isProcessing[shift.id]}
+                  className="inline-flex items-center px-2 py-1 bg-red-100 text-red-700 rounded text-xs hover:bg-red-200 disabled:opacity-50"
+                >
+                  {isProcessing[shift.id] ? 
+                    <span className="animate-spin h-3 w-3 border-2 border-t-transparent border-red-700 rounded-full mr-1"></span> : 
+                    <XCircle className="w-3 h-3 mr-1" />}
+                  Reject
+                </button>
               </div>
             </div>
-          );
-        })}
+          </div>
+        ))}
       </div>
     </div>
   );
