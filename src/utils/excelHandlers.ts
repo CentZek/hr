@@ -561,6 +561,7 @@ export const exportApprovedHoursToExcel = (exportData: any): void => {
       return {
         'Employee Number': employee.employee_number,
         'Name': employee.name,
+        'Total Days': employee.total_days,
         'Working Days': workingDays,
         'Fridays Worked': fridaysWorked,
         'Holidays Worked': holidaysWorked,
@@ -581,6 +582,7 @@ export const exportApprovedHoursToExcel = (exportData: any): void => {
         'Name': dateRange ? 
           `${format(new Date(dateRange.startDate), 'MMM d, yyyy')} to ${format(new Date(dateRange.endDate), 'MMM d, yyyy')}` : 
           'All Time',
+        'Total Days': '',
         'Working Days': '',
         'Fridays Worked': '',
         'Holidays Worked': '',
@@ -593,6 +595,7 @@ export const exportApprovedHoursToExcel = (exportData: any): void => {
       {
         'Employee Number': 'Total Employees:',
         'Name': summary.length.toString(),
+        'Total Days': '',
         'Working Days': '',
         'Fridays Worked': totalFridaysWorked.toString(),
         'Holidays Worked': totalHolidaysWorked.toString(),
@@ -605,6 +608,7 @@ export const exportApprovedHoursToExcel = (exportData: any): void => {
       {
         'Employee Number': 'Report Type:',
         'Name': reportType === 'detail' ? 'Detailed' : 'Summary',
+        'Total Days': '',
         'Working Days': '',
         'Fridays Worked': '',
         'Holidays Worked': '',
@@ -617,6 +621,7 @@ export const exportApprovedHoursToExcel = (exportData: any): void => {
       {
         'Employee Number': 'Report Generated:',
         'Name': format(new Date(), 'MMM d, yyyy HH:mm'),
+        'Total Days': '',
         'Working Days': '',
         'Fridays Worked': '',
         'Holidays Worked': '',
