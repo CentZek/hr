@@ -89,7 +89,7 @@ const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
 // Get all double-time days (Fridays and holidays) for a given date range
 export const getDoubleTimeDays = async (startDate: string, endDate: string): Promise<string[]> => {
-  // Validate input dates
+  // Validate input parameters first
   if (!startDate || !endDate) {
     console.error('Missing date range in getDoubleTimeDays:', { startDate, endDate });
     return [];
@@ -100,10 +100,18 @@ export const getDoubleTimeDays = async (startDate: string, endDate: string): Pro
   const endDateObj = parseISO(endDate);
   
   if (!isValid(startDateObj) || !isValid(endDateObj)) {
-    console.error('Invalid date range provided to getDoubleTimeDays:', { startDate, endDate, 
+    console.error('Invalid date range provided to getDoubleTimeDays:', { 
+      startDate, 
+      endDate, 
       isValidStart: isValid(startDateObj), 
       isValidEnd: isValid(endDateObj) 
     });
+    return [];
+  }
+  
+  // Check if start date is after end date
+  if (startDateObj > endDateObj) {
+    console.error('Start date is after end date in getDoubleTimeDays:', { startDate, endDate });
     return [];
   }
   
@@ -134,7 +142,7 @@ export const getDoubleTimeDays = async (startDate: string, endDate: string): Pro
     const end = endDateObj;
     
     const allDates: string[] = [];
-    let current = new Date(start);
+    let current = new Date(start); // Clone to avoid modifying the original
     
     while (current <= end) {
       const dateStr = format(current, 'yyyy-MM-dd');
@@ -148,7 +156,8 @@ export const getDoubleTimeDays = async (startDate: string, endDate: string): Pro
         allDates.push(dateStr);
       }
       
-      current = new Date(current.getTime() + 86400000); // Add one day
+      // Advance to next day
+      current.setDate(current.getDate() + 1);
     }
     
     // Update cache timestamp
