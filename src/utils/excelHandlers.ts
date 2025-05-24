@@ -1,6 +1,6 @@
 import * as XLSX from 'xlsx';
 import { EmployeeRecord, TimeRecord, DailyRecord } from '../types';
-import { format, parse, parseISO, isFriday } from 'date-fns';
+import { format, parse } from 'date-fns';
 import { determineShiftType, calculatePayableHours, isLikelyNightShiftWorker } from './shiftCalculations';
 
 // Function to parse and process an Excel file
@@ -492,42 +492,21 @@ export const exportApprovedHoursToExcel = (exportData: any): void => {
     // Create a workbook
     const wb = XLSX.utils.book_new();
     
-    // Calculate summary statistics
-    let totalFridaysWorked = 0;
-    let totalHolidaysWorked = 0;
-    let totalOffDays = 0;
-    
-    // Create a summary sheet with enhanced information
+    // Create a summary sheet
     const summaryData = summary.map((employee: any) => {
       // Calculate regular and double-time hours
       let regularHours = employee.total_hours || 0;
       let doubleTimeHours = employee.double_time_hours || 0;
       
-      // Track statistics
-      const fridaysWorked = employee.fridays_worked || 0;
-      const holidaysWorked = employee.holidays_worked || 0;
-      const offDays = employee.off_days || 0;
-      
-      // Accumulate totals
-      totalFridaysWorked += fridaysWorked;
-      totalHolidaysWorked += holidaysWorked;
-      totalOffDays += offDays;
-      
-      // Calculate working days (excluding OFF-DAYs)
-      const workingDays = employee.working_days || employee.total_days || 0;
-      
       return {
         'Employee Number': employee.employee_number,
         'Name': employee.name,
-        'Working Days': workingDays,
-        'Fridays Worked': fridaysWorked,
-        'Holidays Worked': holidaysWorked,
-        'OFF-Days': offDays,
+        'Total Days': employee.total_days || 0,
         'Regular Hours': regularHours.toFixed(2),
         'Double-Time Hours': doubleTimeHours.toFixed(2),
         'Total Payable Hours': (regularHours + doubleTimeHours).toFixed(2),
-        'Avg Hours/Day': workingDays > 0 
-          ? (regularHours / workingDays).toFixed(2) 
+        'Avg Hours/Day': employee.total_days > 0 
+          ? (regularHours / employee.total_days).toFixed(2) 
           : '0.00'
       };
     });
@@ -539,10 +518,7 @@ export const exportApprovedHoursToExcel = (exportData: any): void => {
         'Name': dateRange ? 
           `${format(new Date(dateRange.startDate), 'MMM d, yyyy')} to ${format(new Date(dateRange.endDate), 'MMM d, yyyy')}` : 
           'All Time',
-        'Working Days': '',
-        'Fridays Worked': '',
-        'Holidays Worked': '',
-        'OFF-Days': '',
+        'Total Days': '',
         'Regular Hours': '',
         'Double-Time Hours': '',
         'Total Payable Hours': '',
@@ -551,10 +527,7 @@ export const exportApprovedHoursToExcel = (exportData: any): void => {
       {
         'Employee Number': 'Total Employees:',
         'Name': summary.length.toString(),
-        'Working Days': '',
-        'Fridays Worked': totalFridaysWorked.toString(),
-        'Holidays Worked': totalHolidaysWorked.toString(),
-        'OFF-Days': totalOffDays.toString(),
+        'Total Days': '',
         'Regular Hours': '',
         'Double-Time Hours': '',
         'Total Payable Hours': '',
@@ -563,10 +536,7 @@ export const exportApprovedHoursToExcel = (exportData: any): void => {
       {
         'Employee Number': 'Report Type:',
         'Name': reportType === 'detail' ? 'Detailed' : 'Summary',
-        'Working Days': '',
-        'Fridays Worked': '',
-        'Holidays Worked': '',
-        'OFF-Days': '',
+        'Total Days': '',
         'Regular Hours': '',
         'Double-Time Hours': '',
         'Total Payable Hours': '',
@@ -575,10 +545,7 @@ export const exportApprovedHoursToExcel = (exportData: any): void => {
       {
         'Employee Number': 'Report Generated:',
         'Name': format(new Date(), 'MMM d, yyyy HH:mm'),
-        'Working Days': '',
-        'Fridays Worked': '',
-        'Holidays Worked': '',
-        'OFF-Days': '',
+        'Total Days': '',
         'Regular Hours': '',
         'Double-Time Hours': '',
         'Total Payable Hours': '',
@@ -597,29 +564,23 @@ export const exportApprovedHoursToExcel = (exportData: any): void => {
         // Check if this is a double-time day
         const recordDate = record.working_week_start || format(parseISO(record.timestamp), 'yyyy-MM-dd');
         const isDoubleTime = doubleDays.includes(recordDate);
-        const isFridayWorked = isFriday(parseISO(recordDate));
-        const isHolidayWorked = isDoubleTime && !isFridayWorked;
-        const isOffDay = record.status === 'off_day' || record.notes?.includes('OFF-DAY');
         
         // Only include check-in records to avoid duplicating hours
-        if (record.status === 'check_in' || record.status === 'off_day') {
+        if (record.status === 'check_in') {
           const hoursWorked = parseFloat(record.exact_hours || '0');
           
           detailedData.push({
             'Date': recordDate,
             'Employee': record.employees?.name || 'Unknown',
             'Employee #': record.employees?.employee_number || '',
-            'Check-in': record.display_check_in || (record.status !== 'off_day' ? format(parseISO(record.timestamp), 'HH:mm') : 'OFF-DAY'),
+            'Check-in': record.display_check_in || format(parseISO(record.timestamp), 'HH:mm'),
             'Check-out': record.display_check_out || 'Missing',
-            'Shift Type': isOffDay ? 'OFF-DAY' : (record.shift_type?.charAt(0).toUpperCase() + record.shift_type?.slice(1) || 'Unknown'),
+            'Shift Type': record.shift_type?.charAt(0).toUpperCase() + record.shift_type?.slice(1) || 'Unknown',
             'Regular Hours': isDoubleTime ? '0.00' : hoursWorked.toFixed(2),
             'Double-Time Hours': isDoubleTime ? (hoursWorked * 2).toFixed(2) : '0.00',
             'Total Payable Hours': isDoubleTime ? (hoursWorked * 2).toFixed(2) : hoursWorked.toFixed(2),
             'Notes': (record.notes || '').replace(/hours:\d+\.\d+;?\s*/, ''),
-            'Is Double-Time': isDoubleTime ? 'Yes' : 'No',
-            'Is Friday': isFridayWorked ? 'Yes' : 'No',
-            'Is Holiday': isHolidayWorked ? 'Yes' : 'No',
-            'Is OFF-DAY': isOffDay ? 'Yes' : 'No'
+            'Is Double-Time': isDoubleTime ? 'Yes' : 'No'
           });
         }
       });
@@ -640,10 +601,7 @@ export const exportApprovedHoursToExcel = (exportData: any): void => {
             'Double-Time Hours': '',
             'Total Payable Hours': '',
             'Notes': '',
-            'Is Double-Time': '',
-            'Is Friday': '',
-            'Is Holiday': '',
-            'Is OFF-DAY': ''
+            'Is Double-Time': ''
           });
         }
       }
