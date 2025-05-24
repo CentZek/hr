@@ -1,7 +1,7 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
-import App from './App.tsx';
+import AppRouter from './AppRouter';
 import { AppProvider } from './context/AppContext';
 import './index.css';
 
@@ -9,7 +9,7 @@ createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <BrowserRouter>
       <AppProvider>
-        <App />
+        <AppRouter />
       </AppProvider>
     </BrowserRouter>
   </StrictMode>
