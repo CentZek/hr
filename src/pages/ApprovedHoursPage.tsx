@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { format, subMonths, isSameDay, startOfMonth, endOfMonth, addDays, subDays } from 'date-fns';
+import { format, subMonths, isSameDay, startOfMonth, endOfMonth } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
 import { Clock, ArrowLeft, Download, Users, Calendar, Filter, Trash2, Home, Calendar as Calendar2, User } from 'lucide-react';
 import toast, { Toaster } from 'react-hot-toast';
@@ -11,8 +11,6 @@ import DailyBreakdown from '../components/ApprovedHours/DailyBreakdown';
 import DeleteConfirmDialog from '../components/DeleteConfirmDialog';
 import NavigationTabs from '../components/NavigationTabs';
 import HolidayCalendar from '../components/HolidayCalendar';
-import DateRangePicker from '../components/ApprovedHours/DateRangePicker';
-import MultiEmployeeSelect from '../components/ApprovedHours/MultiEmployeeSelect';
 
 const ApprovedHoursPage: React.FC = () => {
   const navigate = useNavigate();
@@ -21,9 +19,8 @@ const ApprovedHoursPage: React.FC = () => {
   const [allEmployees, setAllEmployees] = useState<any[]>([]);
   const [expandedEmployee, setExpandedEmployee] = useState<string | null>(null);
   const [dailyRecords, setDailyRecords] = useState<any[]>([]);
-  const [startDate, setStartDate] = useState<Date>(subMonths(new Date(), 1));
-  const [endDate, setEndDate] = useState<Date>(new Date());
-  const [selectedEmployeeIds, setSelectedEmployeeIds] = useState<string[]>(['all']);
+  const [filterMonth, setFilterMonth] = useState<string>("all");
+  const [filterEmployee, setFilterEmployee] = useState<string>("all");
   const [dailyRecordsLoading, setDailyRecordsLoading] = useState(false);
   const [totalHours, setTotalHours] = useState(0);
   const [totalEmployees, setTotalEmployees] = useState(0);
@@ -35,28 +32,38 @@ const ApprovedHoursPage: React.FC = () => {
   // Delete confirmation state
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
-  const [usePresetDateRange, setUsePresetDateRange] = useState(true);
-  const [presetRange, setPresetRange] = useState<string>("month");
 
-  // Handle date range change
-  const handleDateRangeChange = (dates: [Date | null, Date | null]) => {
-    const [start, end] = dates;
-    if (start) {
-      setStartDate(start);
-    }
-    if (end) {
-      setEndDate(end);
-    }
-  };
+  // Generate month options for the dropdown
+  const monthOptions = [
+    { value: "all", label: "All Time" },
+    ...Array.from({ length: 12 }).map((_, i) => {
+      const date = subMonths(new Date(), i);
+      return {
+        value: format(date, 'yyyy-MM'),
+        label: format(date, 'MMMM yyyy')
+      };
+    })
+  ];
 
-  // Fetch double-time days based on date range
+  // Fetch double-time days once and when month changes
   useEffect(() => {
     const loadDoubleDays = async () => {
       try {
-        const formattedStartDate = format(startDate, 'yyyy-MM-dd');
-        const formattedEndDate = format(endDate, 'yyyy-MM-dd');
+        let startDate, endDate;
         
-        const days = await getDoubleTimeDays(formattedStartDate, formattedEndDate);
+        if (filterMonth === "all") {
+          // Use a large date range for "all time" (past year to future year)
+          startDate = format(subMonths(new Date(), 12), 'yyyy-MM-dd');
+          endDate = format(new Date(new Date().getFullYear() + 1, 11, 31), 'yyyy-MM-dd');
+        } else {
+          // Use the selected month
+          const [year, month] = filterMonth.split('-');
+          const monthDate = new Date(parseInt(year), parseInt(month) - 1, 1);
+          startDate = format(startOfMonth(monthDate), 'yyyy-MM-dd');
+          endDate = format(endOfMonth(monthDate), 'yyyy-MM-dd');
+        }
+        
+        const days = await getDoubleTimeDays(startDate, endDate);
         setDoubleDays(days);
       } catch (error) {
         console.error('Error loading double-time days:', error);
@@ -64,24 +71,24 @@ const ApprovedHoursPage: React.FC = () => {
     };
     
     loadDoubleDays();
-  }, [startDate, endDate]);
+  }, [filterMonth]);
 
   // Fetch all approved hours summary
   useEffect(() => {
     const loadApprovedHours = async () => {
       setIsLoading(true);
       try {
-        const dateRange = {
-          startDate: format(startDate, 'yyyy-MM-dd'),
-          endDate: format(endDate, 'yyyy-MM-dd')
-        };
-
-        // Filter by selected employees
-        const employeeIds = selectedEmployeeIds.includes('all') ? [] : selectedEmployeeIds;
-        
-        const { data, totalHoursSum } = await fetchApprovedHours(dateRange, employeeIds);
+        const { data, totalHoursSum } = await fetchApprovedHours(filterMonth === "all" ? "" : filterMonth);
         setAllEmployees(data); // Store all employees
-        setEmployees(data);
+        
+        // Filter employees if a specific employee is selected
+        if (filterEmployee !== "all") {
+          const filteredData = data.filter((emp) => emp.id === filterEmployee);
+          setEmployees(filteredData);
+        } else {
+          setEmployees(data);
+        }
+        
         setTotalEmployees(data.length);
         
         // Calculate total regular hours and total double-time hours
@@ -119,6 +126,15 @@ const ApprovedHoursPage: React.FC = () => {
           employee.double_time_hours = employeeDoubleTime;
         });
         
+        // If filtering by employee, only count their hours
+        if (filterEmployee !== "all") {
+          const selectedEmployee = data.find(emp => emp.id === filterEmployee);
+          if (selectedEmployee) {
+            regularHours = selectedEmployee.total_hours || 0;
+            doubleTimeHours = selectedEmployee.double_time_hours || 0;
+          }
+        }
+        
         setTotalHours(regularHours);
         setTotalDoubleTimeHours(doubleTimeHours);
         setTotalPayableHours(regularHours + doubleTimeHours);
@@ -131,7 +147,7 @@ const ApprovedHoursPage: React.FC = () => {
     };
 
     loadApprovedHours();
-  }, [startDate, endDate, doubleDays, selectedEmployeeIds]);
+  }, [filterMonth, doubleDays, filterEmployee]);
 
   // Handle employee expansion
   const handleEmployeeExpand = async (employeeId: string) => {
@@ -147,12 +163,7 @@ const ApprovedHoursPage: React.FC = () => {
 
     try {
       // Fetch detailed daily breakdown for this employee
-      const dateRange = {
-        startDate: format(startDate, 'yyyy-MM-dd'),
-        endDate: format(endDate, 'yyyy-MM-dd')
-      };
-      
-      const { data: records } = await fetchEmployeeDetails(employeeId, dateRange);
+      const { data: records } = await fetchEmployeeDetails(employeeId, filterMonth === "all" ? "" : filterMonth);
       setDailyRecords(records);
     } catch (error) {
       console.error('Error loading employee details:', error);
@@ -167,10 +178,7 @@ const ApprovedHoursPage: React.FC = () => {
     const exportData = {
       summary: employees,
       details: dailyRecords,
-      dateRange: {
-        startDate: format(startDate, 'yyyy-MM-dd'),
-        endDate: format(endDate, 'yyyy-MM-dd')
-      },
+      filterMonth,
       doubleDays // Include double-time days for export calculations
     };
     
@@ -181,24 +189,28 @@ const ApprovedHoursPage: React.FC = () => {
   // Handle delete all records
   const handleDeleteAllRecords = async () => {
     setIsDeleting(true);
-    const loadingToast = toast.loading('Deleting all time records...');
+    const loadingToast = toast.loading(
+      filterMonth === "all" 
+        ? 'Deleting all time records...' 
+        : `Deleting time records for ${monthOptions.find(m => m.value === filterMonth)?.label}...`
+    );
     
     try {
       // Perform the delete operation
-      const { success, message, count } = await deleteAllTimeRecords("");
+      const { success, message, count } = await deleteAllTimeRecords(filterMonth === "all" ? "" : filterMonth);
       
       toast.dismiss(loadingToast);
       if (success) {
-        toast.success(`Successfully deleted all time records (${count} entries)`);
+        // Show appropriate success message
+        if (filterMonth === "all") {
+          toast.success(`Successfully deleted all time records (${count} entries)`);
+        } else {
+          const monthLabel = monthOptions.find(m => m.value === filterMonth)?.label || filterMonth;
+          toast.success(`Successfully deleted time records for ${monthLabel} (${count} entries)`);
+        }
         
         // Refresh the data
-        const dateRange = {
-          startDate: format(startDate, 'yyyy-MM-dd'),
-          endDate: format(endDate, 'yyyy-MM-dd')
-        };
-        const employeeIds = selectedEmployeeIds.includes('all') ? [] : selectedEmployeeIds;
-        
-        const { data, totalHoursSum } = await fetchApprovedHours(dateRange, employeeIds);
+        const { data, totalHoursSum } = await fetchApprovedHours(filterMonth === "all" ? "" : filterMonth);
         setAllEmployees(data || []);
         setEmployees(data || []);
         setTotalHours(totalHoursSum || 0);
@@ -227,20 +239,28 @@ const ApprovedHoursPage: React.FC = () => {
   const handleHolidaysUpdated = async () => {
     try {
       // Refresh double days
-      const formattedStartDate = format(startDate, 'yyyy-MM-dd');
-      const formattedEndDate = format(endDate, 'yyyy-MM-dd');
+      let startDate, endDate;
       
-      const days = await getDoubleTimeDays(formattedStartDate, formattedEndDate);
+      if (filterMonth === "all") {
+        startDate = format(subMonths(new Date(), 12), 'yyyy-MM-dd');
+        endDate = format(new Date(new Date().getFullYear() + 1, 11, 31), 'yyyy-MM-dd');
+      } else {
+        const [year, month] = filterMonth.split('-');
+        const monthDate = new Date(parseInt(year), parseInt(month) - 1, 1);
+        startDate = format(startOfMonth(monthDate), 'yyyy-MM-dd');
+        endDate = format(endOfMonth(monthDate), 'yyyy-MM-dd');
+      }
+      
+      const days = await getDoubleTimeDays(startDate, endDate);
       setDoubleDays(days);
       
       // Reload employee data if expanded
       if (expandedEmployee) {
         setDailyRecordsLoading(true);
-        const dateRange = {
-          startDate: format(startDate, 'yyyy-MM-dd'),
-          endDate: format(endDate, 'yyyy-MM-dd')
-        };
-        const { data: records } = await fetchEmployeeDetails(expandedEmployee, dateRange);
+        const { data: records } = await fetchEmployeeDetails(
+          expandedEmployee, 
+          filterMonth === "all" ? "" : filterMonth
+        );
         setDailyRecords(records);
         setDailyRecordsLoading(false);
       }
@@ -252,56 +272,17 @@ const ApprovedHoursPage: React.FC = () => {
     }
   };
 
-  // Handle employee selection change
-  const handleEmployeeSelectionChange = (employeeIds: string[]) => {
-    setSelectedEmployeeIds(employeeIds);
+  // Handle employee filter change
+  const handleEmployeeFilterChange = (employeeId: string) => {
+    setFilterEmployee(employeeId);
     setExpandedEmployee(null);
     setDailyRecords([]);
     
-    // If only a single employee is selected, auto-expand
-    if (employeeIds.length === 1 && employeeIds[0] !== 'all') {
+    // If a specific employee is selected, preemptively expand their details
+    if (employeeId !== "all") {
       setTimeout(() => {
-        handleEmployeeExpand(employeeIds[0]);
+        handleEmployeeExpand(employeeId);
       }, 100);
-    }
-  };
-
-  // Handle preset date range selection
-  const handlePresetChange = (preset: string) => {
-    setPresetRange(preset);
-    const today = new Date();
-    
-    switch (preset) {
-      case "today":
-        setStartDate(today);
-        setEndDate(today);
-        break;
-      case "yesterday":
-        const yesterday = subDays(today, 1);
-        setStartDate(yesterday);
-        setEndDate(yesterday);
-        break;
-      case "week":
-        // Current week (last 7 days)
-        setStartDate(subDays(today, 6));
-        setEndDate(today);
-        break;
-      case "month":
-        // Current month
-        setStartDate(startOfMonth(today));
-        setEndDate(today);
-        break;
-      case "lastMonth":
-        // Last month
-        const lastMonth = subMonths(today, 1);
-        setStartDate(startOfMonth(lastMonth));
-        setEndDate(endOfMonth(lastMonth));
-        break;
-      case "year":
-        // Current year to date
-        setStartDate(new Date(today.getFullYear(), 0, 1));
-        setEndDate(today);
-        break;
     }
   };
 
@@ -344,7 +325,7 @@ const ApprovedHoursPage: React.FC = () => {
           {/* Card content */}
           <div className="p-6 space-y-6">
             {/* Filters & Controls */}
-            <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="flex flex-wrap items-center justify-between gap-4">
               {/* Summary stats */}
               <div className="flex flex-wrap gap-4">
                 <div className="flex items-center gap-2 px-3 py-2 bg-purple-50 rounded-md">
@@ -378,109 +359,71 @@ const ApprovedHoursPage: React.FC = () => {
               </div>
 
               {/* Filter and Export */}
-              <div className="w-full sm:max-w-none">
-                <div className="flex flex-col gap-4">
-                  <div className="flex flex-col sm:flex-row gap-4 justify-end">
-                    {/* Date Range Section */}
-                    <div className="flex flex-col sm:flex-row gap-2 items-start sm:items-center">
-                      <div className="text-sm font-medium text-gray-700">Date Range:</div>
-                      <div className="flex gap-2 flex-wrap">
-                        <button
-                          onClick={() => handlePresetChange("week")}
-                          className={`px-2 py-1 text-xs rounded ${
-                            presetRange === "week" ? "bg-purple-100 text-purple-800" : "bg-gray-100 text-gray-700"
-                          }`}
-                        >
-                          Last 7 Days
-                        </button>
-                        <button
-                          onClick={() => handlePresetChange("month")}
-                          className={`px-2 py-1 text-xs rounded ${
-                            presetRange === "month" ? "bg-purple-100 text-purple-800" : "bg-gray-100 text-gray-700"
-                          }`}
-                        >
-                          Current Month
-                        </button>
-                        <button
-                          onClick={() => handlePresetChange("lastMonth")}
-                          className={`px-2 py-1 text-xs rounded ${
-                            presetRange === "lastMonth" ? "bg-purple-100 text-purple-800" : "bg-gray-100 text-gray-700"
-                          }`}
-                        >
-                          Last Month
-                        </button>
-                        <button
-                          onClick={() => handlePresetChange("year")}
-                          className={`px-2 py-1 text-xs rounded ${
-                            presetRange === "year" ? "bg-purple-100 text-purple-800" : "bg-gray-100 text-gray-700"
-                          }`}
-                        >
-                          Year to Date
-                        </button>
-                        <button
-                          onClick={() => setUsePresetDateRange(!usePresetDateRange)}
-                          className={`px-2 py-1 text-xs rounded ${
-                            !usePresetDateRange ? "bg-purple-100 text-purple-800" : "bg-gray-100 text-gray-700"
-                          }`}
-                        >
-                          Custom Range
-                        </button>
-                      </div>
-                    </div>
-                    
-                    {/* Custom Date Range Picker */}
-                    {!usePresetDateRange && (
-                      <DateRangePicker
-                        startDate={startDate}
-                        endDate={endDate}
-                        onChange={handleDateRangeChange}
-                        className="ml-0 sm:ml-4"
-                      />
-                    )}
-                  </div>
-
-                  <div className="flex flex-wrap gap-4 items-center justify-between">
-                    {/* Employee Selection */}
-                    <MultiEmployeeSelect
-                      employees={allEmployees}
-                      selectedEmployeeIds={selectedEmployeeIds}
-                      onChange={handleEmployeeSelectionChange}
-                      className="flex-grow-0"
-                    />
-                    
-                    <div className="flex gap-2 flex-wrap">
-                      <button
-                        onClick={handleCalendarToggle}
-                        className={`flex items-center gap-1 px-3 py-1 ${
-                          showCalendar 
-                            ? 'bg-amber-600 hover:bg-amber-700 text-white' 
-                            : 'bg-amber-100 text-amber-800 hover:bg-amber-200'
-                        } text-sm rounded`}
-                      >
-                        <Calendar className="w-4 h-4" />
-                        {showCalendar ? 'Hide Calendar' : 'Manage Holidays'}
-                      </button>
-                      
-                      <button
-                        onClick={handleExport}
-                        className="flex items-center gap-1 px-3 py-1 bg-purple-600 text-white text-sm rounded hover:bg-purple-700"
-                      >
-                        <Download className="w-4 h-4" />
-                        Export
-                      </button>
-                      
-                      {/* Delete Button */}
-                      <button
-                        onClick={() => setIsDeleteDialogOpen(true)}
-                        className="flex items-center gap-1 px-3 py-1 bg-red-600 text-white text-sm rounded hover:bg-red-700"
-                        disabled={isLoading || totalEmployees === 0}
-                      >
-                        <Trash2 className="w-4 h-4" />
-                        Delete Records
-                      </button>
-                    </div>
-                  </div>
+              <div className="flex gap-2 flex-wrap">
+                {/* Employee Filter */}
+                <div className="flex items-center gap-2">
+                  <User className="w-4 h-4 text-gray-500" />
+                  <select
+                    value={filterEmployee}
+                    onChange={(e) => handleEmployeeFilterChange(e.target.value)}
+                    className="border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  >
+                    <option value="all">All Employees</option>
+                    {allEmployees
+                      .sort((a, b) => a.name.localeCompare(b.name)) // Sort alphabetically
+                      .map((employee) => (
+                        <option key={employee.id} value={employee.id}>
+                          {employee.name}
+                        </option>
+                      ))}
+                  </select>
                 </div>
+                
+                {/* Month Filter */}
+                <div className="flex items-center gap-2">
+                  <Filter className="w-4 h-4 text-gray-500" />
+                  <select
+                    value={filterMonth}
+                    onChange={(e) => setFilterMonth(e.target.value)}
+                    className="border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  >
+                    {monthOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                
+                <button
+                  onClick={handleCalendarToggle}
+                  className={`flex items-center gap-1 px-3 py-1 ${
+                    showCalendar 
+                      ? 'bg-amber-600 hover:bg-amber-700 text-white' 
+                      : 'bg-amber-100 text-amber-800 hover:bg-amber-200'
+                  } text-sm rounded`}
+                >
+                  <Calendar className="w-4 h-4" />
+                  {showCalendar ? 'Hide Calendar' : 'Manage Holidays'}
+                </button>
+                
+                <button
+                  onClick={handleExport}
+                  className="flex items-center gap-1 px-3 py-1 bg-purple-600 text-white text-sm rounded hover:bg-purple-700"
+                >
+                  <Download className="w-4 h-4" />
+                  Export
+                </button>
+                
+                {/* Delete Button */}
+                <button
+                  onClick={() => setIsDeleteDialogOpen(true)}
+                  className="flex items-center gap-1 px-3 py-1 bg-red-600 text-white text-sm rounded hover:bg-red-700"
+                  disabled={isLoading || totalEmployees === 0}
+                >
+                  <Trash2 className="w-4 h-4" />
+                  Delete Records
+                </button>
               </div>
             </div>
             
@@ -514,9 +457,9 @@ const ApprovedHoursPage: React.FC = () => {
                     <Calendar className="w-10 h-10 mx-auto text-gray-300 mb-2" />
                     <h3 className="text-gray-500 font-medium">No approved hours found</h3>
                     <p className="text-sm text-gray-400 mt-1">
-                      {selectedEmployeeIds.length > 0 && selectedEmployeeIds[0] !== 'all' 
-                        ? "No records found for the selected employee(s) and time period."
-                        : "Try selecting a different date range or approve time records from the Face ID data page."}
+                      {filterEmployee !== "all" 
+                        ? "No records found for the selected employee and time period."
+                        : "Try selecting a different month or approve time records from the Face ID data page."}
                     </p>
                     <button
                       onClick={() => navigate('/hr')}
@@ -558,11 +501,15 @@ const ApprovedHoursPage: React.FC = () => {
         isOpen={isDeleteDialogOpen}
         onClose={() => setIsDeleteDialogOpen(false)}
         onConfirm={handleDeleteAllRecords}
-        title="Delete All Time Records"
-        message="You are about to delete ALL time records for ALL employees from the database. This will reset the entire system and cannot be undone."
+        title={filterMonth === "all" ? "Delete All Time Records" : `Delete Records for ${monthOptions.find(m => m.value === filterMonth)?.label}`}
+        message={
+          filterMonth === "all"
+            ? "You are about to delete ALL time records for ALL employees from the database. This will reset the entire system and cannot be undone."
+            : `You are about to delete all time records for ${monthOptions.find(m => m.value === filterMonth)?.label}. This action cannot be undone.`
+        }
         isDeleting={isDeleting}
-        deleteButtonText="Delete All Records"
-        scope="all"
+        deleteButtonText={filterMonth === "all" ? "Delete All Records" : "Delete Month Records"}
+        scope={filterMonth === "all" ? "all" : "month"}
       />
       
       <Toaster position="top-right" />

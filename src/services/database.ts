@@ -6,10 +6,7 @@ import { parseShiftTimes } from '../utils/dateTimeHelper';
 import { isDoubleTimeDay, getDoubleTimeDays } from '../services/holidayService';
 
 // Fetch approved hours summary
-export const fetchApprovedHours = async (
-  dateRange: { startDate: string, endDate: string } | null = null,
-  employeeIds: string[] = []
-): Promise<{
+export const fetchApprovedHours = async (monthFilter: string = ''): Promise<{
   data: any[];
   totalHoursSum: number;
 }> => {
@@ -32,16 +29,15 @@ export const fetchApprovedHours = async (
       .in('status', ['check_in', 'off_day'])  // Include both check-in and off-day records
       .not('exact_hours', 'is', null);
     
-    // Apply date range filter if provided
-    if (dateRange) {
+    // Apply month filter if provided
+    if (monthFilter) {
+      const [year, month] = monthFilter.split('-');
+      const startDate = startOfMonth(new Date(parseInt(year), parseInt(month) - 1, 1));
+      const endDate = endOfMonth(startDate);
+      
       query = query
-        .gte('timestamp', format(new Date(dateRange.startDate), 'yyyy-MM-dd'))
-        .lte('timestamp', format(new Date(dateRange.endDate), 'yyyy-MM-dd'));
-    }
-    
-    // Apply employee filter if provided
-    if (employeeIds && employeeIds.length > 0) {
-      query = query.in('employee_id', employeeIds);
+        .gte('timestamp', format(startDate, 'yyyy-MM-dd'))
+        .lte('timestamp', format(endDate, 'yyyy-MM-dd'));
     }
     
     const { data, error } = await query;
@@ -108,7 +104,7 @@ export const fetchApprovedHours = async (
     });
     
     // Add OFF-DAY records separately
-    let offDayQuery = supabase
+    const { data: offDayData, error: offDayError } = await supabase
       .from('time_records')
       .select(`
         employee_id,
@@ -122,20 +118,6 @@ export const fetchApprovedHours = async (
         )
       `)
       .eq('status', 'off_day');
-      
-    // Apply date range filter if provided
-    if (dateRange) {
-      offDayQuery = offDayQuery
-        .gte('timestamp', format(new Date(dateRange.startDate), 'yyyy-MM-dd'))
-        .lte('timestamp', format(new Date(dateRange.endDate), 'yyyy-MM-dd'));
-    }
-    
-    // Apply employee filter if provided
-    if (employeeIds && employeeIds.length > 0) {
-      offDayQuery = offDayQuery.in('employee_id', employeeIds);
-    }
-    
-    const { data: offDayData, error: offDayError } = await offDayQuery;
     
     if (offDayError) throw offDayError;
     
@@ -173,12 +155,12 @@ export const fetchApprovedHours = async (
     });
     
     // Calculate double-time hours for each employee
-    const startDate = dateRange 
-      ? format(new Date(dateRange.startDate), 'yyyy-MM-dd')
+    const startDate = monthFilter 
+      ? format(startOfMonth(new Date(parseInt(monthFilter.split('-')[0]), parseInt(monthFilter.split('-')[1]) - 1, 1)), 'yyyy-MM-dd')
       : format(subDays(new Date(), 365), 'yyyy-MM-dd'); // Default to last 365 days
       
-    const endDate = dateRange
-      ? format(new Date(dateRange.endDate), 'yyyy-MM-dd')
+    const endDate = monthFilter
+      ? format(endOfMonth(new Date(parseInt(monthFilter.split('-')[0]), parseInt(monthFilter.split('-')[1]) - 1, 1)), 'yyyy-MM-dd')
       : format(addDays(new Date(), 30), 'yyyy-MM-dd'); // Default to 30 days in the future
     
     // Get all double-time days in the date range
@@ -220,7 +202,7 @@ export const fetchApprovedHours = async (
 };
 
 // Fetch employee details for approved hours
-export const fetchEmployeeDetails = async (employeeId: string, dateRange: { startDate: string, endDate: string } | null = null): Promise<{
+export const fetchEmployeeDetails = async (employeeId: string, monthFilter: string = ''): Promise<{
   data: any[];
 }> => {
   try {
@@ -251,11 +233,15 @@ export const fetchEmployeeDetails = async (employeeId: string, dateRange: { star
       .eq('employee_id', employeeId)
       .order('timestamp', { ascending: true });
     
-    // Apply date range filter if provided
-    if (dateRange) {
+    // Apply month filter if provided
+    if (monthFilter) {
+      const [year, month] = monthFilter.split('-');
+      const startDate = startOfMonth(new Date(parseInt(year), parseInt(month) - 1, 1));
+      const endDate = endOfMonth(startDate);
+      
       query = query
-        .gte('timestamp', format(new Date(dateRange.startDate), 'yyyy-MM-dd'))
-        .lte('timestamp', format(new Date(dateRange.endDate), 'yyyy-MM-dd'));
+        .gte('timestamp', format(startDate, 'yyyy-MM-dd'))
+        .lte('timestamp', format(endDate, 'yyyy-MM-dd'));
     }
     
     const { data, error } = await query;
