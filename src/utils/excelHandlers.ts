@@ -619,7 +619,7 @@ export const exportApprovedHoursToExcel = (exportData: any): void => {
       const detailedData: any[] = [];
       
       details.forEach((record: any) => {
-        // Skip OFF-DAY records
+        // Handle OFF-DAY records properly
         if (record.status === 'off_day' || record.notes?.includes('OFF-DAY')) {
           // Include OFF-DAYs but mark them appropriately
           const recordDate = record.working_week_start || format(parseISO(record.timestamp), 'yyyy-MM-dd');
