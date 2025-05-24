@@ -296,9 +296,6 @@ export const updateProcessedEmployeeData = async (
 // Delete processed Excel data
 export const deleteProcessedExcelData = async (fileId?: string): Promise<boolean> => {
   try {
-    // Skip the RPC call since it may be causing issues
-    // Instead, proceed directly with deletion
-    
     if (fileId) {
       // Delete specific file and its associated data (cascade will handle related records)
       const { error } = await supabase
@@ -314,8 +311,7 @@ export const deleteProcessedExcelData = async (fileId?: string): Promise<boolean
       // Delete all files and their associated data
       const { error } = await supabase
         .from('processed_excel_files')
-        .delete()
-        .neq('id', '00000000-0000-0000-0000-000000000000'); // Dummy condition to delete all
+        .delete();
 
       if (error) {
         console.error('Error deleting all file data:', error);
@@ -323,7 +319,7 @@ export const deleteProcessedExcelData = async (fileId?: string): Promise<boolean
       }
     }
 
-    // Also clear any manual time records - without filtering by employee_id
+    // Also clear any manual time records
     try {
       const { error: timeRecordsError } = await supabase
         .from('time_records')
