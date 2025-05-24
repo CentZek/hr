@@ -297,21 +297,59 @@ export const updateProcessedEmployeeData = async (
 export const deleteProcessedExcelData = async (fileId?: string): Promise<boolean> => {
   try {
     if (fileId) {
-      // Delete specific file and its associated data (cascade will handle related records)
-      const { error } = await supabase
+      // First fetch all employee records for this file to get their IDs
+      const { data: employeesData, error: employeesError } = await supabase
+        .from('processed_employee_data')
+        .select('id')
+        .eq('file_id', fileId);
+
+      if (employeesError) throw employeesError;
+      
+      // Delete daily records for all employees in this file
+      if (employeesData && employeesData.length > 0) {
+        const employeeIds = employeesData.map(emp => emp.id);
+        
+        // Delete in batches to avoid payload size limitations
+        for (const empId of employeeIds) {
+          const { error: dailyRecordsError } = await supabase
+            .from('processed_daily_records')
+            .delete()
+            .eq('employee_id', empId);
+            
+          if (dailyRecordsError) throw dailyRecordsError;
+        }
+      }
+      
+      // Delete all employee records for this file
+      const { error: employeeDeleteError } = await supabase
+        .from('processed_employee_data')
+        .delete()
+        .eq('file_id', fileId);
+        
+      if (employeeDeleteError) throw employeeDeleteError;
+      
+      // Finally delete the file record itself
+      const { error: fileDeleteError } = await supabase
         .from('processed_excel_files')
         .delete()
         .eq('id', fileId);
-
-      if (error) throw error;
+        
+      if (fileDeleteError) throw fileDeleteError;
     } else {
-      // Delete all files and their associated data
-      const { error } = await supabase
+      // If no specific fileId, get all file IDs first
+      const { data: filesData, error: filesError } = await supabase
         .from('processed_excel_files')
-        .delete()
-        .neq('id', '00000000-0000-0000-0000-000000000000'); // Dummy condition to delete all
-
-      if (error) throw error;
+        .select('id');
+        
+      if (filesError) throw filesError;
+      
+      if (filesData && filesData.length > 0) {
+        // Process each file one by one for proper deletion order
+        for (const file of filesData) {
+          // Call this function recursively for each file
+          await deleteProcessedExcelData(file.id);
+        }
+      }
     }
 
     return true;
