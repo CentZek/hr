@@ -9,6 +9,7 @@ interface EmployeeHoursSummaryProps {
     total_days: number;
     total_hours: number;
     double_time_hours?: number;
+    working_days?: number; // Add this property for non-zero, non-OFF-DAY count
   };
   isExpanded: boolean;
   onExpand: () => void;
@@ -19,8 +20,12 @@ const EmployeeHoursSummary: React.FC<EmployeeHoursSummaryProps> = ({
   isExpanded, 
   onExpand 
 }) => {
-  const avgHoursPerDay = employee.total_hours > 0 && employee.total_days > 0 
-    ? parseFloat((employee.total_hours / employee.total_days).toFixed(2))
+  // Calculate working days (excluding OFF-DAYs and zero-hour days)
+  const workingDays = employee.working_days || employee.total_days;
+
+  // Calculate average hours per working day (not including OFF-DAYs)
+  const avgHoursPerDay = workingDays > 0 
+    ? parseFloat((employee.total_hours / workingDays).toFixed(2))
     : 0;
     
   // Calculate double-time hours (if available)
@@ -51,7 +56,7 @@ const EmployeeHoursSummary: React.FC<EmployeeHoursSummaryProps> = ({
         
         <div className="flex flex-wrap gap-2 mt-2">
           <div className="px-2 py-1 bg-blue-50 text-blue-700 rounded text-xs">
-            Days: <span className="font-medium">{employee.total_days}</span>
+            Days: <span className="font-medium">{workingDays}</span>
           </div>
           <div className="px-2 py-1 bg-purple-50 text-purple-700 rounded text-xs">
             Hours: <span className="font-medium">{employee.total_hours.toFixed(2)}</span>
@@ -85,7 +90,7 @@ const EmployeeHoursSummary: React.FC<EmployeeHoursSummaryProps> = ({
           <div className="text-xs text-gray-500">#{employee.employee_number}</div>
         </div>
       </div>
-      <div className="hidden sm:flex sm:items-center font-medium text-gray-800">{employee.total_days}</div>
+      <div className="hidden sm:flex sm:items-center font-medium text-gray-800">{workingDays}</div>
       <div className="hidden sm:flex sm:items-center">
         <div className="font-medium text-gray-800">
           <span className="mr-1">{totalPayableHours.toFixed(2)}</span>

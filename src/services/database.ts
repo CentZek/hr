@@ -23,6 +23,7 @@ export const fetchApprovedHours = async (
         status,
         exact_hours,
         working_week_start,
+        notes,
         employees (
           id,
           name,
@@ -78,7 +79,10 @@ export const fetchApprovedHours = async (
         }
       }
       
-      totalHoursSum += hours;
+      // Only count hours for non-OFF-DAY records
+      if (record.status !== 'off_day' && hours > 0) {
+        totalHoursSum += hours;
+      }
       
       if (!employeeSummary.has(employeeId)) {
         employeeSummary.set(employeeId, {
@@ -86,25 +90,54 @@ export const fetchApprovedHours = async (
           name: record.employees.name,
           employee_number: record.employees.employee_number,
           total_days: new Set(),
+          working_days: new Set(), // Only count non-zero, non-OFF-DAY days
           total_hours: 0,
           working_week_dates: new Set(), // Track all working week dates for double-time calculations
-          hours_by_date: {} // Track hours by date for double-time calculations
+          hours_by_date: {}, // Track hours by date for double-time calculations
+          fridays_worked: new Set(), // Track Fridays worked
+          holidays_worked: new Set(), // Track holidays worked 
+          off_days: new Set() // Track OFF-DAYs
         });
       }
       
       const employee = employeeSummary.get(employeeId);
-      employee.total_hours += hours;
+      
+      // Only add hours for non-OFF-DAY records
+      if (record.status !== 'off_day') {
+        employee.total_hours += hours;
+      }
       
       // Add date to set of days - Only if timestamp is valid
       if (recordDate) {
-        // Use working_week_start if available, otherwise use timestamp date
+        // Always add to total_days
         employee.total_days.add(recordDate);
         employee.working_week_dates.add(recordDate);
         
-        // Store hours by date
+        // Check if this is an OFF-DAY
+        const isOffDay = record.status === 'off_day' || record.notes?.includes('OFF-DAY');
+        
+        // Check if this is a Friday
+        const isFridayWorked = isFriday(parseISO(recordDate));
+        
+        // For OFF-DAYs, add to off_days set
+        if (isOffDay) {
+          employee.off_days.add(recordDate);
+        } 
+        // For non-OFF-DAYs with hours > 0, add to working_days
+        else if (hours > 0) {
+          employee.working_days.add(recordDate);
+          
+          // If Friday, add to fridays_worked
+          if (isFridayWorked) {
+            employee.fridays_worked.add(recordDate);
+          }
+        }
+        
+        // Store hours by date (even for off days, which will be 0)
         if (!employee.hours_by_date[recordDate]) {
-          employee.hours_by_date[recordDate] = hours;
-        } else {
+          employee.hours_by_date[recordDate] = isOffDay ? 0 : hours;
+        } else if (!isOffDay) {
+          // Only add hours for non-OFF-DAY records
           employee.hours_by_date[recordDate] += hours;
         }
       }
@@ -134,6 +167,24 @@ export const fetchApprovedHours = async (
       
       const employeeId = record.employee_id;
       
+      if (!employeeSummary.has(employeeId)) {
+        employeeSummary.set(employeeId, {
+          id: employeeId,
+          name: record.employees.name,
+          employee_number: record.employees.employee_number,
+          total_days: new Set(),
+          working_days: new Set(),
+          total_hours: 0,
+          working_week_dates: new Set(),
+          hours_by_date: {},
+          fridays_worked: new Set(),
+          holidays_worked: new Set(),
+          off_days: new Set()
+        });
+      }
+      
+      const employee = employeeSummary.get(employeeId);
+      
       // Track date for filtering
       const recordDate = record.working_week_start || format(parseISO(record.timestamp), 'yyyy-MM-dd');
       
@@ -150,24 +201,16 @@ export const fetchApprovedHours = async (
         }
       }
       
-      if (!employeeSummary.has(employeeId)) {
-        employeeSummary.set(employeeId, {
-          id: employeeId,
-          name: record.employees.name,
-          employee_number: record.employees.employee_number,
-          total_days: new Set(),
-          total_hours: 0,
-          working_week_dates: new Set(),
-          hours_by_date: {}
-        });
-      }
-      
-      const employee = employeeSummary.get(employeeId);
-      
-      // Add date to set of days for OFF-DAY
+      // Add date to total_days and off_days sets
       if (recordDate) {
         employee.total_days.add(recordDate);
         employee.working_week_dates.add(recordDate);
+        employee.off_days.add(recordDate); // This is an OFF-DAY
+        
+        // Ensure OFF-DAY has 0 hours in hours_by_date
+        if (!employee.hours_by_date[recordDate]) {
+          employee.hours_by_date[recordDate] = 0;
+        }
       }
     });
     
@@ -184,15 +227,24 @@ export const fetchApprovedHours = async (
         if (doubleDays.includes(date)) {
           const dateHours = emp.hours_by_date[date] || 0;
           doubleTimeHours += dateHours;
+          
+          // Track holidays worked (double-time days that are not Fridays)
+          if (dateHours > 0 && !isFriday(parseISO(date))) {
+            emp.holidays_worked.add(date);
+          }
         }
       });
       
       return {
         ...emp,
         total_days: emp.total_days.size,
+        working_days: emp.working_days.size, // Only count non-zero, non-OFF-DAY days
         total_hours: parseFloat(emp.total_hours.toFixed(2)),
         double_time_hours: parseFloat(doubleTimeHours.toFixed(2)),
-        working_week_dates: Array.from(emp.working_week_dates)
+        working_week_dates: Array.from(emp.working_week_dates),
+        fridays_worked: emp.fridays_worked.size,
+        holidays_worked: emp.holidays_worked.size,
+        off_days: emp.off_days.size
       };
     });
     

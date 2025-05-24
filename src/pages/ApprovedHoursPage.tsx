@@ -53,6 +53,13 @@ const ApprovedHoursPage: React.FC = () => {
   
   // Selected report type
   const [reportType, setReportType] = useState<'summary' | 'detail'>('summary');
+  
+  // Track summary statistics for the report
+  const [summaryStats, setSummaryStats] = useState({
+    totalFridaysWorked: 0,
+    totalHolidaysWorked: 0,
+    totalOffDays: 0
+  });
 
   // Generate month options for the dropdown - for legacy month selector
   const monthOptions = useMemo(() => [
@@ -140,6 +147,9 @@ const ApprovedHoursPage: React.FC = () => {
         // Calculate total regular hours and total double-time hours
         let regularHours = 0;
         let doubleTimeHours = 0;
+        let totalFridaysWorked = 0;
+        let totalHolidaysWorked = 0;
+        let totalOffDays = 0;
         
         // Process each employee's data to calculate double-time hours
         // Only count selected employees or all if none selected
@@ -150,6 +160,11 @@ const ApprovedHoursPage: React.FC = () => {
         employeesToProcess.forEach(employee => {
           let employeeDoubleTime = 0;
           let employeeRegularTime = 0;
+          
+          // Track statistics
+          totalFridaysWorked += employee.fridays_worked || 0;
+          totalHolidaysWorked += employee.holidays_worked || 0;
+          totalOffDays += employee.off_days || 0;
           
           // If we have the working_week_start for each record, we can calculate more accurately
           if (employee.working_week_dates) {
@@ -175,6 +190,13 @@ const ApprovedHoursPage: React.FC = () => {
           
           // Attach double-time hours to employee record for display
           employee.double_time_hours = employeeDoubleTime;
+        });
+        
+        // Update summary statistics for the report
+        setSummaryStats({
+          totalFridaysWorked,
+          totalHolidaysWorked,
+          totalOffDays
         });
         
         setTotalHours(regularHours);
@@ -246,7 +268,8 @@ const ApprovedHoursPage: React.FC = () => {
         endDate
       },
       reportType,
-      doubleDays // Include double-time days for export calculations
+      doubleDays, // Include double-time days for export calculations
+      summaryStats // Include summary statistics
     };
     
     exportApprovedHoursToExcel(exportData);
@@ -284,6 +307,13 @@ const ApprovedHoursPage: React.FC = () => {
         setTotalEmployees(data?.length || 0);
         setDailyRecords([]);
         setExpandedEmployee(null);
+        
+        // Reset summary stats
+        setSummaryStats({
+          totalFridaysWorked: 0,
+          totalHolidaysWorked: 0,
+          totalOffDays: 0
+        });
       } else {
         toast.error(`Failed to delete records: ${message}`);
       }
@@ -413,7 +443,7 @@ const ApprovedHoursPage: React.FC = () => {
           {/* Card content */}
           <div className="p-6 space-y-6">
             {/* Summary stats */}
-            <div className="flex flex-wrap gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               <div className="flex items-center gap-2 px-3 py-2 bg-purple-50 rounded-md">
                 <Users className="w-5 h-5 text-purple-600" />
                 <div>
@@ -440,6 +470,31 @@ const ApprovedHoursPage: React.FC = () => {
                 <div>
                   <div className="text-xs text-green-600 font-medium">Total Hours</div>
                   <div className="text-lg font-bold text-green-900">{totalPayableHours.toFixed(2)}</div>
+                </div>
+              </div>
+            </div>
+            
+            {/* Additional summary stats */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="flex items-center gap-2 px-3 py-2 bg-indigo-50 rounded-md">
+                <Calendar className="w-5 h-5 text-indigo-600" />
+                <div>
+                  <div className="text-xs text-indigo-600 font-medium">Fridays Worked</div>
+                  <div className="text-lg font-bold text-indigo-900">{summaryStats.totalFridaysWorked}</div>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 px-3 py-2 bg-rose-50 rounded-md">
+                <Calendar2 className="w-5 h-5 text-rose-600" />
+                <div>
+                  <div className="text-xs text-rose-600 font-medium">Holidays Worked</div>
+                  <div className="text-lg font-bold text-rose-900">{summaryStats.totalHolidaysWorked}</div>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 px-3 py-2 bg-gray-100 rounded-md">
+                <Calendar className="w-5 h-5 text-gray-600" />
+                <div>
+                  <div className="text-xs text-gray-600 font-medium">OFF-Days</div>
+                  <div className="text-lg font-bold text-gray-900">{summaryStats.totalOffDays}</div>
                 </div>
               </div>
             </div>
@@ -590,6 +645,28 @@ const ApprovedHoursPage: React.FC = () => {
                     )}
                   </div>
                 </div>
+                
+                {/* Statistics Box */}
+                <div className="bg-indigo-50 p-4 rounded-md border border-indigo-100">
+                  <h3 className="text-sm font-medium text-indigo-700 flex items-center mb-2">
+                    <CheckSquare className="w-4 h-4 mr-2" />
+                    Statistics
+                  </h3>
+                  <div className="grid grid-cols-3 gap-2 text-xs">
+                    <div className="flex flex-col">
+                      <span className="text-indigo-500">Fridays</span>
+                      <span className="font-medium text-indigo-800">{summaryStats.totalFridaysWorked} days</span>
+                    </div>
+                    <div className="flex flex-col">
+                      <span className="text-indigo-500">Holidays</span>
+                      <span className="font-medium text-indigo-800">{summaryStats.totalHolidaysWorked} days</span>
+                    </div>
+                    <div className="flex flex-col">
+                      <span className="text-indigo-500">OFF-Days</span>
+                      <span className="font-medium text-indigo-800">{summaryStats.totalOffDays} days</span>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
             
@@ -611,7 +688,7 @@ const ApprovedHoursPage: React.FC = () => {
                 {/* Table Header */}
                 <div className="grid grid-cols-6 gap-2 bg-gray-50 p-4 text-sm font-medium text-gray-600">
                   <div className="col-span-2">Employee</div>
-                  <div>Total Days</div>
+                  <div>Working Days</div>
                   <div>Total Hours</div>
                   <div>Avg Hours/Day</div>
                   <div>Actions</div>
@@ -639,7 +716,12 @@ const ApprovedHoursPage: React.FC = () => {
                     {employees.map((employee) => (
                       <React.Fragment key={employee.id}>
                         <EmployeeHoursSummary 
-                          employee={employee} 
+                          employee={{
+                            ...employee,
+                            // Add working_days property that only counts non-zero, non-OFF-DAY days
+                            working_days: employee.working_days || 
+                              (employee.total_days - (employee.off_days || 0))
+                          }}
                           isExpanded={expandedEmployee === employee.id}
                           onExpand={() => handleEmployeeExpand(employee.id)}
                         />
