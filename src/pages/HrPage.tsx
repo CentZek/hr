@@ -36,7 +36,10 @@ function HrPage() {
     hasUploadedFile, setHasUploadedFile,
     currentFileName, setCurrentFileName,
     totalEmployees, setTotalEmployees,
-    totalDays, setTotalDays
+    totalDays, setTotalDays,
+    saveToSupabase, // Use the new Supabase functions
+    clearData, // Updated clear data function
+    isLoading: isContextLoading
   } = useAppContext();
   
   const [isUploading, setIsUploading] = useState(false);
@@ -156,6 +159,9 @@ function HrPage() {
       const stats = calculateStats(records);
       setTotalEmployees(stats.totalEmployees);
       setTotalDays(stats.totalDays);
+      
+      // Save to Supabase for persistence
+      await saveToSupabase(file.name, records);
       
       toast.dismiss(loadingToast);
       toast.success('File processed successfully. Review and approve hours before saving.');
@@ -324,14 +330,13 @@ function HrPage() {
 
   const handleReset = () => {
     if (confirm('Are you sure you want to reset all data? This cannot be undone.')) {
-      setEmployeeRecords([]);
-      setTotalEmployees(0);
-      setTotalDays(0);
-      setHasUploadedFile(false);
-      setCurrentFileName('');
-      setRecentManualEntry(null);
-      setSavingErrors([]);
-      toast.success('All data reset');
+      // Use the updated clearData function that deletes from Supabase
+      clearData()
+        .then(() => toast.success('All data reset'))
+        .catch((error) => {
+          console.error('Error resetting data:', error);
+          toast.error('Failed to reset data');
+        });
     }
   };
 
@@ -381,6 +386,12 @@ function HrPage() {
       const { totalEmployees: updatedEmpCount, totalDays: updatedDaysCount } = calculateStats(updatedRecords);
       setTotalEmployees(updatedEmpCount);
       setTotalDays(updatedDaysCount);
+      
+      // Update in Supabase
+      if (updatedRecords.length > 0) {
+        // Only update Supabase if there are records left
+        await saveToSupabase(currentFileName, updatedRecords);
+      }
 
       // FIXED: Refresh manually approved records from database instead of manually updating state
       await refreshData();
@@ -525,6 +536,9 @@ function HrPage() {
     // Set hasUploadedFile to true to ensure proper display
     setHasUploadedFile(true);
     
+    // Save to Supabase
+    await saveToSupabase(currentFileName || 'Employee Shift Approvals', updatedRecords);
+    
     // FIXED: Refresh manual records - Get fresh data from database instead of manually updating state
     await refreshData();
     
@@ -547,6 +561,9 @@ function HrPage() {
       setTotalEmployees(prev => isNewEmployee ? prev + 1 : prev);
       setTotalDays(prev => prev + 1);
       setHasUploadedFile(true);
+      
+      // Save to Supabase
+      await saveToSupabase(currentFileName || 'Manual Entries', updatedRecords);
       
       // Store the recent manual entry for highlighting
       const empNumber = String(recordData.employee.employee_number || recordData.employee.employeeNumber || "").trim();
@@ -575,6 +592,18 @@ function HrPage() {
       return () => clearTimeout(timer);
     }
   }, [recentManualEntry]);
+
+  // If still loading from context, show loading state
+  if (isContextLoading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="bg-white p-8 rounded-lg shadow-md text-center">
+          <div className="animate-spin w-12 h-12 border-4 border-purple-500 border-t-transparent rounded-full mx-auto mb-4"></div>
+          <p className="text-gray-700">Loading your data...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
