@@ -699,10 +699,8 @@ export const deleteAllTimeRecords = async (monthFilter: string = ''): Promise<{
   count: number;
 }> => {
   try {
-    let query = supabase.from('time_records').delete();
-    
-    // Apply month filter if provided
     if (monthFilter) {
+      // Delete records for specific month
       const [year, month] = monthFilter.split('-');
       const startDate = startOfMonth(new Date(parseInt(year), parseInt(month) - 1, 1));
       const endDate = endOfMonth(startDate);
@@ -731,25 +729,49 @@ export const deleteAllTimeRecords = async (monthFilter: string = ''): Promise<{
         count: count || 0
       };
     } else {
-      // Get count first
-      const { count, error: countError } = await supabase
-        .from('time_records')
+      // For the reset function - delete all processed excel data
+      // This will cascade delete to processed_employee_data and processed_daily_records
+
+      // First get a count of records to be deleted
+      const { count: fileCount, error: countError } = await supabase
+        .from('processed_excel_files')
         .select('*', { count: 'exact', head: true });
       
       if (countError) throw countError;
-      
-      // Then delete all
-      const { error } = await supabase
+
+      // Get count of time records
+      const { count: timeRecordsCount, error: timeCountError } = await supabase
         .from('time_records')
-        .delete()
-        .neq('id', '00000000-0000-0000-0000-000000000000'); // Dummy condition to delete all
+        .select('*', { count: 'exact', head: true });
+
+      if (timeCountError) throw timeCountError;
       
-      if (error) throw error;
+      // Delete from processed_excel_files - this should cascade to processed_employee_data and processed_daily_records
+      const { error: deleteFileError } = await supabase
+        .from('processed_excel_files')
+        .delete();
+      
+      if (deleteFileError) {
+        console.error('Error deleting from processed_excel_files:', deleteFileError);
+        throw deleteFileError;
+      }
+
+      // Delete from time_records 
+      const { error: deleteTimeError } = await supabase
+        .from('time_records')
+        .delete();
+
+      if (deleteTimeError) {
+        console.error('Error deleting from time_records:', deleteTimeError);
+        throw deleteTimeError;
+      }
+      
+      const totalCount = (fileCount || 0) + (timeRecordsCount || 0);
       
       return {
         success: true,
-        message: `Deleted all ${count} time records`,
-        count: count || 0
+        message: `Deleted all records from the database`,
+        count: totalCount
       };
     }
   } catch (error) {
