@@ -131,11 +131,12 @@ export const getActiveProcessedFile = async (): Promise<{
 // Get all employees for a specific file
 export const getProcessedEmployees = async (fileId: string): Promise<EmployeeRecord[]> => {
   try {
-    // Step 1: Fetch employee data
+    // Step 1: Fetch employee data - sorted by name alphabetically
     const { data: employeesData, error: employeesError } = await supabase
       .from('processed_employee_data')
       .select('id, employee_number, name, department, total_days')
-      .eq('file_id', fileId);
+      .eq('file_id', fileId)
+      .order('name', { ascending: true }); // Sort alphabetically by name
 
     if (employeesError) throw employeesError;
     if (!employeesData || employeesData.length === 0) return [];
@@ -184,9 +185,11 @@ export const getProcessedEmployees = async (fileId: string): Promise<EmployeeRec
       });
     }
 
+    // Return the already sorted employee records
     return employeeRecords;
   } catch (error) {
     console.error('Error fetching processed employees:', error);
+    // Even in the error case, make sure to return a sorted empty array
     return [];
   }
 };
