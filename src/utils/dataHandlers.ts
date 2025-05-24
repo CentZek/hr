@@ -3,12 +3,6 @@ import { calculatePayableHours, determineShiftType } from './shiftCalculations';
 import { parse, format, eachDayOfInterval, parseISO } from 'date-fns';
 import { parseShiftTimes } from './dateTimeHelper';
 
-// Helper to ensure we're working with a Date object
-const ensureDate = (dateInput: Date | string | null): Date | null => {
-  if (!dateInput) return null;
-  return dateInput instanceof Date ? dateInput : new Date(dateInput);
-};
-
 // Handle adding a manual entry to the employee records
 export const addManualEntryToRecords = (
   recordData: any,
@@ -29,7 +23,7 @@ export const addManualEntryToRecords = (
   let lastCheckOut: Date | null;
   
   if (checkInDate) {
-    firstCheckIn = ensureDate(checkInDate);
+    firstCheckIn = checkInDate;
   } else if (checkIn) {
     const { checkIn: parsedCheckIn } = parseShiftTimes(date, checkIn, checkOut || '00:00', shiftType);
     firstCheckIn = parsedCheckIn;
@@ -38,7 +32,7 @@ export const addManualEntryToRecords = (
   }
   
   if (checkOutDate) {
-    lastCheckOut = ensureDate(checkOutDate);
+    lastCheckOut = checkOutDate;
   } else if (checkOut) {
     const { checkOut: parsedCheckOut } = parseShiftTimes(date, checkIn || '00:00', checkOut, shiftType);
     lastCheckOut = parsedCheckOut;
