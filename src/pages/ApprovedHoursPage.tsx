@@ -164,7 +164,7 @@ const ApprovedHoursPage: React.FC = () => {
           let employeeDoubleTime = 0;
           let employeeRegularTime = 0;
           
-          // If we have the working_week_start for each record, we can calculate more accurately
+          // If we have the working_week_dates for each record, we can calculate more accurately
           if (employee.working_week_dates) {
             employee.working_week_dates.forEach((dateStr: string) => {
               const hours = employee.hours_by_date?.[dateStr] || 0;
