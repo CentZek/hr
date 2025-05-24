@@ -200,10 +200,7 @@ export const updateProcessedEmployeeData = async (
   employeeRecords: EmployeeRecord[]
 ): Promise<boolean> => {
   try {
-    // For simplicity, we'll just delete and re-insert all records for this file
-    // This avoids complex update logic for nested data
-    
-    // Step 1: Get all employee IDs for this file
+    // Get all employee IDs for this file
     const { data: employeesData, error: employeesError } = await supabase
       .from('processed_employee_data')
       .select('id, employee_number')
@@ -217,12 +214,12 @@ export const updateProcessedEmployeeData = async (
       employeesData.map(emp => [emp.employee_number, emp.id])
     );
 
-    // Step 2: Update each employee's daily records
+    // Update each employee's daily records
     for (const employee of employeeRecords) {
       const employeeId = employeeIdMap.get(employee.employeeNumber);
       if (!employeeId) continue;
 
-      // Delete existing daily records for this employee
+      // First delete existing daily records for this employee
       const { error: deleteError } = await supabase
         .from('processed_daily_records')
         .delete()
@@ -230,7 +227,7 @@ export const updateProcessedEmployeeData = async (
 
       if (deleteError) throw deleteError;
 
-      // Insert updated daily records
+      // Only then insert updated daily records
       const dailyRecordsToInsert = employee.days.map(day => ({
         employee_id: employeeId,
         date: day.date,
@@ -275,7 +272,7 @@ export const updateProcessedEmployeeData = async (
       if (updateError) throw updateError;
     }
 
-    // Step 3: Update file record with new totals
+    // Update file record with new totals
     const { error: updateFileError } = await supabase
       .from('processed_excel_files')
       .update({
@@ -297,7 +294,7 @@ export const updateProcessedEmployeeData = async (
 export const deleteProcessedExcelData = async (fileId?: string): Promise<boolean> => {
   try {
     if (fileId) {
-      // First fetch all employee records for this file to get their IDs
+      // STEP 1: First, fetch all employee records for this file to get their IDs
       const { data: employeesData, error: employeesError } = await supabase
         .from('processed_employee_data')
         .select('id')
@@ -305,36 +302,43 @@ export const deleteProcessedExcelData = async (fileId?: string): Promise<boolean
 
       if (employeesError) throw employeesError;
       
-      // Delete daily records for all employees in this file
+      // STEP 2: Delete all daily records for each employee (one by one to respect foreign keys)
       if (employeesData && employeesData.length > 0) {
-        const employeeIds = employeesData.map(emp => emp.id);
-        
-        // Delete in batches to avoid payload size limitations
-        for (const empId of employeeIds) {
+        for (const emp of employeesData) {
+          // Delete all daily records for this employee
           const { error: dailyRecordsError } = await supabase
             .from('processed_daily_records')
             .delete()
-            .eq('employee_id', empId);
+            .eq('employee_id', emp.id);
             
-          if (dailyRecordsError) throw dailyRecordsError;
+          if (dailyRecordsError) {
+            console.error(`Error deleting daily records for employee ${emp.id}:`, dailyRecordsError);
+            throw dailyRecordsError;
+          }
         }
       }
       
-      // Delete all employee records for this file
+      // STEP 3: After ALL daily records are deleted, delete employee records
       const { error: employeeDeleteError } = await supabase
         .from('processed_employee_data')
         .delete()
         .eq('file_id', fileId);
         
-      if (employeeDeleteError) throw employeeDeleteError;
+      if (employeeDeleteError) {
+        console.error(`Error deleting employee data for file ${fileId}:`, employeeDeleteError);
+        throw employeeDeleteError;
+      }
       
-      // Finally delete the file record itself
+      // STEP 4: Finally delete the file record itself
       const { error: fileDeleteError } = await supabase
         .from('processed_excel_files')
         .delete()
         .eq('id', fileId);
         
-      if (fileDeleteError) throw fileDeleteError;
+      if (fileDeleteError) {
+        console.error(`Error deleting file record ${fileId}:`, fileDeleteError);
+        throw fileDeleteError;
+      }
     } else {
       // If no specific fileId, get all file IDs first
       const { data: filesData, error: filesError } = await supabase
