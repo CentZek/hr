@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { format, subMonths, isSameDay, startOfMonth, endOfMonth, parseISO, isValid } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
-import { Clock, ArrowLeft, Download, Users, Calendar, Filter, Trash2, Home, Calendar as Calendar2, User, X, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Clock, ArrowLeft, Download, Users, Calendar, Filter, Trash2, Home, Calendar as Calendar2, User, X } from 'lucide-react';
 import toast, { Toaster } from 'react-hot-toast';
 import { fetchApprovedHours, fetchEmployeeDetails, deleteAllTimeRecords } from '../services/database';
 import { exportApprovedHoursToExcel } from '../utils/excelHandlers';
@@ -348,11 +348,18 @@ const ApprovedHoursPage: React.FC = () => {
       } else {
         try {
           const [year, month] = filterMonth.split('-');
-          const monthDate = new Date(parseInt(year), parseInt(month) - 1, 1);
-          if (isValid(monthDate)) {
-            start = safeFormat(startOfMonth(monthDate), 'yyyy-MM-dd');
-            end = safeFormat(endOfMonth(monthDate), 'yyyy-MM-dd');
+          if (year && month) {
+            const monthDate = new Date(parseInt(year), parseInt(month) - 1, 1);
+            if (isValid(monthDate)) {
+              start = safeFormat(startOfMonth(monthDate), 'yyyy-MM-dd');
+              end = safeFormat(endOfMonth(monthDate), 'yyyy-MM-dd');
+            } else {
+              start = safeFormat(startOfMonth(new Date()), 'yyyy-MM-dd');
+              end = safeFormat(endOfMonth(new Date()), 'yyyy-MM-dd');
+            }
           } else {
+            console.error('Invalid month format in filter');
+            // Use default range
             start = safeFormat(startOfMonth(new Date()), 'yyyy-MM-dd');
             end = safeFormat(endOfMonth(new Date()), 'yyyy-MM-dd');
           }
