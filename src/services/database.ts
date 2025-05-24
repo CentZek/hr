@@ -712,6 +712,9 @@ export const deleteAllTimeRecords = async (
     if (startDate && endDate) {
       // Filter by working_week_start if available, otherwise by timestamp
       query = query.or(`working_week_start.gte.${startDate},working_week_start.lte.${endDate},timestamp.gte.${startDate},timestamp.lte.${endDate}`);
+    } else {
+      // Add a default WHERE clause if no date filter is provided
+      query = query.gt('created_at', '1970-01-01');
     }
     
     // Apply employee filter if provided
@@ -726,6 +729,9 @@ export const deleteAllTimeRecords = async (
       
     if (startDate && endDate) {
       countQuery = countQuery.or(`working_week_start.gte.${startDate},working_week_start.lte.${endDate},timestamp.gte.${startDate},timestamp.lte.${endDate}`);
+    } else {
+      // Use the same WHERE clause for consistency
+      countQuery = countQuery.gt('created_at', '1970-01-01');
     }
     
     if (employeeIds && employeeIds.length > 0) {
@@ -819,21 +825,24 @@ export const resetAllDatabaseData = async (): Promise<{
     // Step 2: Delete all time_records first (no cascade)
     const { error: timeRecordsError } = await supabase
       .from('time_records')
-      .delete();
+      .delete()
+      .gt('created_at', '1970-01-01'); // Add WHERE clause to satisfy Supabase requirement
     
     if (timeRecordsError) throw timeRecordsError;
     
     // Step 3: Delete all employee_shifts
     const { error: shiftsError } = await supabase
       .from('employee_shifts')
-      .delete();
+      .delete()
+      .gt('created_at', '1970-01-01'); // Add WHERE clause to satisfy Supabase requirement
     
     if (shiftsError) throw shiftsError;
     
     // Step 4: Delete processed_excel_files (will cascade delete processed_employee_data and processed_daily_records)
     const { error: filesError } = await supabase
       .from('processed_excel_files')
-      .delete();
+      .delete()
+      .gt('uploaded_at', '1970-01-01'); // Add WHERE clause to satisfy Supabase requirement
     
     if (filesError) throw filesError;
     
