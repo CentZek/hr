@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { format, subMonths, isSameDay, startOfMonth, endOfMonth, parseISO, isValid } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
-import { Clock, ArrowLeft, Download, Users, Calendar, Filter, Trash2, Home, Calendar as Calendar2, User, X } from 'lucide-react';
+import { Clock, ArrowLeft, Download, Users, Calendar, Filter, Trash2, Home, Calendar as Calendar2, User } from 'lucide-react';
 import toast, { Toaster } from 'react-hot-toast';
 import { fetchApprovedHours, fetchEmployeeDetails, deleteAllTimeRecords } from '../services/database';
 import { exportApprovedHoursToExcel } from '../utils/excelHandlers';
@@ -179,10 +179,6 @@ const ApprovedHoursPage: React.FC = () => {
           } else {
             // If detailed data is not available, just add to regular hours
             regularHours += employee.total_hours || 0;
-            
-            // Estimate that 20% of hours might be double-time (just a placeholder calculation)
-            const estimatedDoubleTime = (employee.total_hours || 0) * 0.2;
-            doubleTimeHours += estimatedDoubleTime;
           }
           
           // Attach double-time hours to employee record for display
@@ -356,11 +352,6 @@ const ApprovedHoursPage: React.FC = () => {
               start = safeFormat(startOfMonth(new Date()), 'yyyy-MM-dd');
               end = safeFormat(endOfMonth(new Date()), 'yyyy-MM-dd');
             }
-          } else {
-            console.error('Invalid month format in filter');
-            // Use default range
-            start = safeFormat(startOfMonth(new Date()), 'yyyy-MM-dd');
-            end = safeFormat(endOfMonth(new Date()), 'yyyy-MM-dd');
           }
         } catch (error) {
           console.error('Error parsing filter month:', error);

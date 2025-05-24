@@ -155,23 +155,23 @@ export const getDoubleTimeDays = async (startDate: string, endDate: string): Pro
 export const calculateDoubleTimeHours = (hours: number, dateStr: string, cachedDoubleDays?: string[]): number => {
   // Use cached double days if provided
   if (cachedDoubleDays?.includes(dateStr)) {
-    return hours * 2;
+    return hours;
   }
   
   // Otherwise, check if it's a Friday
   if (!dateStr || !isValid(parseISO(dateStr))) {
-    return hours; // If invalid date, return original hours
+    return 0; // If invalid date, return 0
   }
   
   const date = parseISO(dateStr);
   if (isFriday(date)) {
-    return hours * 2;
+    return hours;
   }
   
   // If no cached days provided, do a direct check in doubleTimeDaysCache
   if (doubleTimeDaysCache[dateStr]) {
-    return hours * 2;
+    return hours;
   }
   
-  return hours; // Return original hours if not double-time
+  return 0; // Return 0 if not double-time
 };
