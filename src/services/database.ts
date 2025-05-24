@@ -164,7 +164,7 @@ export const fetchApprovedHours = async (dateFilter: string = ''): Promise<{
               const endDate = format(endOfMonth(monthDate), 'yyyy-MM-dd');
               
               offDayQuery = offDayQuery
-                .or(`working_week_start.gte.${startDate},working_week_start.lte.${endStr},timestamp.gte.${startDate},timestamp.lte.${endDate}`);
+                .or(`working_week_start.gte.${startDate},working_week_start.lte.${endDate},timestamp.gte.${startDate},timestamp.lte.${endDate}`);
             }
           }
         } catch (err) {
