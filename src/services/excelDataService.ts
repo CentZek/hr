@@ -296,10 +296,6 @@ export const updateProcessedEmployeeData = async (
 // Delete processed Excel data
 export const deleteProcessedExcelData = async (fileId?: string): Promise<boolean> => {
   try {
-    // First make sure we have the proper RLS policy for deletion
-    // by making a direct RPC call that bypasses RLS
-    await supabase.rpc('ensure_delete_access');
-    
     if (fileId) {
       // Delete specific file and its associated data (cascade will handle related records)
       const { error } = await supabase
@@ -307,10 +303,7 @@ export const deleteProcessedExcelData = async (fileId?: string): Promise<boolean
         .delete()
         .eq('id', fileId);
 
-      if (error) {
-        console.error('Error deleting file data:', error);
-        throw error;
-      }
+      if (error) throw error;
     } else {
       // Delete all files and their associated data
       const { error } = await supabase
@@ -318,26 +311,7 @@ export const deleteProcessedExcelData = async (fileId?: string): Promise<boolean
         .delete()
         .neq('id', '00000000-0000-0000-0000-000000000000'); // Dummy condition to delete all
 
-      if (error) {
-        console.error('Error deleting all file data:', error);
-        throw error;
-      }
-    }
-
-    // Also clear any manual time records if needed
-    try {
-      const { error: timeRecordsError } = await supabase
-        .from('time_records')
-        .delete()
-        .eq('is_manual_entry', true);
-        
-      if (timeRecordsError) {
-        console.warn('Warning: Could not delete manual time records:', timeRecordsError);
-        // Don't throw here, just log warning
-      }
-    } catch (err) {
-      console.warn('Error during manual records cleanup:', err);
-      // Don't throw, this is a secondary operation
+      if (error) throw error;
     }
 
     return true;
