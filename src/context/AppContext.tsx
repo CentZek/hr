@@ -175,7 +175,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     try {
       // Clear data from Supabase if we have an active file
       if (activeFileId) {
-        await deleteProcessedExcelData(activeFileId);
+        const deleted = await deleteProcessedExcelData(activeFileId);
+        if (!deleted) {
+          console.error('Failed to delete data from Supabase');
+          throw new Error('Failed to delete data from database');
+        }
       }
       
       // Reset all state variables
@@ -191,6 +195,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       localStorage.removeItem('currentFileName');
     } catch (error) {
       console.error('Error clearing data:', error);
+      throw error; // Re-throw to allow handling in the component
     }
   };
 
