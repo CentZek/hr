@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { format, subMonths, isSameDay, startOfMonth, endOfMonth, parseISO, isValid, addMonths, subDays, startOfYear, endOfYear } from 'date-fns';
+import { format, subMonths, isSameDay, startOfMonth, endOfMonth, parseISO, isValid } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
 import { Clock, ArrowLeft, Download, Users, Calendar, Filter, Trash2, Home, Calendar as Calendar2, User, X, ChevronLeft, ChevronRight } from 'lucide-react';
 import toast, { Toaster } from 'react-hot-toast';
@@ -56,15 +56,9 @@ const ApprovedHoursPage: React.FC = () => {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
-  // Generate predefined date range options for the dropdown
-  const dateRangeOptions = [
+  // Generate month options for the dropdown
+  const monthOptions = [
     { value: "all", label: "All Time" },
-    { value: "current-month", label: "Current Month" },
-    { value: "last-month", label: "Last Month" },
-    { value: "last-3-months", label: "Last 3 Months" },
-    { value: "last-6-months", label: "Last 6 Months" },
-    { value: "year-to-date", label: "Year to Date" },
-    { value: "last-year", label: "Last Year" },
     ...Array.from({ length: 12 }).map((_, i) => {
       const date = subMonths(new Date(), i);
       return {
@@ -78,45 +72,14 @@ const ApprovedHoursPage: React.FC = () => {
   useEffect(() => {
     const loadDoubleDays = async () => {
       try {
-        let start = '', end = '';
+        let start, end;
         
         if (filterMonth === "all") {
-          // Use a large date range for "all time" (past 2 years to next year)
-          const startDate = subMonths(new Date(), 24); // 2 years back
-          const endDate = addMonths(new Date(), 12); // 1 year forward
-          
-          if (isValid(startDate) && isValid(endDate)) {
-            start = safeFormat(startDate, 'yyyy-MM-dd');
-            end = safeFormat(endDate, 'yyyy-MM-dd');
-          } else {
-            // Fallback to a reasonable default range
-            start = '2023-01-01';
-            end = '2025-12-31';
-          }
-        } else if (filterMonth === "current-month") {
-          const today = new Date();
-          start = safeFormat(startOfMonth(today), 'yyyy-MM-dd');
-          end = safeFormat(endOfMonth(today), 'yyyy-MM-dd');
-        } else if (filterMonth === "last-month") {
-          const lastMonth = subMonths(new Date(), 1);
-          start = safeFormat(startOfMonth(lastMonth), 'yyyy-MM-dd');
-          end = safeFormat(endOfMonth(lastMonth), 'yyyy-MM-dd');
-        } else if (filterMonth === "last-3-months") {
-          start = safeFormat(subMonths(new Date(), 3), 'yyyy-MM-dd');
-          end = safeFormat(new Date(), 'yyyy-MM-dd');
-        } else if (filterMonth === "last-6-months") {
-          start = safeFormat(subMonths(new Date(), 6), 'yyyy-MM-dd');
-          end = safeFormat(new Date(), 'yyyy-MM-dd');
-        } else if (filterMonth === "year-to-date") {
-          start = safeFormat(startOfYear(new Date()), 'yyyy-MM-dd');
-          end = safeFormat(new Date(), 'yyyy-MM-dd');
-        } else if (filterMonth === "last-year") {
-          const lastYear = new Date();
-          lastYear.setFullYear(lastYear.getFullYear() - 1);
-          start = safeFormat(startOfYear(lastYear), 'yyyy-MM-dd');
-          end = safeFormat(endOfYear(lastYear), 'yyyy-MM-dd');
+          // Use a large date range for "all time" (past year to future year)
+          start = safeFormat(subMonths(new Date(), 12), 'yyyy-MM-dd');
+          end = safeFormat(new Date(new Date().getFullYear() + 1, 11, 31), 'yyyy-MM-dd');
         } else {
-          // Month filter: YYYY-MM
+          // Use the selected month
           try {
             const [year, month] = filterMonth.split('-');
             if (year && month) {
@@ -126,56 +89,33 @@ const ApprovedHoursPage: React.FC = () => {
                 end = safeFormat(endOfMonth(monthDate), 'yyyy-MM-dd');
               } else {
                 // Use current month as fallback
-                const today = new Date();
-                start = safeFormat(startOfMonth(today), 'yyyy-MM-dd');
-                end = safeFormat(endOfMonth(today), 'yyyy-MM-dd');
+                start = safeFormat(startOfMonth(new Date()), 'yyyy-MM-dd');
+                end = safeFormat(endOfMonth(new Date()), 'yyyy-MM-dd');
               }
             } else {
               // Use current month as fallback
-              const today = new Date();
-              start = safeFormat(startOfMonth(today), 'yyyy-MM-dd');
-              end = safeFormat(endOfMonth(today), 'yyyy-MM-dd');
+              start = safeFormat(startOfMonth(new Date()), 'yyyy-MM-dd');
+              end = safeFormat(endOfMonth(new Date()), 'yyyy-MM-dd');
             }
           } catch (error) {
             console.error('Error parsing filter month:', error);
             // Use current month as fallback
-            const today = new Date();
-            start = safeFormat(startOfMonth(today), 'yyyy-MM-dd');
-            end = safeFormat(endOfMonth(today), 'yyyy-MM-dd');
+            start = safeFormat(startOfMonth(new Date()), 'yyyy-MM-dd');
+            end = safeFormat(endOfMonth(new Date()), 'yyyy-MM-dd');
           }
         }
         
-        // Validate dates before proceeding
-        if (!start || !end || !isValid(parseISO(start)) || !isValid(parseISO(end))) {
-          console.warn('Invalid date range detected, using fallback dates');
-          const today = new Date();
-          start = safeFormat(startOfMonth(today), 'yyyy-MM-dd');
-          end = safeFormat(endOfMonth(today), 'yyyy-MM-dd');
-        }
-        
-        // Double check that we have valid dates
-        const startDate = parseISO(start);
-        const endDate = parseISO(end);
-        
-        if (isValid(startDate) && isValid(endDate)) {
-          // Ensure start date is before end date
-          if (startDate > endDate) {
-            console.warn('Start date is after end date, swapping dates');
-            const temp = start;
-            start = end;
-            end = temp;
-          }
-          
+        // Only proceed if we have valid dates
+        if (start && end) {
           const days = await getDoubleTimeDays(start, end);
           setDoubleDays(days);
         } else {
-          console.error('Invalid date range detected after validation, setting empty double days array');
+          console.error('Invalid date range for double days query');
           setDoubleDays([]);
         }
       } catch (error) {
         console.error('Error loading double-time days:', error);
         setDoubleDays([]);
-        toast.error('Failed to load double-time days');
       }
     };
     
@@ -189,23 +129,7 @@ const ApprovedHoursPage: React.FC = () => {
       try {
         let dateFilter = "";
         
-        if (filterMonth === "current-month") {
-          const today = new Date();
-          dateFilter = `${safeFormat(startOfMonth(today), 'yyyy-MM-dd')}|${safeFormat(endOfMonth(today), 'yyyy-MM-dd')}`;
-        } else if (filterMonth === "last-month") {
-          const lastMonth = subMonths(new Date(), 1);
-          dateFilter = `${safeFormat(startOfMonth(lastMonth), 'yyyy-MM-dd')}|${safeFormat(endOfMonth(lastMonth), 'yyyy-MM-dd')}`;
-        } else if (filterMonth === "last-3-months") {
-          dateFilter = `${safeFormat(subMonths(new Date(), 3), 'yyyy-MM-dd')}|${safeFormat(new Date(), 'yyyy-MM-dd')}`;
-        } else if (filterMonth === "last-6-months") {
-          dateFilter = `${safeFormat(subMonths(new Date(), 6), 'yyyy-MM-dd')}|${safeFormat(new Date(), 'yyyy-MM-dd')}`;
-        } else if (filterMonth === "year-to-date") {
-          dateFilter = `${safeFormat(startOfYear(new Date()), 'yyyy-MM-dd')}|${safeFormat(new Date(), 'yyyy-MM-dd')}`;
-        } else if (filterMonth === "last-year") {
-          const lastYear = new Date();
-          lastYear.setFullYear(lastYear.getFullYear() - 1);
-          dateFilter = `${safeFormat(startOfYear(lastYear), 'yyyy-MM-dd')}|${safeFormat(endOfYear(lastYear), 'yyyy-MM-dd')}`;
-        } else if (filterMonth !== "all") {
+        if (filterMonth !== "all") {
           dateFilter = filterMonth;
         }
         
@@ -240,7 +164,7 @@ const ApprovedHoursPage: React.FC = () => {
           let employeeDoubleTime = 0;
           let employeeRegularTime = 0;
           
-          // If we have the working_week_dates for each record, we can calculate more accurately
+          // If we have the working_week_start for each record, we can calculate more accurately
           if (employee.working_week_dates) {
             employee.working_week_dates.forEach((dateStr: string) => {
               const hours = employee.hours_by_date?.[dateStr] || 0;
@@ -296,23 +220,7 @@ const ApprovedHoursPage: React.FC = () => {
       // Fetch detailed daily breakdown for this employee
       let dateFilter = "";
       
-      if (filterMonth === "current-month") {
-        const today = new Date();
-        dateFilter = `${safeFormat(startOfMonth(today), 'yyyy-MM-dd')}|${safeFormat(endOfMonth(today), 'yyyy-MM-dd')}`;
-      } else if (filterMonth === "last-month") {
-        const lastMonth = subMonths(new Date(), 1);
-        dateFilter = `${safeFormat(startOfMonth(lastMonth), 'yyyy-MM-dd')}|${safeFormat(endOfMonth(lastMonth), 'yyyy-MM-dd')}`;
-      } else if (filterMonth === "last-3-months") {
-        dateFilter = `${safeFormat(subMonths(new Date(), 3), 'yyyy-MM-dd')}|${safeFormat(new Date(), 'yyyy-MM-dd')}`;
-      } else if (filterMonth === "last-6-months") {
-        dateFilter = `${safeFormat(subMonths(new Date(), 6), 'yyyy-MM-dd')}|${safeFormat(new Date(), 'yyyy-MM-dd')}`;
-      } else if (filterMonth === "year-to-date") {
-        dateFilter = `${safeFormat(startOfYear(new Date()), 'yyyy-MM-dd')}|${safeFormat(new Date(), 'yyyy-MM-dd')}`;
-      } else if (filterMonth === "last-year") {
-        const lastYear = new Date();
-        lastYear.setFullYear(lastYear.getFullYear() - 1);
-        dateFilter = `${safeFormat(startOfYear(lastYear), 'yyyy-MM-dd')}|${safeFormat(endOfYear(lastYear), 'yyyy-MM-dd')}`;
-      } else if (filterMonth !== "all") {
+      if (filterMonth !== "all") {
         dateFilter = filterMonth;
       }
       
@@ -344,12 +252,8 @@ const ApprovedHoursPage: React.FC = () => {
     setIsDeleting(true);
     let loadingMessage = 'Deleting time records...';
     
-    if (filterMonth === "current-month") {
-      loadingMessage = `Deleting time records for current month...`;
-    } else if (filterMonth === "last-month") {
-      loadingMessage = `Deleting time records for last month...`;
-    } else if (filterMonth !== "all") {
-      loadingMessage = `Deleting time records for ${dateRangeOptions.find(m => m.value === filterMonth)?.label || 'selected period'}...`;
+    if (filterMonth !== "all") {
+      loadingMessage = `Deleting time records for ${monthOptions.find(m => m.value === filterMonth)?.label || 'selected month'}...`;
     }
     
     const loadingToast = toast.loading(loadingMessage);
@@ -358,23 +262,7 @@ const ApprovedHoursPage: React.FC = () => {
       // Prepare date filter
       let dateFilter = "";
       
-      if (filterMonth === "current-month") {
-        const today = new Date();
-        dateFilter = `${safeFormat(startOfMonth(today), 'yyyy-MM-dd')}|${safeFormat(endOfMonth(today), 'yyyy-MM-dd')}`;
-      } else if (filterMonth === "last-month") {
-        const lastMonth = subMonths(new Date(), 1);
-        dateFilter = `${safeFormat(startOfMonth(lastMonth), 'yyyy-MM-dd')}|${safeFormat(endOfMonth(lastMonth), 'yyyy-MM-dd')}`;
-      } else if (filterMonth === "last-3-months") {
-        dateFilter = `${safeFormat(subMonths(new Date(), 3), 'yyyy-MM-dd')}|${safeFormat(new Date(), 'yyyy-MM-dd')}`;
-      } else if (filterMonth === "last-6-months") {
-        dateFilter = `${safeFormat(subMonths(new Date(), 6), 'yyyy-MM-dd')}|${safeFormat(new Date(), 'yyyy-MM-dd')}`;
-      } else if (filterMonth === "year-to-date") {
-        dateFilter = `${safeFormat(startOfYear(new Date()), 'yyyy-MM-dd')}|${safeFormat(new Date(), 'yyyy-MM-dd')}`;
-      } else if (filterMonth === "last-year") {
-        const lastYear = new Date();
-        lastYear.setFullYear(lastYear.getFullYear() - 1);
-        dateFilter = `${safeFormat(startOfYear(lastYear), 'yyyy-MM-dd')}|${safeFormat(endOfYear(lastYear), 'yyyy-MM-dd')}`;
-      } else if (filterMonth !== "all") {
+      if (filterMonth !== "all") {
         dateFilter = filterMonth;
       }
       
@@ -393,12 +281,8 @@ const ApprovedHoursPage: React.FC = () => {
         } else {
           let successMessage = `Successfully deleted ${count} time records`;
           
-          if (filterMonth === "current-month") {
-            successMessage += ` for current month`;
-          } else if (filterMonth === "last-month") {
-            successMessage += ` for last month`;
-          } else if (filterMonth !== "all") {
-            const monthLabel = dateRangeOptions.find(m => m.value === filterMonth)?.label || filterMonth;
+          if (filterMonth !== "all") {
+            const monthLabel = monthOptions.find(m => m.value === filterMonth)?.label || filterMonth;
             successMessage += ` for ${monthLabel}`;
           }
           
@@ -461,28 +345,6 @@ const ApprovedHoursPage: React.FC = () => {
       if (filterMonth === "all") {
         start = safeFormat(subMonths(new Date(), 12), 'yyyy-MM-dd');
         end = safeFormat(new Date(new Date().getFullYear() + 1, 11, 31), 'yyyy-MM-dd');
-      } else if (filterMonth === "current-month") {
-        const today = new Date();
-        start = safeFormat(startOfMonth(today), 'yyyy-MM-dd');
-        end = safeFormat(endOfMonth(today), 'yyyy-MM-dd');
-      } else if (filterMonth === "last-month") {
-        const lastMonth = subMonths(new Date(), 1);
-        start = safeFormat(startOfMonth(lastMonth), 'yyyy-MM-dd');
-        end = safeFormat(endOfMonth(lastMonth), 'yyyy-MM-dd');
-      } else if (filterMonth === "last-3-months") {
-        start = safeFormat(subMonths(new Date(), 3), 'yyyy-MM-dd');
-        end = safeFormat(new Date(), 'yyyy-MM-dd');
-      } else if (filterMonth === "last-6-months") {
-        start = safeFormat(subMonths(new Date(), 6), 'yyyy-MM-dd');
-        end = safeFormat(new Date(), 'yyyy-MM-dd');
-      } else if (filterMonth === "year-to-date") {
-        start = safeFormat(startOfYear(new Date()), 'yyyy-MM-dd');
-        end = safeFormat(new Date(), 'yyyy-MM-dd');
-      } else if (filterMonth === "last-year") {
-        const lastYear = new Date();
-        lastYear.setFullYear(lastYear.getFullYear() - 1);
-        start = safeFormat(startOfYear(lastYear), 'yyyy-MM-dd');
-        end = safeFormat(endOfYear(lastYear), 'yyyy-MM-dd');
       } else {
         try {
           const [year, month] = filterMonth.split('-');
@@ -502,7 +364,7 @@ const ApprovedHoursPage: React.FC = () => {
       }
       
       // Only proceed if we have valid dates
-      if (start && end && isValid(parseISO(start)) && isValid(parseISO(end))) {
+      if (start && end) {
         const days = await getDoubleTimeDays(start, end);
         setDoubleDays(days);
         
@@ -511,23 +373,7 @@ const ApprovedHoursPage: React.FC = () => {
           setDailyRecordsLoading(true);
           let dateFilter = "";
           
-          if (filterMonth === "current-month") {
-            const today = new Date();
-            dateFilter = `${safeFormat(startOfMonth(today), 'yyyy-MM-dd')}|${safeFormat(endOfMonth(today), 'yyyy-MM-dd')}`;
-          } else if (filterMonth === "last-month") {
-            const lastMonth = subMonths(new Date(), 1);
-            dateFilter = `${safeFormat(startOfMonth(lastMonth), 'yyyy-MM-dd')}|${safeFormat(endOfMonth(lastMonth), 'yyyy-MM-dd')}`;
-          } else if (filterMonth === "last-3-months") {
-            dateFilter = `${safeFormat(subMonths(new Date(), 3), 'yyyy-MM-dd')}|${safeFormat(new Date(), 'yyyy-MM-dd')}`;
-          } else if (filterMonth === "last-6-months") {
-            dateFilter = `${safeFormat(subMonths(new Date(), 6), 'yyyy-MM-dd')}|${safeFormat(new Date(), 'yyyy-MM-dd')}`;
-          } else if (filterMonth === "year-to-date") {
-            dateFilter = `${safeFormat(startOfYear(new Date()), 'yyyy-MM-dd')}|${safeFormat(new Date(), 'yyyy-MM-dd')}`;
-          } else if (filterMonth === "last-year") {
-            const lastYear = new Date();
-            lastYear.setFullYear(lastYear.getFullYear() - 1);
-            dateFilter = `${safeFormat(startOfYear(lastYear), 'yyyy-MM-dd')}|${safeFormat(endOfYear(lastYear), 'yyyy-MM-dd')}`;
-          } else if (filterMonth !== "all") {
+          if (filterMonth !== "all") {
             dateFilter = filterMonth;
           }
           
@@ -540,10 +386,6 @@ const ApprovedHoursPage: React.FC = () => {
         }
         
         toast.success('Double-time days updated successfully');
-      } else {
-        console.warn('Invalid date range detected, skipping double days refresh');
-        setDoubleDays([]);
-        toast.error('Could not update double-time days due to invalid date range');
       }
     } catch (error) {
       console.error('Error refreshing data after calendar update:', error);
@@ -604,13 +446,6 @@ const ApprovedHoursPage: React.FC = () => {
     setSelectedEmployees([]);
     setExpandedEmployee(null);
     setDailyRecords([]);
-  };
-
-  // Function to get a user-friendly label for the current date filter
-  const getDateFilterLabel = () => {
-    const option = dateRangeOptions.find(opt => opt.value === filterMonth);
-    if (option) return option.label;
-    return filterMonth;
   };
 
   return (
@@ -693,10 +528,12 @@ const ApprovedHoursPage: React.FC = () => {
                   <div className="relative">
                     <select
                       value={filterMonth}
-                      onChange={(e) => setFilterMonth(e.target.value)}
+                      onChange={(e) => {
+                        setFilterMonth(e.target.value);
+                      }}
                       className="border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
                     >
-                      {dateRangeOptions.map((option) => (
+                      {monthOptions.map((option) => (
                         <option key={option.value} value={option.value}>
                           {option.label}
                         </option>
@@ -754,27 +591,6 @@ const ApprovedHoursPage: React.FC = () => {
                   <Trash2 className="w-4 h-4" />
                   Delete Records
                 </button>
-              </div>
-            </div>
-            
-            {/* Current filter indicator */}
-            <div className="bg-gray-50 p-3 rounded-md">
-              <div className="flex items-center text-sm text-gray-600">
-                <Filter className="w-4 h-4 mr-2" />
-                <span className="font-medium">Current Filter:</span>
-                <span className="ml-2 bg-purple-100 text-purple-800 px-2 py-0.5 rounded-full">
-                  {getDateFilterLabel()}
-                </span>
-                {selectedEmployees.length > 0 && (
-                  <span className="ml-2 bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full">
-                    {selectedEmployees.length} employee{selectedEmployees.length !== 1 ? 's' : ''} selected
-                  </span>
-                )}
-                {filterEmployee !== 'all' && (
-                  <span className="ml-2 bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full">
-                    {allEmployees.find(e => e.id === filterEmployee)?.name || 'Employee'}
-                  </span>
-                )}
               </div>
             </div>
             
@@ -919,18 +735,18 @@ const ApprovedHoursPage: React.FC = () => {
             ? `Delete Records for ${selectedEmployees.length} Selected Employee${selectedEmployees.length !== 1 ? 's' : ''}`
             : filterMonth === "all" 
               ? "Delete All Time Records" 
-              : `Delete Records for ${dateRangeOptions.find(m => m.value === filterMonth)?.label || 'Selected Period'}`
+              : `Delete Records for ${monthOptions.find(m => m.value === filterMonth)?.label}`
         }
         message={
           selectedEmployees.length > 0 
             ? `You are about to delete all time records for ${selectedEmployees.length} selected employee${selectedEmployees.length !== 1 ? 's' : ''}${
                 filterMonth !== "all" 
-                  ? ` for ${dateRangeOptions.find(m => m.value === filterMonth)?.label || 'the selected period'}` 
+                  ? ` for ${monthOptions.find(m => m.value === filterMonth)?.label}` 
                   : ''
               }. This action cannot be undone.`
             : filterMonth === "all"
               ? "You are about to delete ALL time records for ALL employees from the database. This will reset the entire system and cannot be undone."
-              : `You are about to delete all time records for ${dateRangeOptions.find(m => m.value === filterMonth)?.label || 'the selected period'}. This action cannot be undone.`
+              : `You are about to delete all time records for ${monthOptions.find(m => m.value === filterMonth)?.label}. This action cannot be undone.`
         }
         isDeleting={isDeleting}
         deleteButtonText={
@@ -938,7 +754,7 @@ const ApprovedHoursPage: React.FC = () => {
             ? `Delete Records for ${selectedEmployees.length} Employee${selectedEmployees.length !== 1 ? 's' : ''}`
             : filterMonth === "all" 
               ? "Delete All Records" 
-              : "Delete Selected Records"
+              : "Delete Month Records"
         }
         scope={filterMonth === "all" ? "all" : "filtered"}
       />
