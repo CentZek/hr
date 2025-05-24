@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { format, subMonths, isSameDay, startOfMonth, endOfMonth, parseISO, isWithinInterval } from 'date-fns';
+import { format, subMonths, isSameDay, startOfMonth, endOfMonth, parseISO, isWithinInterval, isValid } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
 import { Clock, ArrowLeft, Download, Users, Calendar, Filter, Trash2, Home, Calendar as Calendar2, User, X, ChevronLeft, ChevronRight } from 'lucide-react';
 import toast, { Toaster } from 'react-hot-toast';
@@ -13,6 +13,26 @@ import NavigationTabs from '../components/NavigationTabs';
 import HolidayCalendar from '../components/HolidayCalendar';
 import EmployeeFilter from '../components/ApprovedHours/EmployeeFilter';
 import EmployeeDetailCard from '../components/ApprovedHours/EmployeeDetailCard';
+
+// Safely format a date - handles invalid dates
+const safeFormat = (date: Date | string | null | undefined, formatStr: string, defaultValue = ''): string => {
+  if (!date) return defaultValue;
+  
+  try {
+    let dateObj: Date;
+    if (typeof date === 'string') {
+      dateObj = parseISO(date);
+    } else {
+      dateObj = date;
+    }
+    
+    if (!isValid(dateObj)) return defaultValue;
+    return format(dateObj, formatStr);
+  } catch (error) {
+    console.error('Error formatting date:', error);
+    return defaultValue;
+  }
+};
 
 const ApprovedHoursPage: React.FC = () => {
   const navigate = useNavigate();
@@ -32,8 +52,8 @@ const ApprovedHoursPage: React.FC = () => {
   const [doubleDays, setDoubleDays] = useState<string[]>([]);
   const [showCalendar, setShowCalendar] = useState(false);
   const [showDateRangePicker, setShowDateRangePicker] = useState(false);
-  const [startDate, setStartDate] = useState<string>(format(subMonths(new Date(), 1), 'yyyy-MM-dd'));
-  const [endDate, setEndDate] = useState<string>(format(new Date(), 'yyyy-MM-dd'));
+  const [startDate, setStartDate] = useState<string>(safeFormat(subMonths(new Date(), 1), 'yyyy-MM-dd'));
+  const [endDate, setEndDate] = useState<string>(safeFormat(new Date(), 'yyyy-MM-dd'));
   const [currentMonth, setCurrentMonth] = useState<Date>(new Date());
   
   // Delete confirmation state
@@ -47,8 +67,8 @@ const ApprovedHoursPage: React.FC = () => {
     ...Array.from({ length: 12 }).map((_, i) => {
       const date = subMonths(new Date(), i);
       return {
-        value: format(date, 'yyyy-MM'),
-        label: format(date, 'MMMM yyyy')
+        value: safeFormat(date, 'yyyy-MM'),
+        label: safeFormat(date, 'MMMM yyyy')
       };
     })
   ];
@@ -61,18 +81,31 @@ const ApprovedHoursPage: React.FC = () => {
         
         if (filterMonth === "all") {
           // Use a large date range for "all time" (past year to future year)
-          start = format(subMonths(new Date(), 12), 'yyyy-MM-dd');
-          end = format(new Date(new Date().getFullYear() + 1, 11, 31), 'yyyy-MM-dd');
+          start = safeFormat(subMonths(new Date(), 12), 'yyyy-MM-dd');
+          end = safeFormat(new Date(new Date().getFullYear() + 1, 11, 31), 'yyyy-MM-dd');
         } else if (filterMonth === "custom") {
           // Use the selected date range
           start = startDate;
           end = endDate;
         } else {
           // Use the selected month
-          const [year, month] = filterMonth.split('-');
-          const monthDate = new Date(parseInt(year), parseInt(month) - 1, 1);
-          start = format(startOfMonth(monthDate), 'yyyy-MM-dd');
-          end = format(endOfMonth(monthDate), 'yyyy-MM-dd');
+          try {
+            const [year, month] = filterMonth.split('-');
+            const monthDate = new Date(parseInt(year), parseInt(month) - 1, 1);
+            if (isValid(monthDate)) {
+              start = safeFormat(startOfMonth(monthDate), 'yyyy-MM-dd');
+              end = safeFormat(endOfMonth(monthDate), 'yyyy-MM-dd');
+            } else {
+              // Use current month as fallback
+              start = safeFormat(startOfMonth(new Date()), 'yyyy-MM-dd');
+              end = safeFormat(endOfMonth(new Date()), 'yyyy-MM-dd');
+            }
+          } catch (error) {
+            console.error('Error parsing filter month:', error);
+            // Use current month as fallback
+            start = safeFormat(startOfMonth(new Date()), 'yyyy-MM-dd');
+            end = safeFormat(endOfMonth(new Date()), 'yyyy-MM-dd');
+          }
         }
         
         const days = await getDoubleTimeDays(start, end);
@@ -221,9 +254,9 @@ const ApprovedHoursPage: React.FC = () => {
     let loadingMessage = 'Deleting time records...';
     
     if (filterMonth === "custom") {
-      loadingMessage = `Deleting time records from ${format(parseISO(startDate), 'MMM d, yyyy')} to ${format(parseISO(endDate), 'MMM d, yyyy')}...`;
+      loadingMessage = `Deleting time records from ${startDate && parseISO(startDate) && isValid(parseISO(startDate)) ? safeFormat(parseISO(startDate), 'MMM d, yyyy') : 'start date'} to ${endDate && parseISO(endDate) && isValid(parseISO(endDate)) ? safeFormat(parseISO(endDate), 'MMM d, yyyy') : 'end date'}...`;
     } else if (filterMonth !== "all") {
-      loadingMessage = `Deleting time records for ${monthOptions.find(m => m.value === filterMonth)?.label}...`;
+      loadingMessage = `Deleting time records for ${monthOptions.find(m => m.value === filterMonth)?.label || 'selected month'}...`;
     }
     
     const loadingToast = toast.loading(loadingMessage);
@@ -317,16 +350,27 @@ const ApprovedHoursPage: React.FC = () => {
       let start, end;
       
       if (filterMonth === "all") {
-        start = format(subMonths(new Date(), 12), 'yyyy-MM-dd');
-        end = format(new Date(new Date().getFullYear() + 1, 11, 31), 'yyyy-MM-dd');
+        start = safeFormat(subMonths(new Date(), 12), 'yyyy-MM-dd');
+        end = safeFormat(new Date(new Date().getFullYear() + 1, 11, 31), 'yyyy-MM-dd');
       } else if (filterMonth === "custom") {
         start = startDate;
         end = endDate;
       } else {
-        const [year, month] = filterMonth.split('-');
-        const monthDate = new Date(parseInt(year), parseInt(month) - 1, 1);
-        start = format(startOfMonth(monthDate), 'yyyy-MM-dd');
-        end = format(endOfMonth(monthDate), 'yyyy-MM-dd');
+        try {
+          const [year, month] = filterMonth.split('-');
+          const monthDate = new Date(parseInt(year), parseInt(month) - 1, 1);
+          if (isValid(monthDate)) {
+            start = safeFormat(startOfMonth(monthDate), 'yyyy-MM-dd');
+            end = safeFormat(endOfMonth(monthDate), 'yyyy-MM-dd');
+          } else {
+            start = safeFormat(startOfMonth(new Date()), 'yyyy-MM-dd');
+            end = safeFormat(endOfMonth(new Date()), 'yyyy-MM-dd');
+          }
+        } catch (error) {
+          console.error('Error parsing filter month:', error);
+          start = safeFormat(startOfMonth(new Date()), 'yyyy-MM-dd');
+          end = safeFormat(endOfMonth(new Date()), 'yyyy-MM-dd');
+        }
       }
       
       const days = await getDoubleTimeDays(start, end);
@@ -476,10 +520,10 @@ const ApprovedHoursPage: React.FC = () => {
     
     // Add the days of the month
     for (let i = 1; i <= daysInMonth; i++) {
-      const dateStr = format(
-        new Date(currentMonth.getFullYear(), currentMonth.getMonth(), i),
-        'yyyy-MM-dd'
-      );
+      const dateObj = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), i);
+      if (!isValid(dateObj)) continue; // Skip invalid dates
+      
+      const dateStr = safeFormat(dateObj, 'yyyy-MM-dd');
       
       const isStartDate = dateStr === startDate;
       const isEndDate = dateStr === endDate;
@@ -609,9 +653,9 @@ const ApprovedHoursPage: React.FC = () => {
                       onClick={handleDateRangePickerToggle}
                       className="flex items-center gap-1 px-3 py-1 border border-gray-300 rounded text-sm"
                     >
-                      <span>{format(parseISO(startDate), 'MMM d, yyyy')}</span>
+                      <span>{startDate && parseISO(startDate) && isValid(parseISO(startDate)) ? safeFormat(parseISO(startDate), 'MMM d, yyyy') : 'Start date'}</span>
                       <span>to</span>
-                      <span>{endDate ? format(parseISO(endDate), 'MMM d, yyyy') : 'Select'}</span>
+                      <span>{endDate && parseISO(endDate) && isValid(parseISO(endDate)) ? safeFormat(parseISO(endDate), 'MMM d, yyyy') : 'End date'}</span>
                       <Calendar className="w-4 h-4 ml-1" />
                     </button>
                   </div>
@@ -696,7 +740,7 @@ const ApprovedHoursPage: React.FC = () => {
                         <ChevronLeft className="w-5 h-5 text-gray-600" />
                       </button>
                       <h4 className="text-sm font-medium">
-                        {format(currentMonth, 'MMMM yyyy')}
+                        {safeFormat(currentMonth, 'MMMM yyyy')}
                       </h4>
                       <button 
                         onClick={() => navigateMonth('next')}
@@ -916,13 +960,13 @@ const ApprovedHoursPage: React.FC = () => {
           selectedEmployees.length > 0 
             ? `You are about to delete all time records for ${selectedEmployees.length} selected employee${selectedEmployees.length !== 1 ? 's' : ''}${
                 filterMonth === "custom" 
-                  ? ` from ${format(parseISO(startDate), 'MMMM d, yyyy')} to ${format(parseISO(endDate), 'MMMM d, yyyy')}` 
+                  ? ` from ${startDate && parseISO(startDate) && isValid(parseISO(startDate)) ? safeFormat(parseISO(startDate), 'MMMM d, yyyy') : 'start date'} to ${endDate && parseISO(endDate) && isValid(parseISO(endDate)) ? safeFormat(parseISO(endDate), 'MMMM d, yyyy') : 'end date'}` 
                   : filterMonth !== "all" 
                     ? ` for ${monthOptions.find(m => m.value === filterMonth)?.label}` 
                     : ''
               }. This action cannot be undone.`
             : filterMonth === "custom"
-              ? `You are about to delete all time records from ${format(parseISO(startDate), 'MMMM d, yyyy')} to ${format(parseISO(endDate), 'MMMM d, yyyy')}. This action cannot be undone.`
+              ? `You are about to delete all time records from ${startDate && parseISO(startDate) && isValid(parseISO(startDate)) ? safeFormat(parseISO(startDate), 'MMMM d, yyyy') : 'start date'} to ${endDate && parseISO(endDate) && isValid(parseISO(endDate)) ? safeFormat(parseISO(endDate), 'MMMM d, yyyy') : 'end date'}. This action cannot be undone.`
               : filterMonth === "all"
                 ? "You are about to delete ALL time records for ALL employees from the database. This will reset the entire system and cannot be undone."
                 : `You are about to delete all time records for ${monthOptions.find(m => m.value === filterMonth)?.label}. This action cannot be undone.`
