@@ -84,18 +84,14 @@ export const fetchApprovedHours = async (dateFilter: string = ''): Promise<{
       
       if (isNaN(hours)) return;
       
-      // Only add to totalHoursSum if hours > 0 (ignore off-days and zero-hour records)
-      if (hours > 0) {
-        totalHoursSum += hours;
-      }
+      totalHoursSum += hours;
       
       if (!employeeSummary.has(employeeId)) {
         employeeSummary.set(employeeId, {
           id: employeeId,
           name: record.employees.name,
           employee_number: record.employees.employee_number,
-          total_days: new Set(), // Will be filtered for days with hours > 0
-          working_days: new Set(), // New field to track only days with hours > 0
+          total_days: new Set(),
           total_hours: 0,
           working_week_dates: new Set(), // Track all working week dates for double-time calculations
           hours_by_date: {} // Track hours by date for double-time calculations
@@ -103,11 +99,7 @@ export const fetchApprovedHours = async (dateFilter: string = ''): Promise<{
       }
       
       const employee = employeeSummary.get(employeeId);
-      
-      // Only add hours if they're greater than 0
-      if (hours > 0) {
-        employee.total_hours += hours;
-      }
+      employee.total_hours += hours;
       
       // Add date to set of days - Only if timestamp is valid
       if (record.timestamp && isValid(new Date(record.timestamp))) {
@@ -115,11 +107,6 @@ export const fetchApprovedHours = async (dateFilter: string = ''): Promise<{
         if (record.working_week_start) {
           employee.total_days.add(record.working_week_start);
           employee.working_week_dates.add(record.working_week_start);
-          
-          // Only add to working_days if hours > 0 (exclude off-days and zero-hour records)
-          if (hours > 0) {
-            employee.working_days.add(record.working_week_start);
-          }
           
           // Store hours by date
           if (!employee.hours_by_date[record.working_week_start]) {
@@ -133,11 +120,6 @@ export const fetchApprovedHours = async (dateFilter: string = ''): Promise<{
           const date = utc.toISOString().slice(0,10); // "YYYY-MM-DD"
           employee.total_days.add(date);
           employee.working_week_dates.add(date);
-          
-          // Only add to working_days if hours > 0 (exclude off-days and zero-hour records)
-          if (hours > 0) {
-            employee.working_days.add(date);
-          }
           
           // Store hours by date
           if (!employee.hours_by_date[date]) {
@@ -215,7 +197,6 @@ export const fetchApprovedHours = async (dateFilter: string = ''): Promise<{
           name: record.employees.name,
           employee_number: record.employees.employee_number,
           total_days: new Set(),
-          working_days: new Set(), // Will only include days with hours > 0
           total_hours: 0,
           working_week_dates: new Set(),
           hours_by_date: {}
@@ -289,8 +270,7 @@ export const fetchApprovedHours = async (dateFilter: string = ''): Promise<{
       
       return {
         ...emp,
-        // Use working_days for total_days count (only days with hours > 0)
-        total_days: emp.working_days.size,
+        total_days: emp.total_days.size,
         total_hours: parseFloat(emp.total_hours.toFixed(2)),
         double_time_hours: parseFloat(doubleTimeHours.toFixed(2)),
         working_week_dates: Array.from(emp.working_week_dates)
