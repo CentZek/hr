@@ -115,14 +115,16 @@ const ApprovedHoursPage: React.FC = () => {
           // Use the selected month
           try {
             const [year, month] = filterMonth.split('-');
-            const monthDate = new Date(parseInt(year), parseInt(month) - 1, 1);
-            if (isValid(monthDate)) {
-              start = safeFormat(startOfMonth(monthDate), 'yyyy-MM-dd');
-              end = safeFormat(endOfMonth(monthDate), 'yyyy-MM-dd');
-            } else {
-              // Use current month as fallback
-              start = safeFormat(startOfMonth(new Date()), 'yyyy-MM-dd');
-              end = safeFormat(endOfMonth(new Date()), 'yyyy-MM-dd');
+            if (year && month) {
+              const monthDate = new Date(parseInt(year), parseInt(month) - 1, 1);
+              if (isValid(monthDate)) {
+                start = safeFormat(startOfMonth(monthDate), 'yyyy-MM-dd');
+                end = safeFormat(endOfMonth(monthDate), 'yyyy-MM-dd');
+              } else {
+                // Use current month as fallback
+                start = safeFormat(startOfMonth(new Date()), 'yyyy-MM-dd');
+                end = safeFormat(endOfMonth(new Date()), 'yyyy-MM-dd');
+              }
             }
           } catch (error) {
             console.error('Error parsing filter month:', error);

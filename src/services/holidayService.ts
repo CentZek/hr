@@ -90,8 +90,20 @@ const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 // Get all double-time days (Fridays and holidays) for a given date range
 export const getDoubleTimeDays = async (startDate: string, endDate: string): Promise<string[]> => {
   // Validate input dates
-  if (!startDate || !endDate || !isValid(parseISO(startDate)) || !isValid(parseISO(endDate))) {
-    console.warn('Invalid date range provided to getDoubleTimeDays:', { startDate, endDate });
+  if (!startDate || !endDate) {
+    console.error('Missing date range in getDoubleTimeDays:', { startDate, endDate });
+    return [];
+  }
+  
+  // Parse dates to validate them
+  const startDateObj = parseISO(startDate);
+  const endDateObj = parseISO(endDate);
+  
+  if (!isValid(startDateObj) || !isValid(endDateObj)) {
+    console.error('Invalid date range provided to getDoubleTimeDays:', { startDate, endDate, 
+      isValidStart: isValid(startDateObj), 
+      isValidEnd: isValid(endDateObj) 
+    });
     return [];
   }
   
@@ -109,17 +121,20 @@ export const getDoubleTimeDays = async (startDate: string, endDate: string): Pro
       .gte('date', startDate)
       .lte('date', endDate);
 
-    if (error) throw error;
+    if (error) {
+      console.error('Error fetching holidays:', error);
+      return [];
+    }
     
     // Create an array of holiday dates
     const holidayDates = holidays?.map(h => h.date) || [];
     
     // For each date in the range, check if it's a Friday
-    const start = parseISO(startDate);
-    const end = parseISO(endDate);
+    const start = startDateObj;
+    const end = endDateObj;
     
     const allDates: string[] = [];
-    let current = start;
+    let current = new Date(start);
     
     while (current <= end) {
       const dateStr = format(current, 'yyyy-MM-dd');

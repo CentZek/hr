@@ -44,15 +44,18 @@ export const fetchApprovedHours = async (dateFilter: string = ''): Promise<{
         try {
           const [year, month] = dateFilter.split('-');
           if (year && month) {
-            const startDate = startOfMonth(new Date(parseInt(year), parseInt(month) - 1, 1));
-            const endDate = endOfMonth(startDate);
-            
-            if (isValid(startDate) && isValid(endDate)) {
-              const startStr = format(startDate, 'yyyy-MM-dd');
-              const endStr = format(endDate, 'yyyy-MM-dd');
+            const monthDate = new Date(parseInt(year), parseInt(month) - 1, 1);
+            if (isValid(monthDate)) {
+              const startDate = startOfMonth(monthDate);
+              const endDate = endOfMonth(monthDate);
               
-              query = query
-                .or(`working_week_start.gte.${startStr},working_week_start.lte.${endStr},timestamp.gte.${startStr},timestamp.lte.${endStr}`);
+              if (isValid(startDate) && isValid(endDate)) {
+                const startStr = format(startDate, 'yyyy-MM-dd');
+                const endStr = format(endDate, 'yyyy-MM-dd');
+                
+                query = query
+                  .or(`working_week_start.gte.${startStr},working_week_start.lte.${endStr},timestamp.gte.${startStr},timestamp.lte.${endStr}`);
+              }
             }
           }
         } catch (err) {
@@ -142,6 +145,44 @@ export const fetchApprovedHours = async (dateFilter: string = ''): Promise<{
     
     if (offDayError) throw offDayError;
     
+    // Apply date filter for OFF-DAY records if provided
+    if (dateFilter && offDayData?.length > 0) {
+      if (dateFilter.includes('|')) {
+        // Custom date range: startDate|endDate
+        const [startDate, endDate] = dateFilter.split('|');
+        
+        if (startDate && endDate && isValid(parseISO(startDate)) && isValid(parseISO(endDate))) {
+          offDayData.filter(record => {
+            const recordDate = record.working_week_start || 
+                               (record.timestamp ? parseISO(record.timestamp).toISOString().slice(0,10) : null);
+            if (!recordDate) return false;
+            return recordDate >= startDate && recordDate <= endDate;
+          });
+        }
+      } else {
+        // Month filter: YYYY-MM
+        try {
+          const [year, month] = dateFilter.split('-');
+          if (year && month) {
+            const monthDate = new Date(parseInt(year), parseInt(month) - 1, 1);
+            if (isValid(monthDate)) {
+              const startStr = format(startOfMonth(monthDate), 'yyyy-MM-dd');
+              const endStr = format(endOfMonth(monthDate), 'yyyy-MM-dd');
+              
+              offDayData.filter(record => {
+                const recordDate = record.working_week_start || 
+                                 (record.timestamp ? parseISO(record.timestamp).toISOString().slice(0,10) : null);
+                if (!recordDate) return false;
+                return recordDate >= startStr && recordDate <= endStr;
+              });
+            }
+          }
+        } catch (err) {
+          console.error('Error filtering OFF-DAY records by month:', err);
+        }
+      }
+    }
+    
     // Add OFF-DAY records to the employee totals
     offDayData?.forEach(record => {
       if (!record.employees) return;
@@ -169,7 +210,7 @@ export const fetchApprovedHours = async (dateFilter: string = ''): Promise<{
       } else if (record.timestamp && isValid(new Date(record.timestamp))) {
         // Use the UTC date portion so nothing shifts under local timezones
         const utc = parseISO(record.timestamp);
-        const date = utc.toISOString().slice(0,10); // "YYYY-MM-DD"
+        const date = utc.toISOString().slice(0,10);  // "YYYY-MM-DD"
         employee.total_days.add(date);
         employee.working_week_dates.add(date);
       }
@@ -182,6 +223,15 @@ export const fetchApprovedHours = async (dateFilter: string = ''): Promise<{
       if (dateFilter.includes('|')) {
         // Custom date range
         [startDate, endDate] = dateFilter.split('|');
+        
+        // Validate dates
+        if (!startDate || !endDate || !isValid(parseISO(startDate)) || !isValid(parseISO(endDate))) {
+          // Set default date range if invalid
+          const today = new Date();
+          const firstOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+          startDate = format(firstOfMonth, 'yyyy-MM-dd');
+          endDate = format(today, 'yyyy-MM-dd');
+        }
       } else {
         // Month filter
         try {
@@ -192,10 +242,14 @@ export const fetchApprovedHours = async (dateFilter: string = ''): Promise<{
               startDate = format(startOfMonth(monthDate), 'yyyy-MM-dd');
               endDate = format(endOfMonth(monthDate), 'yyyy-MM-dd');
             } else {
-              // Default to recent month if dates are invalid
+              // Use default range if dates are invalid
               startDate = format(subDays(new Date(), 30), 'yyyy-MM-dd');
               endDate = format(new Date(), 'yyyy-MM-dd');
             }
+          } else {
+            // Use default range if month filter is invalid
+            startDate = format(subDays(new Date(), 30), 'yyyy-MM-dd');
+            endDate = format(new Date(), 'yyyy-MM-dd');
           }
         } catch (err) {
           console.error('Error parsing month filter:', err);
@@ -288,6 +342,12 @@ export const fetchEmployeeDetails = async (employeeId: string, dateFilter: strin
         if (startDate && endDate && isValid(parseISO(startDate)) && isValid(parseISO(endDate))) {
           query = query
             .or(`working_week_start.gte.${startDate},working_week_start.lte.${endDate},timestamp.gte.${startDate},timestamp.lte.${endDate}`);
+        } else {
+          // If dates are invalid, use a reasonable default range
+          const defaultStart = format(subDays(new Date(), 30), 'yyyy-MM-dd');
+          const defaultEnd = format(new Date(), 'yyyy-MM-dd');
+          query = query
+            .or(`working_week_start.gte.${defaultStart},working_week_start.lte.${defaultEnd},timestamp.gte.${defaultStart},timestamp.lte.${defaultEnd}`);
         }
       } else {
         // Month filter: YYYY-MM
@@ -301,10 +361,21 @@ export const fetchEmployeeDetails = async (employeeId: string, dateFilter: strin
               
               query = query
                 .or(`working_week_start.gte.${startDate},working_week_start.lte.${endDate},timestamp.gte.${startDate},timestamp.lte.${endDate}`);
+            } else {
+              // Use a reasonable default if month is invalid
+              const defaultStart = format(subDays(new Date(), 30), 'yyyy-MM-dd');
+              const defaultEnd = format(new Date(), 'yyyy-MM-dd');
+              query = query
+                .or(`working_week_start.gte.${defaultStart},working_week_start.lte.${defaultEnd},timestamp.gte.${defaultStart},timestamp.lte.${defaultEnd}`);
             }
           }
         } catch (err) {
           console.error('Error parsing month filter:', err);
+          // Use a reasonable default if parsing fails
+          const defaultStart = format(subDays(new Date(), 30), 'yyyy-MM-dd');
+          const defaultEnd = format(new Date(), 'yyyy-MM-dd');
+          query = query
+            .or(`working_week_start.gte.${defaultStart},working_week_start.lte.${defaultEnd},timestamp.gte.${defaultStart},timestamp.lte.${defaultEnd}`);
         }
       }
     }
@@ -478,7 +549,7 @@ export const saveRecordsToDatabase = async (employeeRecords: EmployeeRecord[]): 
             working_week_start: day.date // Set working_week_start for proper grouping
           };
 
-          // Use the safe upsert function
+          // Use safeUpsertTimeRecord to handle both insert and update
           const success = await safeUpsertTimeRecord(offDayData, existingOffDayId);
           
           if (success) {
