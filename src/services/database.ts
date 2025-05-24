@@ -1,15 +1,12 @@
 import { supabase } from '../lib/supabase';
-import { format, parseISO, startOfMonth, endOfMonth, addDays, isValid, subDays, isFriday, isSameDay, isWithinInterval } from 'date-fns';
+import { format, parseISO, startOfMonth, endOfMonth, addDays, isValid, subDays, isFriday } from 'date-fns';
 import { EmployeeRecord, DailyRecord } from '../types';
 import toast from 'react-hot-toast';
 import { parseShiftTimes } from '../utils/dateTimeHelper';
 import { isDoubleTimeDay, getDoubleTimeDays } from '../services/holidayService';
 
-// Fetch approved hours summary with date range support
-export const fetchApprovedHours = async (
-  startDateStr: string = '',
-  endDateStr: string = ''
-): Promise<{
+// Fetch approved hours summary
+export const fetchApprovedHours = async (monthFilter: string = ''): Promise<{
   data: any[];
   totalHoursSum: number;
 }> => {
@@ -32,18 +29,15 @@ export const fetchApprovedHours = async (
       .in('status', ['check_in', 'off_day'])  // Include both check-in and off-day records
       .not('exact_hours', 'is', null);
     
-    // Apply date filter if provided
-    if (startDateStr && endDateStr) {
-      const startDate = parseISO(startDateStr);
-      const endDate = parseISO(endDateStr);
+    // Apply month filter if provided
+    if (monthFilter) {
+      const [year, month] = monthFilter.split('-');
+      const startDate = startOfMonth(new Date(parseInt(year), parseInt(month) - 1, 1));
+      const endDate = endOfMonth(startDate);
       
-      if (isValid(startDate) && isValid(endDate)) {
-        // Use working_week_start for filtering when available, or timestamp date otherwise
-        query = query.or(
-          `and(working_week_start.gte.${startDateStr},working_week_start.lte.${endDateStr}),` +
-          `and(working_week_start.is.null,timestamp.gte.${format(startDate, 'yyyy-MM-dd')},timestamp.lte.${format(endDate, 'yyyy-MM-dd')})`
-        );
-      }
+      query = query
+        .gte('timestamp', format(startDate, 'yyyy-MM-dd'))
+        .lte('timestamp', format(endDate, 'yyyy-MM-dd'));
     }
     
     const { data, error } = await query;
@@ -61,22 +55,6 @@ export const fetchApprovedHours = async (
       const hours = parseFloat(record.exact_hours || 0);
       
       if (isNaN(hours)) return;
-      
-      // Track date for filtering
-      const recordDate = record.working_week_start || format(parseISO(record.timestamp), 'yyyy-MM-dd');
-      
-      // Skip if outside date range (double check)
-      if (startDateStr && endDateStr) {
-        const startDate = parseISO(startDateStr);
-        const endDate = parseISO(endDateStr);
-        const recordDateObj = parseISO(recordDate);
-        
-        if (isValid(startDate) && isValid(endDate) && isValid(recordDateObj)) {
-          if (!isWithinInterval(recordDateObj, { start: startDate, end: endDate })) {
-            return;
-          }
-        }
-      }
       
       totalHoursSum += hours;
       
@@ -96,16 +74,31 @@ export const fetchApprovedHours = async (
       employee.total_hours += hours;
       
       // Add date to set of days - Only if timestamp is valid
-      if (recordDate) {
+      if (record.timestamp && isValid(new Date(record.timestamp))) {
         // Use working_week_start if available, otherwise use timestamp date
-        employee.total_days.add(recordDate);
-        employee.working_week_dates.add(recordDate);
-        
-        // Store hours by date
-        if (!employee.hours_by_date[recordDate]) {
-          employee.hours_by_date[recordDate] = hours;
+        if (record.working_week_start) {
+          employee.total_days.add(record.working_week_start);
+          employee.working_week_dates.add(record.working_week_start);
+          
+          // Store hours by date
+          if (!employee.hours_by_date[record.working_week_start]) {
+            employee.hours_by_date[record.working_week_start] = hours;
+          } else {
+            employee.hours_by_date[record.working_week_start] += hours;
+          }
         } else {
-          employee.hours_by_date[recordDate] += hours;
+          // Use the UTC date portion so nothing shifts under local timezones
+          const utc = parseISO(record.timestamp);
+          const date = utc.toISOString().slice(0,10); // "YYYY-MM-DD"
+          employee.total_days.add(date);
+          employee.working_week_dates.add(date);
+          
+          // Store hours by date
+          if (!employee.hours_by_date[date]) {
+            employee.hours_by_date[date] = hours;
+          } else {
+            employee.hours_by_date[date] += hours;
+          }
         }
       }
     });
@@ -134,22 +127,6 @@ export const fetchApprovedHours = async (
       
       const employeeId = record.employee_id;
       
-      // Track date for filtering
-      const recordDate = record.working_week_start || format(parseISO(record.timestamp), 'yyyy-MM-dd');
-      
-      // Skip if outside date range (double check)
-      if (startDateStr && endDateStr) {
-        const startDate = parseISO(startDateStr);
-        const endDate = parseISO(endDateStr);
-        const recordDateObj = parseISO(recordDate);
-        
-        if (isValid(startDate) && isValid(endDate) && isValid(recordDateObj)) {
-          if (!isWithinInterval(recordDateObj, { start: startDate, end: endDate })) {
-            return;
-          }
-        }
-      }
-      
       if (!employeeSummary.has(employeeId)) {
         employeeSummary.set(employeeId, {
           id: employeeId,
@@ -165,14 +142,29 @@ export const fetchApprovedHours = async (
       const employee = employeeSummary.get(employeeId);
       
       // Add date to set of days for OFF-DAY
-      if (recordDate) {
-        employee.total_days.add(recordDate);
-        employee.working_week_dates.add(recordDate);
+      if (record.working_week_start) {
+        employee.total_days.add(record.working_week_start);
+        employee.working_week_dates.add(record.working_week_start);
+      } else if (record.timestamp && isValid(new Date(record.timestamp))) {
+        // Use the UTC date portion so nothing shifts under local timezones
+        const utc = parseISO(record.timestamp);
+        const date = utc.toISOString().slice(0,10); // "YYYY-MM-DD"
+        employee.total_days.add(date);
+        employee.working_week_dates.add(date);
       }
     });
     
+    // Calculate double-time hours for each employee
+    const startDate = monthFilter 
+      ? format(startOfMonth(new Date(parseInt(monthFilter.split('-')[0]), parseInt(monthFilter.split('-')[1]) - 1, 1)), 'yyyy-MM-dd')
+      : format(subDays(new Date(), 365), 'yyyy-MM-dd'); // Default to last 365 days
+      
+    const endDate = monthFilter
+      ? format(endOfMonth(new Date(parseInt(monthFilter.split('-')[0]), parseInt(monthFilter.split('-')[1]) - 1, 1)), 'yyyy-MM-dd')
+      : format(addDays(new Date(), 30), 'yyyy-MM-dd'); // Default to 30 days in the future
+    
     // Get all double-time days in the date range
-    const doubleDays = await getDoubleTimeDays(startDateStr, endDateStr);
+    const doubleDays = await getDoubleTimeDays(startDate, endDate);
     
     // Convert to array and calculate days and double-time hours
     const result = Array.from(employeeSummary.values()).map(emp => {
@@ -209,12 +201,8 @@ export const fetchApprovedHours = async (
   }
 };
 
-// Fetch employee details for approved hours with date range support
-export const fetchEmployeeDetails = async (
-  employeeId: string, 
-  startDateStr: string = '', 
-  endDateStr: string = ''
-): Promise<{
+// Fetch employee details for approved hours
+export const fetchEmployeeDetails = async (employeeId: string, monthFilter: string = ''): Promise<{
   data: any[];
 }> => {
   try {
@@ -245,18 +233,15 @@ export const fetchEmployeeDetails = async (
       .eq('employee_id', employeeId)
       .order('timestamp', { ascending: true });
     
-    // Apply date range filter if provided
-    if (startDateStr && endDateStr) {
-      const startDate = parseISO(startDateStr);
-      const endDate = parseISO(endDateStr);
+    // Apply month filter if provided
+    if (monthFilter) {
+      const [year, month] = monthFilter.split('-');
+      const startDate = startOfMonth(new Date(parseInt(year), parseInt(month) - 1, 1));
+      const endDate = endOfMonth(startDate);
       
-      if (isValid(startDate) && isValid(endDate)) {
-        // Use working_week_start for filtering when available, or timestamp date otherwise
-        query = query.or(
-          `and(working_week_start.gte.${startDateStr},working_week_start.lte.${endDateStr}),` +
-          `and(working_week_start.is.null,timestamp.gte.${format(startDate, 'yyyy-MM-dd')},timestamp.lte.${format(endDate, 'yyyy-MM-dd')})`
-        );
-      }
+      query = query
+        .gte('timestamp', format(startDate, 'yyyy-MM-dd'))
+        .lte('timestamp', format(endDate, 'yyyy-MM-dd'));
     }
     
     const { data, error } = await query;
@@ -707,67 +692,66 @@ export const fetchPendingEmployeeShifts = async (): Promise<any[]> => {
   }
 };
 
-// Delete all time records with date range support
-export const deleteAllTimeRecords = async (
-  startDateStr: string = '',
-  endDateStr: string = ''
-): Promise<{
+// Delete all time records
+export const deleteAllTimeRecords = async (monthFilter: string = ''): Promise<{
   success: boolean;
   message: string;
   count: number;
 }> => {
   try {
-    // Get count first to know how many records will be deleted
-    let countQuery = supabase
-      .from('time_records')
-      .select('*', { count: 'exact', head: true });
+    let query = supabase.from('time_records').delete();
+    
+    // Apply month filter if provided
+    if (monthFilter) {
+      const [year, month] = monthFilter.split('-');
+      const startDate = startOfMonth(new Date(parseInt(year), parseInt(month) - 1, 1));
+      const endDate = endOfMonth(startDate);
       
-    // Apply date filter if provided
-    if (startDateStr && endDateStr) {
-      const startDate = parseISO(startDateStr);
-      const endDate = parseISO(endDateStr);
+      // Get count first
+      const { count, error: countError } = await supabase
+        .from('time_records')
+        .select('*', { count: 'exact', head: true })
+        .gte('timestamp', format(startDate, 'yyyy-MM-dd'))
+        .lte('timestamp', format(endDate, 'yyyy-MM-dd'));
       
-      if (isValid(startDate) && isValid(endDate)) {
-        // Use working_week_start for filtering when available, or timestamp date otherwise
-        countQuery = countQuery.or(
-          `and(working_week_start.gte.${startDateStr},working_week_start.lte.${endDateStr}),` +
-          `and(working_week_start.is.null,timestamp.gte.${format(startDate, 'yyyy-MM-dd')},timestamp.lte.${format(endDate, 'yyyy-MM-dd')})`
-        );
-      }
+      if (countError) throw countError;
+      
+      // Then delete
+      const { error } = await supabase
+        .from('time_records')
+        .delete()
+        .gte('timestamp', format(startDate, 'yyyy-MM-dd'))
+        .lte('timestamp', format(endDate, 'yyyy-MM-dd'));
+      
+      if (error) throw error;
+      
+      return {
+        success: true,
+        message: `Deleted ${count} records for ${format(startDate, 'MMMM yyyy')}`,
+        count: count || 0
+      };
+    } else {
+      // Get count first
+      const { count, error: countError } = await supabase
+        .from('time_records')
+        .select('*', { count: 'exact', head: true });
+      
+      if (countError) throw countError;
+      
+      // Then delete all
+      const { error } = await supabase
+        .from('time_records')
+        .delete()
+        .neq('id', '00000000-0000-0000-0000-000000000000'); // Dummy condition to delete all
+      
+      if (error) throw error;
+      
+      return {
+        success: true,
+        message: `Deleted all ${count} time records`,
+        count: count || 0
+      };
     }
-    
-    const { count, error: countError } = await countQuery;
-    if (countError) throw countError;
-    
-    // Now perform the delete operation with the same filter
-    let deleteQuery = supabase
-      .from('time_records')
-      .delete();
-      
-    // Apply date filter if provided
-    if (startDateStr && endDateStr) {
-      const startDate = parseISO(startDateStr);
-      const endDate = parseISO(endDateStr);
-      
-      if (isValid(startDate) && isValid(endDate)) {
-        // Use working_week_start for filtering when available, or timestamp date otherwise
-        deleteQuery = deleteQuery.or(
-          `and(working_week_start.gte.${startDateStr},working_week_start.lte.${endDateStr}),` +
-          `and(working_week_start.is.null,timestamp.gte.${format(startDate, 'yyyy-MM-dd')},timestamp.lte.${format(endDate, 'yyyy-MM-dd')})`
-        );
-      }
-    }
-    
-    const { error: deleteError } = await deleteQuery;
-    if (deleteError) throw deleteError;
-    
-    return {
-      success: true,
-      message: startDateStr && endDateStr 
-        ? `Deleted ${count} records between ${format(parseISO(startDateStr), 'MMM d, yyyy')} and ${format(parseISO(endDateStr), 'MMM d, yyyy')}` 
-        : `Deleted all ${count} time records`,
-      count: count || 0
-    };
   } catch (error) {
     console.error('Error deleting time records:', error);
     return {
