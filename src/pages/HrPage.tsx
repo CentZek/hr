@@ -30,19 +30,6 @@ import ApproveAllConfirmationDialog from '../components/ApproveAllConfirmationDi
 import { useAppContext } from '../context/AppContext';
 
 function HrPage() {
-  // Add browser detection
-  const browserInfo = React.useMemo(() => {
-    const userAgent = window.navigator.userAgent;
-    const browsers = {
-      chrome: /chrome/i.test(userAgent) && !/edg/i.test(userAgent),
-      firefox: /firefox/i.test(userAgent),
-      safari: /safari/i.test(userAgent) && !/chrome/i.test(userAgent),
-      edge: /edg/i.test(userAgent),
-      ie: /msie|trident/i.test(userAgent),
-    };
-    return browsers;
-  }, []);
-
   const navigate = useNavigate();
   const {
     employeeRecords, setEmployeeRecords,
@@ -61,7 +48,6 @@ function HrPage() {
   const [savingErrors, setSavingErrors] = useState<{employeeName: string, date: string, error: string}[]>([]);
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const [isMobile, setIsMobile] = useState(false);
-  const [pageLoadError, setPageLoadError] = useState<string | null>(null);
   
   // Modal states
   const [isManualEntryOpen, setIsManualEntryOpen] = useState(false);
@@ -74,65 +60,49 @@ function HrPage() {
 
   // Check if screen is mobile
   useEffect(() => {
-    try {
-      const checkIfMobile = () => {
-        setIsMobile(window.innerWidth < 640);
-      };
-      
-      checkIfMobile();
-      window.addEventListener('resize', checkIfMobile);
-      
-      return () => {
-        window.removeEventListener('resize', checkIfMobile);
-      };
-    } catch (error) {
-      console.error('Error checking mobile status:', error);
-    }
+    const checkIfMobile = () => {
+      setIsMobile(window.innerWidth < 640);
+    };
+    
+    checkIfMobile();
+    window.addEventListener('resize', checkIfMobile);
+    
+    return () => {
+      window.removeEventListener('resize', checkIfMobile);
+    };
   }, []);
 
   // Check Supabase connection
   const checkConnection = async () => {
-    try {
-      const { connected, error } = await checkSupabaseConnection();
-      if (!connected) {
-        setConnectionError(error || 'Could not connect to Supabase');
-        toast.error(`Database connection error: ${error || 'Unknown error'}`);
-      } else {
-        setConnectionError(null);
-      }
-      return connected;
-    } catch (err) {
-      console.error('Error checking connection:', err);
-      setConnectionError('Failed to check database connection');
-      return false;
+    const { connected, error } = await checkSupabaseConnection();
+    if (!connected) {
+      setConnectionError(error || 'Could not connect to Supabase');
+      toast.error(`Database connection error: ${error || 'Unknown error'}`);
+    } else {
+      setConnectionError(null);
     }
+    return connected;
   };
 
   // Run migrations when component mounts and fetch manual records
   useEffect(() => {
     const initializeSystem = async () => {
-      try {
-        // First check connection
-        const isConnected = await checkConnection();
-        if (!isConnected) {
-          return;
+      // First check connection
+      const isConnected = await checkConnection();
+      if (!isConnected) {
+        return;
+      }
+      
+      setIsMigrating(true);
+      const migrationResult = await runAllMigrations();
+      setIsMigrating(false);
+      
+      if (migrationResult.success) {
+        if (migrationResult.counts.credentials > 0) {
+          toast.success(`Created login credentials for ${migrationResult.counts.credentials} employees`);
         }
-        
-        setIsMigrating(true);
-        const migrationResult = await runAllMigrations();
-        setIsMigrating(false);
-        
-        if (migrationResult.success) {
-          if (migrationResult.counts.credentials > 0) {
-            toast.success(`Created login credentials for ${migrationResult.counts.credentials} employees`);
-          }
-        } else {
-          toast.error('Error initializing system. Some features may not work properly.');
-        }
-      } catch (error) {
-        console.error('Error initializing system:', error);
-        setIsMigrating(false);
-        setPageLoadError('Failed to initialize the system. Please try refreshing the page.');
+      } else {
+        toast.error('Error initializing system. Some features may not work properly.');
       }
     };
     
@@ -149,13 +119,9 @@ function HrPage() {
       }
     };
     
-    // Log browser info to help debug issues
-    console.log('Browser information:', browserInfo);
-    
-    // Initialize the system
     initializeSystem();
     fetchManualRecords();
-  }, [browserInfo]);
+  }, []);
 
   // Refresh manual records and pending shifts after changes
   const refreshData = async () => {
@@ -610,40 +576,6 @@ function HrPage() {
     }
   }, [recentManualEntry]);
 
-  // If there's a page load error, show it
-  if (pageLoadError) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-4">
-        <div className="bg-white rounded-lg shadow-lg p-6 max-w-lg w-full">
-          <h2 className="text-xl font-bold text-red-600 mb-4">Failed to load HR page</h2>
-          <p className="text-gray-700 mb-4">{pageLoadError}</p>
-          <p className="text-gray-700 mb-4">
-            This could be due to browser compatibility issues. Please try:
-          </p>
-          <ul className="list-disc pl-5 mb-4 text-gray-700">
-            <li>Using a modern browser like Chrome, Firefox, or Edge</li>
-            <li>Clearing your browser cache</li>
-            <li>Disabling browser extensions</li>
-          </ul>
-          <div className="flex flex-wrap gap-3">
-            <button
-              onClick={() => window.location.reload()}
-              className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
-            >
-              Reload Page
-            </button>
-            <button
-              onClick={() => navigate('/')}
-              className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700 transition-colors"
-            >
-              Return Home
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Navigation tabs */}
@@ -706,23 +638,6 @@ function HrPage() {
 
           {/* Card content */}
           <div className="p-6 space-y-6">
-            {/* Browser compatibility warning */}
-            {(browserInfo.ie || (!browserInfo.chrome && !browserInfo.firefox && !browserInfo.edge)) && (
-              <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4 flex items-start">
-                <AlertTriangle className="w-5 h-5 text-yellow-500 mr-3 mt-0.5 flex-shrink-0" />
-                <div className="text-sm text-yellow-700">
-                  <p className="font-medium">Browser Compatibility Warning</p>
-                  <p>For the best experience, please use a modern browser like Chrome, Firefox, or Edge. Some features may not work correctly in your current browser.</p>
-                  <button 
-                    onClick={() => window.location.reload()}
-                    className="mt-2 px-3 py-1 bg-yellow-100 text-yellow-700 rounded-md hover:bg-yellow-200 text-sm"
-                  >
-                    Reload Page
-                  </button>
-                </div>
-              </div>
-            )}
-            
             {/* Connection error message */}
             {connectionError && (
               <div className="bg-red-50 border border-red-200 rounded-md p-4 flex items-start">
