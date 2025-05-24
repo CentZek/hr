@@ -111,12 +111,12 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records, dou
         {/* Records by date */}
         {Object.entries(recordsByDate).map(([date, dayRecords]: [string, any[]]) => {
           // Check if this is an off day
-          const isOffDay = dayRecords.some(r => r.status === 'off_day');
+          const isOffDay = dayRecords.some(r => r.status === 'off_day' || r.notes?.includes('OFF-DAY'));
           const isDoubleTime = isDoubleTimeDay(date);
           
           if (isOffDay) {
             // Display off day record
-            const offDayRecord = dayRecords.find(r => r.status === 'off_day');
+            const offDayRecord = dayRecords.find(r => r.status === 'off_day' || r.notes?.includes('OFF-DAY'));
             
             // Mobile view
             if (typeof window !== 'undefined' && window.innerWidth < 640) {
