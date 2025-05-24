@@ -424,8 +424,9 @@ const ApprovedHoursPage: React.FC = () => {
           // Double check formatted strings are valid
           if (!start || !end || !isValid(parseISO(start)) || !isValid(parseISO(end))) {
             console.warn('Invalid formatted dates for double days query, using fallback dates');
-            start = '2023-01-01'; // Jan 1, 2023
-            end = '2025-12-31'; // Dec 31, 2025
+            const currentDate = new Date();
+            start = `${currentDate.getFullYear()}-01-01`; // Jan 1 of current year
+            end = `${currentDate.getFullYear()}-12-31`; // Dec 31 of current year
           }
         }
       } else if (filterMonth === "custom") {
@@ -436,14 +437,6 @@ const ApprovedHoursPage: React.FC = () => {
           // Use default range if dates are invalid
           start = safeFormat(subMonths(new Date(), 1), 'yyyy-MM-dd');
           end = safeFormat(new Date(), 'yyyy-MM-dd');
-          
-          // Double check formatted strings are valid
-          if (!start || !end || !isValid(parseISO(start)) || !isValid(parseISO(end))) {
-            console.warn('Invalid formatted dates for double days query, using fallback dates');
-            const currentDate = new Date();
-            start = `${currentDate.getFullYear()}-01-01`; // Jan 1 of current year
-            end = `${currentDate.getFullYear()}-12-31`; // Dec 31 of current year
-          }
         }
       } else {
         try {
