@@ -81,8 +81,25 @@ const ApprovedHoursPage: React.FC = () => {
         
         if (filterMonth === "all") {
           // Use a large date range for "all time" (past year to future year)
-          start = safeFormat(subMonths(new Date(), 12), 'yyyy-MM-dd');
-          end = safeFormat(new Date(new Date().getFullYear() + 1, 11, 31), 'yyyy-MM-dd');
+          const startDate = subMonths(new Date(), 12);
+          const endDate = new Date(new Date().getFullYear() + 1, 11, 31);
+          
+          // Validate dates before formatting
+          if (!isValid(startDate) || !isValid(endDate)) {
+            console.warn('Invalid date range for "all time", using fallback dates');
+            start = safeFormat(new Date(2023, 0, 1), 'yyyy-MM-dd'); // Jan 1, 2023
+            end = safeFormat(new Date(2025, 11, 31), 'yyyy-MM-dd'); // Dec 31, 2025
+          } else {
+            start = safeFormat(startDate, 'yyyy-MM-dd');
+            end = safeFormat(endDate, 'yyyy-MM-dd');
+          }
+          
+          // Double check formatted strings are valid
+          if (!start || !end || !isValid(parseISO(start)) || !isValid(parseISO(end))) {
+            console.warn('Invalid formatted dates for double days query, using fallback dates');
+            start = '2023-01-01'; // Jan 1, 2023
+            end = '2025-12-31'; // Dec 31, 2025
+          }
         } else if (filterMonth === "custom") {
           // Use the selected date range
           start = startDate;
@@ -91,6 +108,7 @@ const ApprovedHoursPage: React.FC = () => {
           // Validate dates
           if (!start || !end || !isValid(parseISO(start)) || !isValid(parseISO(end))) {
             console.error('Invalid date range for double days query');
+            setDoubleDays([]);
             return;
           }
         } else {
@@ -115,12 +133,16 @@ const ApprovedHoursPage: React.FC = () => {
         }
         
         // Only proceed if we have valid dates
-        if (start && end) {
+        if (start && end && isValid(parseISO(start)) && isValid(parseISO(end))) {
           const days = await getDoubleTimeDays(start, end);
           setDoubleDays(days);
+        } else {
+          console.warn('Invalid date range detected, skipping double days fetch');
+          setDoubleDays([]);
         }
       } catch (error) {
         console.error('Error loading double-time days:', error);
+        setDoubleDays([]);
       }
     };
     
@@ -387,8 +409,25 @@ const ApprovedHoursPage: React.FC = () => {
       let start, end;
       
       if (filterMonth === "all") {
-        start = safeFormat(subMonths(new Date(), 12), 'yyyy-MM-dd');
-        end = safeFormat(new Date(new Date().getFullYear() + 1, 11, 31), 'yyyy-MM-dd');
+        const startDate = subMonths(new Date(), 12);
+        const endDate = new Date(new Date().getFullYear() + 1, 11, 31);
+        
+        // Validate dates before formatting
+        if (!isValid(startDate) || !isValid(endDate)) {
+          console.warn('Invalid date range for "all time", using fallback dates');
+          start = '2023-01-01'; // Jan 1, 2023
+          end = '2025-12-31'; // Dec 31, 2025
+        } else {
+          start = safeFormat(startDate, 'yyyy-MM-dd');
+          end = safeFormat(endDate, 'yyyy-MM-dd');
+          
+          // Double check formatted strings are valid
+          if (!start || !end || !isValid(parseISO(start)) || !isValid(parseISO(end))) {
+            console.warn('Invalid formatted dates for double days query, using fallback dates');
+            start = '2023-01-01'; // Jan 1, 2023
+            end = '2025-12-31'; // Dec 31, 2025
+          }
+        }
       } else if (filterMonth === "custom") {
         if (startDate && endDate && isValid(parseISO(startDate)) && isValid(parseISO(endDate))) {
           start = startDate;
@@ -397,6 +436,14 @@ const ApprovedHoursPage: React.FC = () => {
           // Use default range if dates are invalid
           start = safeFormat(subMonths(new Date(), 1), 'yyyy-MM-dd');
           end = safeFormat(new Date(), 'yyyy-MM-dd');
+          
+          // Double check formatted strings are valid
+          if (!start || !end || !isValid(parseISO(start)) || !isValid(parseISO(end))) {
+            console.warn('Invalid formatted dates for double days query, using fallback dates');
+            const currentDate = new Date();
+            start = `${currentDate.getFullYear()}-01-01`; // Jan 1 of current year
+            end = `${currentDate.getFullYear()}-12-31`; // Dec 31 of current year
+          }
         }
       } else {
         try {
@@ -417,7 +464,7 @@ const ApprovedHoursPage: React.FC = () => {
       }
       
       // Only proceed if we have valid dates
-      if (start && end) {
+      if (start && end && isValid(parseISO(start)) && isValid(parseISO(end))) {
         const days = await getDoubleTimeDays(start, end);
         setDoubleDays(days);
         
@@ -448,6 +495,10 @@ const ApprovedHoursPage: React.FC = () => {
         }
         
         toast.success('Double-time days updated successfully');
+      } else {
+        console.warn('Invalid date range detected, skipping double days refresh');
+        setDoubleDays([]);
+        toast.error('Could not update double-time days due to invalid date range');
       }
     } catch (error) {
       console.error('Error refreshing data after calendar update:', error);
