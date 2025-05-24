@@ -168,36 +168,7 @@ function HrPage() {
     } catch (error) {
       console.error('Error processing file:', error);
       toast.dismiss(loadingToast);
-      
-      // Enhanced error handling to provide more specific information
-      if (error instanceof Error) {
-        // Check if it's a missing columns error
-        if (error.message.includes('missing required columns')) {
-          // Display a more detailed error message with the expected column format
-          toast.error((t) => (
-            <div className="space-y-2">
-              <p className="font-medium">Excel file format error:</p>
-              <p>{error.message}</p>
-              <div className="mt-2 text-sm bg-red-50 p-2 rounded">
-                <p className="font-semibold">Required columns:</p>
-                <ul className="list-disc pl-5 space-y-1">
-                  <li>Department</li>
-                  <li>Name</li>
-                  <li>Employee Number</li>
-                  <li>Timestamp</li>
-                  <li>Status</li>
-                </ul>
-              </div>
-            </div>
-          ), { duration: 8000 });
-        } else {
-          // For other errors, just show the error message
-          toast.error(error.message);
-        }
-      } else {
-        // Fallback for non-Error objects
-        toast.error('Error processing file. Please check the file format and try again.');
-      }
+      toast.error(error instanceof Error ? error.message : 'Error processing file');
     } finally {
       setIsUploading(false);
       // Reset the file input
@@ -725,23 +696,6 @@ function HrPage() {
                   <li><strong>Night shift:</strong> 09:00 PM - 06:00 AM (allowed check-out from 05:30 AM)</li>
                 </ul>
                 <p className="mt-2"><strong>Note:</strong> Check-ins between 4:30 AM and 5:00 AM are considered part of the morning shift.</p>
-              </div>
-            </div>
-
-            {/* File format info box */}
-            <div className="bg-blue-50 border border-blue-100 rounded-md p-4 flex items-start">
-              <AlertCircle className="w-5 h-5 text-blue-500 mr-3 mt-0.5 flex-shrink-0" />
-              <div className="text-sm text-blue-800">
-                <p className="font-medium">Excel File Format Requirements</p>
-                <p>The uploaded Excel file must contain the following columns:</p>
-                <ul className="list-disc pl-5 mt-2 space-y-1">
-                  <li><strong>Department</strong> - Employee's department</li>
-                  <li><strong>Name</strong> - Employee's full name</li>
-                  <li><strong>Employee Number</strong> - Unique employee identifier</li>
-                  <li><strong>Timestamp</strong> - Date and time of check-in/check-out</li>
-                  <li><strong>Status</strong> - "check_in" or "check_out"</li>
-                </ul>
-                <p className="mt-2"><strong>Note:</strong> Column names are case-sensitive and must match exactly as shown above.</p>
               </div>
             </div>
 
