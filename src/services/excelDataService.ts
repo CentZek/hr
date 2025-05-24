@@ -200,9 +200,6 @@ export const updateProcessedEmployeeData = async (
   employeeRecords: EmployeeRecord[]
 ): Promise<boolean> => {
   try {
-    // For simplicity, we'll just delete and re-insert all records for this file
-    // This avoids complex update logic for nested data
-    
     // Step 1: Get all employee IDs for this file
     const { data: employeesData, error: employeesError } = await supabase
       .from('processed_employee_data')
@@ -217,10 +214,43 @@ export const updateProcessedEmployeeData = async (
       employeesData.map(emp => [emp.employee_number, emp.id])
     );
 
-    // Step 2: Update each employee's daily records
+    // Step 2: Process each employee
     for (const employee of employeeRecords) {
-      const employeeId = employeeIdMap.get(employee.employeeNumber);
-      if (!employeeId) continue;
+      let employeeId = employeeIdMap.get(employee.employeeNumber);
+      
+      // If employee doesn't exist in the database yet, create them first
+      if (!employeeId) {
+        const { data: newEmployeeData, error: insertEmployeeError } = await supabase
+          .from('processed_employee_data')
+          .insert([
+            {
+              file_id: fileId,
+              employee_number: employee.employeeNumber,
+              name: employee.name,
+              department: employee.department || '',
+              total_days: employee.days.length
+            }
+          ])
+          .select()
+          .single();
+        
+        if (insertEmployeeError) throw insertEmployeeError;
+        if (!newEmployeeData) continue;
+        
+        employeeId = newEmployeeData.id;
+      } else {
+        // Update existing employee record
+        const { error: updateError } = await supabase
+          .from('processed_employee_data')
+          .update({ 
+            name: employee.name,
+            department: employee.department || '',
+            total_days: employee.days.length 
+          })
+          .eq('id', employeeId);
+
+        if (updateError) throw updateError;
+      }
 
       // Delete existing daily records for this employee
       const { error: deleteError } = await supabase
@@ -265,14 +295,6 @@ export const updateProcessedEmployeeData = async (
           if (insertError) throw insertError;
         }
       }
-
-      // Update employee record with new total_days
-      const { error: updateError } = await supabase
-        .from('processed_employee_data')
-        .update({ total_days: employee.days.length })
-        .eq('id', employeeId);
-
-      if (updateError) throw updateError;
     }
 
     // Step 3: Update file record with new totals
