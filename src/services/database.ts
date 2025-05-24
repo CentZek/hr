@@ -387,14 +387,14 @@ export const saveRecordsToDatabase = async (employeeRecords: EmployeeRecord[]): 
         if (day.notes === 'OFF-DAY' && day.hoursWorked === 0) {
           // Check if OFF-DAY record already exists
           const existingOffDayId = await checkExistingTimeRecord(
-            await getEmployeeId(employee.employeeNumber),
+            await getEmployeeId(employee.employeeNumber, employee.name),
             'off_day',
             'off_day',
             day.date
           );
 
           const offDayData = {
-            employee_id: await getEmployeeId(employee.employeeNumber),
+            employee_id: await getEmployeeId(employee.employeeNumber, employee.name),
             timestamp: `${day.date}T12:00:00`, // Use local date-time string
             status: 'off_day',
             shift_type: 'off_day',
@@ -426,8 +426,8 @@ export const saveRecordsToDatabase = async (employeeRecords: EmployeeRecord[]): 
           continue;
         }
         
-        // Get employee ID
-        const employeeId = await getEmployeeId(employee.employeeNumber);
+        // Get employee ID - pass the employee name to ensure it's used when creating new employees
+        const employeeId = await getEmployeeId(employee.employeeNumber, employee.name);
         
         // Check if this is a double-time day
         const isDoubleTime = doubleDays.includes(day.date);
@@ -547,17 +547,28 @@ export const saveRecordsToDatabase = async (employeeRecords: EmployeeRecord[]): 
 };
 
 // Helper function to get employee ID from employee number
-const getEmployeeId = async (employeeNumber: string): Promise<string> => {
+const getEmployeeId = async (employeeNumber: string, employeeName: string = 'Unknown Employee'): Promise<string> => {
   // Check if employee exists
   const { data, error } = await supabase
     .from('employees')
-    .select('id')
+    .select('id, name')
     .eq('employee_number', employeeNumber)
     .maybeSingle();
   
   if (error) throw error;
   
   if (data) {
+    // If employee exists but has "Unknown Employee" name, update it with the provided name
+    if (data.name === 'Unknown Employee' && employeeName !== 'Unknown Employee') {
+      const { error: updateError } = await supabase
+        .from('employees')
+        .update({ name: employeeName })
+        .eq('id', data.id);
+        
+      if (updateError) {
+        console.warn('Failed to update employee name:', updateError);
+      }
+    }
     return data.id;
   }
   
@@ -565,7 +576,7 @@ const getEmployeeId = async (employeeNumber: string): Promise<string> => {
   const { data: newEmployee, error: createError } = await supabase
     .from('employees')
     .insert([
-      { employee_number: employeeNumber, name: 'Unknown Employee' }
+      { employee_number: employeeNumber, name: employeeName }
     ])
     .select('id')
     .single();
