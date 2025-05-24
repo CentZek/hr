@@ -131,12 +131,11 @@ export const getActiveProcessedFile = async (): Promise<{
 // Get all employees for a specific file
 export const getProcessedEmployees = async (fileId: string): Promise<EmployeeRecord[]> => {
   try {
-    // Step 1: Fetch employee data - sorted by name alphabetically
+    // Step 1: Fetch employee data
     const { data: employeesData, error: employeesError } = await supabase
       .from('processed_employee_data')
       .select('id, employee_number, name, department, total_days')
-      .eq('file_id', fileId)
-      .order('name', { ascending: true }); // Sort alphabetically by name
+      .eq('file_id', fileId);
 
     if (employeesError) throw employeesError;
     if (!employeesData || employeesData.length === 0) return [];
@@ -185,11 +184,9 @@ export const getProcessedEmployees = async (fileId: string): Promise<EmployeeRec
       });
     }
 
-    // Return the already sorted employee records
     return employeeRecords;
   } catch (error) {
     console.error('Error fetching processed employees:', error);
-    // Even in the error case, make sure to return a sorted empty array
     return [];
   }
 };
@@ -200,7 +197,10 @@ export const updateProcessedEmployeeData = async (
   employeeRecords: EmployeeRecord[]
 ): Promise<boolean> => {
   try {
-    // Get all employee IDs for this file
+    // For simplicity, we'll just delete and re-insert all records for this file
+    // This avoids complex update logic for nested data
+    
+    // Step 1: Get all employee IDs for this file
     const { data: employeesData, error: employeesError } = await supabase
       .from('processed_employee_data')
       .select('id, employee_number')
@@ -214,12 +214,12 @@ export const updateProcessedEmployeeData = async (
       employeesData.map(emp => [emp.employee_number, emp.id])
     );
 
-    // Update each employee's daily records
+    // Step 2: Update each employee's daily records
     for (const employee of employeeRecords) {
       const employeeId = employeeIdMap.get(employee.employeeNumber);
       if (!employeeId) continue;
 
-      // First delete existing daily records for this employee
+      // Delete existing daily records for this employee
       const { error: deleteError } = await supabase
         .from('processed_daily_records')
         .delete()
@@ -227,7 +227,7 @@ export const updateProcessedEmployeeData = async (
 
       if (deleteError) throw deleteError;
 
-      // Only then insert updated daily records
+      // Insert updated daily records
       const dailyRecordsToInsert = employee.days.map(day => ({
         employee_id: employeeId,
         date: day.date,
@@ -272,7 +272,7 @@ export const updateProcessedEmployeeData = async (
       if (updateError) throw updateError;
     }
 
-    // Update file record with new totals
+    // Step 3: Update file record with new totals
     const { error: updateFileError } = await supabase
       .from('processed_excel_files')
       .update({
@@ -294,66 +294,21 @@ export const updateProcessedEmployeeData = async (
 export const deleteProcessedExcelData = async (fileId?: string): Promise<boolean> => {
   try {
     if (fileId) {
-      // STEP 1: First, fetch all employee records for this file to get their IDs
-      const { data: employeesData, error: employeesError } = await supabase
-        .from('processed_employee_data')
-        .select('id')
-        .eq('file_id', fileId);
-
-      if (employeesError) throw employeesError;
-      
-      // STEP 2: Delete all daily records for each employee (one by one to respect foreign keys)
-      if (employeesData && employeesData.length > 0) {
-        for (const emp of employeesData) {
-          // Delete all daily records for this employee
-          const { error: dailyRecordsError } = await supabase
-            .from('processed_daily_records')
-            .delete()
-            .eq('employee_id', emp.id);
-            
-          if (dailyRecordsError) {
-            console.error(`Error deleting daily records for employee ${emp.id}:`, dailyRecordsError);
-            throw dailyRecordsError;
-          }
-        }
-      }
-      
-      // STEP 3: After ALL daily records are deleted, delete employee records
-      const { error: employeeDeleteError } = await supabase
-        .from('processed_employee_data')
-        .delete()
-        .eq('file_id', fileId);
-        
-      if (employeeDeleteError) {
-        console.error(`Error deleting employee data for file ${fileId}:`, employeeDeleteError);
-        throw employeeDeleteError;
-      }
-      
-      // STEP 4: Finally delete the file record itself
-      const { error: fileDeleteError } = await supabase
+      // Delete specific file and its associated data (cascade will handle related records)
+      const { error } = await supabase
         .from('processed_excel_files')
         .delete()
         .eq('id', fileId);
-        
-      if (fileDeleteError) {
-        console.error(`Error deleting file record ${fileId}:`, fileDeleteError);
-        throw fileDeleteError;
-      }
+
+      if (error) throw error;
     } else {
-      // If no specific fileId, get all file IDs first
-      const { data: filesData, error: filesError } = await supabase
+      // Delete all files and their associated data
+      const { error } = await supabase
         .from('processed_excel_files')
-        .select('id');
-        
-      if (filesError) throw filesError;
-      
-      if (filesData && filesData.length > 0) {
-        // Process each file one by one for proper deletion order
-        for (const file of filesData) {
-          // Call this function recursively for each file
-          await deleteProcessedExcelData(file.id);
-        }
-      }
+        .delete()
+        .neq('id', '00000000-0000-0000-0000-000000000000'); // Dummy condition to delete all
+
+      if (error) throw error;
     }
 
     return true;
