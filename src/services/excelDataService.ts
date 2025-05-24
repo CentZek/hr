@@ -296,9 +296,8 @@ export const updateProcessedEmployeeData = async (
 // Delete processed Excel data
 export const deleteProcessedExcelData = async (fileId?: string): Promise<boolean> => {
   try {
-    // Handle file deletion
     if (fileId) {
-      // Delete specific file (cascade will handle related records in the database)
+      // Delete specific file and its associated data (cascade will handle related records)
       const { error } = await supabase
         .from('processed_excel_files')
         .delete()
@@ -309,7 +308,7 @@ export const deleteProcessedExcelData = async (fileId?: string): Promise<boolean
         throw error;
       }
     } else {
-      // Delete all files (cascade will handle related records in the database)
+      // Delete all files and their associated data
       const { error } = await supabase
         .from('processed_excel_files')
         .delete();
@@ -320,10 +319,8 @@ export const deleteProcessedExcelData = async (fileId?: string): Promise<boolean
       }
     }
 
-    // Handle manual time records separately
-    // This is now separate from the file deletion to avoid any column reference issues
+    // Also clear any manual time records
     try {
-      // Delete manual time records directly without referencing employee_id from processed_excel_files
       const { error: timeRecordsError } = await supabase
         .from('time_records')
         .delete()
