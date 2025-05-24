@@ -17,39 +17,12 @@ const options = {
   },
   global: {
     fetch: (...args: any[]) => {
-      // Skip cache busting for Supabase REST API calls
-      let url: string;
-      
-      if (typeof args[0] === 'string') {
-        url = args[0];
-      } else if (args[0] instanceof Request) {
-        url = args[0].url;
-      } else {
-        // If it's neither a string nor a Request, proceed with the original fetch
-        return fetch(...args).catch(err => {
-          console.warn('Supabase fetch error, retrying:', err);
-          return new Promise(resolve => setTimeout(resolve, 1000))
-            .then(() => fetch(...args));
-        });
-      }
-      
-      // Skip cache busting for Supabase REST API calls
-      // Check if the URL contains '/rest/v1/' which indicates it's a Supabase REST API call
-      if (url.includes('/rest/v1/')) {
-        // Don't add cache buster for REST API calls
-        return fetch(...args).catch(err => {
-          console.warn('Supabase fetch error, retrying:', err);
-          return new Promise(resolve => setTimeout(resolve, 1000))
-            .then(() => fetch(...args));
-        });
-      }
-      
-      // For non-REST API calls, add the cache buster
+      // Add cache busting for network requests
       if (typeof args[0] === 'string') {
         args[0] = addCacheBuster(args[0]);
       } else if (args[0] instanceof Request) {
-        const modifiedUrl = addCacheBuster(args[0].url);
-        args[0] = new Request(modifiedUrl, args[0]);
+        const url = addCacheBuster(args[0].url);
+        args[0] = new Request(url, args[0]);
       }
       
       // Add retry logic for network errors
