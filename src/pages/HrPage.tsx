@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Upload, Clock, AlertCircle, CheckCircle, Download, RefreshCw, PlusCircle, Database, KeyRound, Home, AlertTriangle } from 'lucide-react';
+import { Upload, Clock, AlertCircle, CheckCircle, Download, RefreshCw, PlusCircle, Database, KeyRound, Home, AlertTriangle, Calendar } from 'lucide-react';
 import toast, { Toaster } from 'react-hot-toast';
 
 // Import types
@@ -26,6 +26,7 @@ import EmployeeShiftRequest from '../components/EmployeeShiftRequest';
 import TimeRecordsTable from '../components/TimeRecordsTable';
 import ApproveAllConfirmationDialog from '../components/ApproveAllConfirmationDialog';
 import ConfirmDialog from '../components/ConfirmDialog';
+import DateRangePicker from '../components/DateRangePicker';
 
 // Import context
 import { useAppContext } from '../context/AppContext';
@@ -52,6 +53,11 @@ function HrPage() {
   const [savingErrors, setSavingErrors] = useState<{employeeName: string, date: string, error: string}[]>([]);
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const [isMobile, setIsMobile] = useState(false);
+  
+  // Date range state
+  const [showDateRangePicker, setShowDateRangePicker] = useState(false);
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
   
   // Modal states
   const [isManualEntryOpen, setIsManualEntryOpen] = useState(false);
@@ -617,6 +623,18 @@ function HrPage() {
       return () => clearTimeout(timer);
     }
   }, [recentManualEntry]);
+  
+  // Toggle date range picker
+  const handleToggleDateRangePicker = () => {
+    setShowDateRangePicker(!showDateRangePicker);
+  };
+  
+  // Handle date range selection
+  const handleDateRangeChange = (start: string, end: string) => {
+    setStartDate(start);
+    setEndDate(end);
+    setShowDateRangePicker(false); // Close the picker after selection
+  };
 
   // If still loading from context, show loading state
   if (isContextLoading) {
@@ -723,6 +741,29 @@ function HrPage() {
                 <p className="mt-2"><strong>Note:</strong> Check-ins between 4:30 AM and 5:00 AM are considered part of the morning shift.</p>
               </div>
             </div>
+            
+            {/* Date Range Picker (optional) */}
+            {showDateRangePicker && (
+              <div className="bg-white border border-gray-200 rounded-md p-4 shadow-sm">
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-sm font-medium flex items-center text-gray-700">
+                    <Calendar className="w-4 h-4 mr-2 text-purple-600" />
+                    Select Date Range
+                  </h3>
+                  <button 
+                    onClick={() => setShowDateRangePicker(false)}
+                    className="text-gray-400 hover:text-gray-500"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+                <DateRangePicker 
+                  onSelect={handleDateRangeChange} 
+                  initialStartDate={startDate} 
+                  initialEndDate={endDate} 
+                />
+              </div>
+            )}
 
             {/* Employee Shift Requests Section */}
             <EmployeeShiftRequest onShiftApproved={handleEmployeeShiftApproved} />
