@@ -52,64 +52,38 @@ export const handleExcelFile = async (file: File): Promise<EmployeeRecord[]> => 
 // Process raw data from Excel
 const processRawData = (jsonData: any[]): TimeRecord[] => {
   const records: TimeRecord[] = [];
+  const requiredColumns = ['Department', 'Name', 'Employee Number', 'Timestamp', 'Status'];
   
-  // Map of acceptable column names
-  const columnMappings: { [key: string]: string[] } = {
-    'department': ['department', 'dept', 'division'],
-    'name': ['name', 'employee name', 'emp name', 'fullname'],
-    'employeeNumber': ['employee number', 'emp number', 'empno', 'emp no', 'employee no', 'no.', 'no'],
-    'timestamp': ['timestamp', 'date/time', 'datetime', 'time', 'date time', 'date'],
-    'status': ['status', 'check status', 'c/in', 'c/out', 'checkin/out']
-  };
-  
-  // Check if the file has the required columns
+  // Check if the first row has required columns
   const firstRow = jsonData[0];
-  const headerKeys = Object.keys(firstRow);
+  const hasRequiredColumns = requiredColumns.every(column => 
+    Object.keys(firstRow).some(key => key.includes(column))
+  );
   
-  // Map for normalizing column names
-  const columnMap = new Map<string, string>();
-  
-  // Identify which columns in the file map to our required fields
-  for (const [normalizedName, possibleNames] of Object.entries(columnMappings)) {
-    // Find a matching column in the file
-    const matchingKey = headerKeys.find(key => 
-      possibleNames.some(possibleName => key.toLowerCase().includes(possibleName.toLowerCase()))
-    );
-    
-    if (matchingKey) {
-      columnMap.set(matchingKey, normalizedName);
-    }
+  if (!hasRequiredColumns) {
+    throw new Error('The Excel file is missing required columns. Please make sure it includes: ' + 
+      requiredColumns.join(', '));
   }
   
-  // Check if we found all required columns
-  const requiredNormalizedColumns = ['department', 'name', 'employeeNumber', 'timestamp', 'status'];
-  const foundNormalizedColumns = new Set(columnMap.values());
-  
-  const missingColumns = requiredNormalizedColumns.filter(col => !foundNormalizedColumns.has(col));
-  
-  if (missingColumns.length > 0) {
-    throw new Error('The Excel file is missing required columns: ' + 
-      missingColumns.map(col => {
-        if (col === 'employeeNumber') return 'Employee Number';
-        if (col === 'timestamp') return 'Timestamp or Date/Time';
-        return col.charAt(0).toUpperCase() + col.slice(1);
-      }).join(', '));
-  }
+  // Normalize column names (they might have different capitalizations or extra spaces)
+  const normalizeColumnName = (key: string): string => {
+    key = key.toLowerCase();
+    if (key.includes('department')) return 'department';
+    if (key.includes('name') && !key.includes('employee')) return 'name';
+    if (key.includes('employee') && key.includes('number')) return 'employeeNumber';
+    if (key.includes('timestamp')) return 'timestamp';
+    if (key.includes('status')) return 'status';
+    return key;
+  };
   
   // Process each row
   jsonData.forEach((row, index) => {
     const normalizedRow: any = {};
     
-    // Use our column map to normalize the data
-    for (const [originalKey, value] of Object.entries(row)) {
-      const normalizedKey = columnMap.get(originalKey);
-      if (normalizedKey) {
-        normalizedRow[normalizedKey] = value;
-      } else {
-        // Keep the original key for any unmapped columns
-        normalizedRow[originalKey.toLowerCase()] = value;
-      }
-    }
+    // Normalize column names
+    Object.keys(row).forEach(key => {
+      normalizedRow[normalizeColumnName(key)] = row[key];
+    });
     
     // Skip rows without the required data
     if (!normalizedRow.name || !normalizedRow.timestamp || !normalizedRow.status) {
@@ -131,7 +105,6 @@ const processRawData = (jsonData: any[]): TimeRecord[] => {
             'M/d/yyyy h:mm:ss a',
             'M/d/yyyy h:mm a',
             'MM/dd/yyyy h:mm:ss a',
-            'MM/dd/yyyy h:mm a',
             'yyyy-MM-dd HH:mm:ss',
             'yyyy/MM/dd HH:mm:ss'
           ];
@@ -190,13 +163,11 @@ const processRawData = (jsonData: any[]): TimeRecord[] => {
 const normalizeStatus = (status: string): 'check_in' | 'check_out' | '' => {
   if (!status) return '';
   
-  // Convert to string and lowercase
-  status = String(status).toLowerCase();
+  status = status.toLowerCase();
   
-  // Check for common check-in/check-out values
-  if (status.includes('in') || status === 'i' || status === 'c/in') {
+  if (status.includes('in') || status === 'i') {
     return 'check_in';
-  } else if (status.includes('out') || status === 'o' || status === 'c/out') {
+  } else if (status.includes('out') || status === 'o') {
     return 'check_out';
   }
   
