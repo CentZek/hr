@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { User, Search, X, Check, ChevronDown, ChevronUp } from 'lucide-react';
+import { User, Search, X, ChevronDown, ChevronUp } from 'lucide-react';
 
 interface MultiEmployeeFilterProps {
   employees: any[];
@@ -55,6 +55,17 @@ const MultiEmployeeFilter: React.FC<MultiEmployeeFilterProps> = ({
     }
   }, [isOpen]);
 
+  // Handle checkbox click
+  const handleCheckboxClick = (e: React.MouseEvent, employeeId: string) => {
+    e.stopPropagation(); // Prevent the row click from firing
+    onChange(employeeId, !selectedEmployees.includes(employeeId));
+  };
+
+  // Handle row click
+  const handleRowClick = (employeeId: string) => {
+    onChange(employeeId, !selectedEmployees.includes(employeeId));
+  };
+
   return (
     <div className={`relative ${className}`} ref={dropdownRef}>
       {/* Main button */}
@@ -76,7 +87,7 @@ const MultiEmployeeFilter: React.FC<MultiEmployeeFilterProps> = ({
 
       {/* Dropdown panel */}
       {isOpen && (
-        <div className="absolute left-0 z-10 mt-1 w-64 bg-white rounded-md shadow-lg border border-gray-200">
+        <div className="absolute left-0 z-50 mt-1 w-64 bg-white rounded-md shadow-lg border border-gray-200">
           {/* Search and actions */}
           <div className="p-2 border-b border-gray-200">
             <div className="relative mb-2">
@@ -89,7 +100,7 @@ const MultiEmployeeFilter: React.FC<MultiEmployeeFilterProps> = ({
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Search employees..."
-                className="block w-full pl-8 pr-3 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-purple-500 focus:border-purple-500"
+                className="block w-full pl-8 pr-8 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-purple-500 focus:border-purple-500"
               />
               {searchQuery && (
                 <button
@@ -103,7 +114,10 @@ const MultiEmployeeFilter: React.FC<MultiEmployeeFilterProps> = ({
             
             <div className="flex justify-between">
               <button
-                onClick={onSelectAll}
+                onClick={() => {
+                  onSelectAll();
+                  // Keep the dropdown open after selecting all
+                }}
                 className="text-xs px-2 py-1 bg-purple-100 text-purple-700 rounded hover:bg-purple-200"
               >
                 {selectedEmployees.length === employees.length ? 'Deselect All' : 'Select All'}
@@ -111,7 +125,10 @@ const MultiEmployeeFilter: React.FC<MultiEmployeeFilterProps> = ({
               
               {selectedEmployees.length > 0 && (
                 <button
-                  onClick={onClear}
+                  onClick={() => {
+                    onClear();
+                    // Keep the dropdown open after clearing
+                  }}
                   className="text-xs px-2 py-1 bg-gray-100 text-gray-700 rounded hover:bg-gray-200"
                 >
                   Clear ({selectedEmployees.length})
@@ -130,8 +147,8 @@ const MultiEmployeeFilter: React.FC<MultiEmployeeFilterProps> = ({
               filteredEmployees.map((employee) => (
                 <div 
                   key={employee.id}
-                  className="flex items-center px-3 py-1.5 hover:bg-gray-100 cursor-pointer"
-                  onClick={() => onChange(employee.id, !selectedEmployees.includes(employee.id))}
+                  className="px-3 py-1.5 hover:bg-gray-100 cursor-pointer"
+                  onClick={() => handleRowClick(employee.id)}
                 >
                   <div className="flex items-center flex-1 min-w-0">
                     <input
@@ -139,10 +156,14 @@ const MultiEmployeeFilter: React.FC<MultiEmployeeFilterProps> = ({
                       id={`emp-${employee.id}`}
                       checked={selectedEmployees.includes(employee.id)}
                       onChange={() => {}} // Handled by parent div click
-                      className="h-4 w-4 text-purple-600 focus:ring-purple-500 border-gray-300 rounded"
-                      onClick={(e) => e.stopPropagation()}
+                      onClick={(e) => handleCheckboxClick(e, employee.id)}
+                      className="h-4 w-4 text-purple-600 focus:ring-purple-500 border-gray-300 rounded cursor-pointer"
                     />
-                    <label htmlFor={`emp-${employee.id}`} className="ml-2 block text-sm text-gray-900 truncate flex-1">
+                    <label 
+                      htmlFor={`emp-${employee.id}`} 
+                      className="ml-2 block text-sm text-gray-900 truncate flex-1 cursor-pointer"
+                      onClick={(e) => e.preventDefault()} // Prevent label click from triggering default checkbox behavior
+                    >
                       {employee.name}
                       <span className="text-xs text-gray-500 ml-1">#{employee.employee_number}</span>
                     </label>
