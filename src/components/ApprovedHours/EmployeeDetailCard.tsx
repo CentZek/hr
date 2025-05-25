@@ -23,7 +23,7 @@ const EmployeeDetailCard: React.FC<EmployeeDetailCardProps> = ({ employee, doubl
         
         <div className="flex flex-wrap gap-4">
           <div className="bg-gray-100 p-3 rounded-md">
-            <p className="text-xs text-gray-500">Working Days</p>
+            <p className="text-xs text-gray-500">Total Days</p>
             <p className="text-lg font-bold text-gray-800">{employee.total_days}</p>
           </div>
           

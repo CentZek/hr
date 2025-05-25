@@ -51,7 +51,7 @@ const EmployeeHoursSummary: React.FC<EmployeeHoursSummaryProps> = ({
         
         <div className="flex flex-wrap gap-2 mt-2">
           <div className="px-2 py-1 bg-blue-50 text-blue-700 rounded text-xs">
-            Working Days: <span className="font-medium">{employee.total_days}</span>
+            Days: <span className="font-medium">{employee.total_days}</span>
           </div>
           <div className="px-2 py-1 bg-purple-50 text-purple-700 rounded text-xs">
             Hours: <span className="font-medium">{employee.total_hours.toFixed(2)}</span>
