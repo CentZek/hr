@@ -663,7 +663,7 @@ const ApprovedHoursPage: React.FC = () => {
                 {/* Table Header */}
                 <div className="grid grid-cols-6 gap-2 bg-gray-50 p-4 text-sm font-medium text-gray-600">
                   <div className="col-span-2">Employee</div>
-                  <div>Working Days</div>
+                  <div>Total Days</div>
                   <div>Total Hours</div>
                   <div>Avg Hours/Day</div>
                   <div>Actions</div>
