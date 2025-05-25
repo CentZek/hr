@@ -163,14 +163,7 @@ function HrPage() {
     const loadingToast = toast.loading('Processing file...');
     
     try {
-      console.log('Starting Excel file processing...');
       const records = await handleExcelFile(file);
-      console.log('Excel processing complete, records:', records.length);
-      
-      if (records.length === 0) {
-        throw new Error('No valid records found in the file');
-      }
-      
       setEmployeeRecords(records);
       
       // Calculate statistics
@@ -178,7 +171,6 @@ function HrPage() {
       setTotalEmployees(stats.totalEmployees);
       setTotalDays(stats.totalDays);
       
-      console.log('Saving to Supabase...');
       // Save to Supabase for persistence
       await saveToSupabase(file.name, records);
       
