@@ -90,18 +90,15 @@ export const exportApprovedHoursToExcel = (data: any): void => {
     const regularHours = employee.total_hours || 0;
     const totalPayableHours = regularHours + doubleTimeHours;
     
-    // Only count valid days (not OFF-DAYs)
-    const workingDays = employee.total_days;
-    
     return {
       'Employee': employee.name,
       'Employee Number': employee.employee_number,
-      'Working Days': workingDays,
+      'Working Days': employee.total_days,
       'Regular Hours': regularHours.toFixed(2),
       'Double-Time Hours': doubleTimeHours.toFixed(2),
       'Total Payable Hours': totalPayableHours.toFixed(2),
-      'Average Hours/Day': workingDays > 0 
-        ? (regularHours / workingDays).toFixed(2)
+      'Average Hours/Day': employee.total_days > 0 
+        ? (regularHours / employee.total_days).toFixed(2)
         : '0.00'
     };
   });
