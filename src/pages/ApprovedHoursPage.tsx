@@ -590,7 +590,7 @@ const ApprovedHoursPage: React.FC = () => {
                 </button>
               </div>
             </div>
-            
+
             {/* Holiday Calendar (conditionally displayed) */}
             {showCalendar && (
               <div className="mb-6">
