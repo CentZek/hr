@@ -13,9 +13,9 @@ const EmployeeSummary: React.FC<EmployeeSummaryProps> = ({ days, doubleDays = []
   
   // Calculate totals
   const totalHours = parseFloat(validDays.reduce((sum, day) => sum + day.hoursWorked, 0).toFixed(2));
-  const totalWorkingDays = validDays.length;
+  const totalDays = validDays.length;
   const offDaysCount = days.filter(d => d.notes === 'OFF-DAY').length;
-  const avgHoursPerDay = totalWorkingDays > 0 ? parseFloat((totalHours / totalWorkingDays).toFixed(2)) : 0;
+  const avgHoursPerDay = totalDays > 0 ? parseFloat((totalHours / totalDays).toFixed(2)) : 0;
   
   // Calculate double-time hours
   const doubleTimeHours = parseFloat(validDays.reduce((sum, day) => {
@@ -79,7 +79,7 @@ const EmployeeSummary: React.FC<EmployeeSummaryProps> = ({ days, doubleDays = []
             <span className="text-xs font-medium uppercase">Days</span>
           </div>
           <div>
-            <p className="text-2xl font-bold text-gray-800">{totalWorkingDays}</p>
+            <p className="text-2xl font-bold text-gray-800">{totalDays}</p>
             <p className="text-xs text-gray-500">Working Days</p>
           </div>
           <div className="mt-2 flex items-center justify-between">
