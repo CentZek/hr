@@ -13,6 +13,7 @@ import NavigationTabs from '../components/NavigationTabs';
 import HolidayCalendar from '../components/HolidayCalendar';
 import EmployeeFilter from '../components/ApprovedHours/EmployeeFilter';
 import EmployeeDetailCard from '../components/ApprovedHours/EmployeeDetailCard';
+import MultiEmployeeFilter from '../components/ApprovedHours/MultiEmployeeFilter';
 
 // Safely format a date - handles invalid dates
 const safeFormat = (date: Date | string | null | undefined, formatStr: string, defaultValue = ''): string => {
@@ -539,25 +540,14 @@ const ApprovedHoursPage: React.FC = () => {
                   </div>
                 </div>
                 
-                {/* Employee Filter */}
-                <div className="flex items-center gap-2">
-                  <User className="w-4 h-4 text-gray-500" />
-                  <select
-                    value={filterEmployee}
-                    onChange={(e) => handleEmployeeFilterChange(e.target.value)}
-                    className="border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
-                    disabled={selectedEmployees.length > 0}
-                  >
-                    <option value="all">All Employees</option>
-                    {allEmployees
-                      .sort((a, b) => a.name.localeCompare(b.name)) // Sort alphabetically
-                      .map((employee) => (
-                        <option key={employee.id} value={employee.id}>
-                          {employee.name}
-                        </option>
-                      ))}
-                  </select>
-                </div>
+                {/* Employee Filter Dropdown */}
+                <MultiEmployeeFilter 
+                  employees={allEmployees}
+                  selectedEmployees={selectedEmployees}
+                  onChange={handleEmployeeSelectionChange}
+                  onSelectAll={handleSelectAllEmployees}
+                  onClear={handleClearEmployeeSelection}
+                />
                 
                 <button
                   onClick={handleCalendarToggle}
@@ -597,60 +587,6 @@ const ApprovedHoursPage: React.FC = () => {
                 <HolidayCalendar onHolidaysUpdated={handleHolidaysUpdated} />
               </div>
             )}
-
-            {/* Employee Selection */}
-            <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-4">
-              <div className="flex justify-between items-center mb-4">
-                <h3 className="text-sm font-medium text-gray-700 flex items-center">
-                  <User className="w-4 h-4 mr-2 text-purple-500" />
-                  Filter by Employee
-                </h3>
-                <div className="flex gap-2">
-                  <button
-                    onClick={handleSelectAllEmployees}
-                    className="text-xs px-2 py-1 bg-purple-100 text-purple-700 rounded hover:bg-purple-200"
-                  >
-                    {selectedEmployees.length === allEmployees.length ? 'Deselect All' : 'Select All'}
-                  </button>
-                  {selectedEmployees.length > 0 && (
-                    <button
-                      onClick={handleClearEmployeeSelection}
-                      className="text-xs px-2 py-1 bg-gray-100 text-gray-700 rounded hover:bg-gray-200"
-                    >
-                      Clear ({selectedEmployees.length})
-                    </button>
-                  )}
-                </div>
-              </div>
-              
-              <div className="max-h-40 overflow-y-auto">
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
-                  {allEmployees
-                    .sort((a, b) => a.name.localeCompare(b.name))
-                    .map((employee) => (
-                      <div key={employee.id} className="flex items-center">
-                        <input
-                          type="checkbox"
-                          id={`emp-${employee.id}`}
-                          checked={selectedEmployees.includes(employee.id)}
-                          onChange={(e) => handleEmployeeSelectionChange(employee.id, e.target.checked)}
-                          className="h-4 w-4 text-purple-600 focus:ring-purple-500 border-gray-300 rounded"
-                        />
-                        <label htmlFor={`emp-${employee.id}`} className="ml-2 text-sm text-gray-700">
-                          {employee.name}
-                          <span className="text-xs text-gray-500 ml-1">#{employee.employee_number}</span>
-                        </label>
-                      </div>
-                    ))}
-                </div>
-              </div>
-              
-              {selectedEmployees.length > 0 && (
-                <div className="mt-3 text-xs text-gray-500">
-                  {selectedEmployees.length} employee{selectedEmployees.length !== 1 ? 's' : ''} selected
-                </div>
-              )}
-            </div>
 
             {/* Employee Hours List */}
             {isLoading ? (

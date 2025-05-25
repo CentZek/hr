@@ -1,5 +1,5 @@
-import React from 'react';
-import { User } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { User, Search, X, Check, ChevronDown } from 'lucide-react';
 
 interface EmployeeFilterProps {
   employees: any[];
