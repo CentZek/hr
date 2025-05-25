@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { format, subMonths, isSameDay, startOfMonth, endOfMonth, parseISO, isValid } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
-import { Clock, ArrowLeft, Download, Users, Calendar, Filter, Trash2, Home, Calendar as Calendar2, User } from 'lucide-react';
+import { Clock, ArrowLeft, Download, Users, Calendar, Filter, Trash2, Home, Calendar as Calendar2, User, X, ChevronLeft, ChevronRight } from 'lucide-react';
 import toast, { Toaster } from 'react-hot-toast';
 import { fetchApprovedHours, fetchEmployeeDetails, deleteAllTimeRecords } from '../services/database';
 import { exportApprovedHoursToExcel } from '../utils/excelHandlers';
@@ -14,6 +14,7 @@ import HolidayCalendar from '../components/HolidayCalendar';
 import EmployeeFilter from '../components/ApprovedHours/EmployeeFilter';
 import EmployeeDetailCard from '../components/ApprovedHours/EmployeeDetailCard';
 import MultiEmployeeFilter from '../components/ApprovedHours/MultiEmployeeFilter';
+import DateRangePicker from '../components/DateRangePicker';
 
 // Safely format a date - handles invalid dates
 const safeFormat = (date: Date | string | null | undefined, formatStr: string, defaultValue = ''): string => {
@@ -52,6 +53,10 @@ const ApprovedHoursPage: React.FC = () => {
   const [totalPayableHours, setTotalPayableHours] = useState(0);
   const [doubleDays, setDoubleDays] = useState<string[]>([]);
   const [showCalendar, setShowCalendar] = useState(false);
+  const [showDateRangePicker, setShowDateRangePicker] = useState(false);
+  const [startDate, setStartDate] = useState<string>(safeFormat(subMonths(new Date(), 1), 'yyyy-MM-dd'));
+  const [endDate, setEndDate] = useState<string>(safeFormat(new Date(), 'yyyy-MM-dd'));
+  const [currentMonth, setCurrentMonth] = useState<Date>(new Date());
   
   // Delete confirmation state
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
@@ -60,6 +65,7 @@ const ApprovedHoursPage: React.FC = () => {
   // Generate month options for the dropdown
   const monthOptions = [
     { value: "all", label: "All Time" },
+    { value: "custom", label: "Custom Date Range" },
     ...Array.from({ length: 12 }).map((_, i) => {
       const date = subMonths(new Date(), i);
       return {
@@ -79,20 +85,24 @@ const ApprovedHoursPage: React.FC = () => {
           // Use a large date range for "all time" (past year to future year)
           start = safeFormat(subMonths(new Date(), 12), 'yyyy-MM-dd');
           end = safeFormat(new Date(new Date().getFullYear() + 1, 11, 31), 'yyyy-MM-dd');
+        } else if (filterMonth === "custom") {
+          // Use the selected date range
+          start = startDate;
+          end = endDate;
+          
+          // Validate dates
+          if (!start || !end || !isValid(parseISO(start)) || !isValid(parseISO(end))) {
+            console.error('Invalid date range for double days query');
+            return;
+          }
         } else {
           // Use the selected month
           try {
             const [year, month] = filterMonth.split('-');
-            if (year && month) {
-              const monthDate = new Date(parseInt(year), parseInt(month) - 1, 1);
-              if (isValid(monthDate)) {
-                start = safeFormat(startOfMonth(monthDate), 'yyyy-MM-dd');
-                end = safeFormat(endOfMonth(monthDate), 'yyyy-MM-dd');
-              } else {
-                // Use current month as fallback
-                start = safeFormat(startOfMonth(new Date()), 'yyyy-MM-dd');
-                end = safeFormat(endOfMonth(new Date()), 'yyyy-MM-dd');
-              }
+            const monthDate = new Date(parseInt(year), parseInt(month) - 1, 1);
+            if (isValid(monthDate)) {
+              start = safeFormat(startOfMonth(monthDate), 'yyyy-MM-dd');
+              end = safeFormat(endOfMonth(monthDate), 'yyyy-MM-dd');
             } else {
               // Use current month as fallback
               start = safeFormat(startOfMonth(new Date()), 'yyyy-MM-dd');
@@ -100,6 +110,7 @@ const ApprovedHoursPage: React.FC = () => {
             }
           } catch (error) {
             console.error('Error parsing filter month:', error);
+            // Use current month as fallback
             start = safeFormat(startOfMonth(new Date()), 'yyyy-MM-dd');
             end = safeFormat(endOfMonth(new Date()), 'yyyy-MM-dd');
           }
@@ -109,18 +120,14 @@ const ApprovedHoursPage: React.FC = () => {
         if (start && end) {
           const days = await getDoubleTimeDays(start, end);
           setDoubleDays(days);
-        } else {
-          console.error('Invalid date range for double days query');
-          setDoubleDays([]);
         }
       } catch (error) {
         console.error('Error loading double-time days:', error);
-        setDoubleDays([]);
       }
     };
     
     loadDoubleDays();
-  }, [filterMonth]);
+  }, [filterMonth, startDate, endDate]);
 
   // Fetch all approved hours summary
   useEffect(() => {
@@ -129,7 +136,18 @@ const ApprovedHoursPage: React.FC = () => {
       try {
         let dateFilter = "";
         
-        if (filterMonth !== "all") {
+        if (filterMonth === "custom") {
+          // Validate dates before setting the filter
+          if (startDate && endDate && isValid(parseISO(startDate)) && isValid(parseISO(endDate))) {
+            dateFilter = `${startDate}|${endDate}`;
+          } else {
+            console.warn('Invalid date range, using default filter');
+            // Default to recent month if dates are invalid
+            const defaultStart = safeFormat(subMonths(new Date(), 1), 'yyyy-MM-dd');
+            const defaultEnd = safeFormat(new Date(), 'yyyy-MM-dd');
+            dateFilter = `${defaultStart}|${defaultEnd}`;
+          }
+        } else if (filterMonth !== "all") {
           dateFilter = filterMonth;
         }
         
@@ -164,7 +182,7 @@ const ApprovedHoursPage: React.FC = () => {
           let employeeDoubleTime = 0;
           let employeeRegularTime = 0;
           
-          // If we have the working_week_dates for each record, we can calculate more accurately
+          // If we have the working_week_start for each record, we can calculate more accurately
           if (employee.working_week_dates) {
             employee.working_week_dates.forEach((dateStr: string) => {
               const hours = employee.hours_by_date?.[dateStr] || 0;
@@ -180,6 +198,10 @@ const ApprovedHoursPage: React.FC = () => {
           } else {
             // If detailed data is not available, just add to regular hours
             regularHours += employee.total_hours || 0;
+            
+            // Estimate that 20% of hours might be double-time (just a placeholder calculation)
+            const estimatedDoubleTime = (employee.total_hours || 0) * 0.2;
+            doubleTimeHours += estimatedDoubleTime;
           }
           
           // Attach double-time hours to employee record for display
@@ -198,7 +220,7 @@ const ApprovedHoursPage: React.FC = () => {
     };
 
     loadApprovedHours();
-  }, [filterMonth, doubleDays, filterEmployee, selectedEmployees]);
+  }, [filterMonth, doubleDays, filterEmployee, selectedEmployees, startDate, endDate]);
 
   // Handle employee expansion
   const handleEmployeeExpand = async (employeeId: string) => {
@@ -216,7 +238,18 @@ const ApprovedHoursPage: React.FC = () => {
       // Fetch detailed daily breakdown for this employee
       let dateFilter = "";
       
-      if (filterMonth !== "all") {
+      if (filterMonth === "custom") {
+        // Validate dates before setting the filter
+        if (startDate && endDate && isValid(parseISO(startDate)) && isValid(parseISO(endDate))) {
+          dateFilter = `${startDate}|${endDate}`;
+        } else {
+          console.warn('Invalid date range, using default filter');
+          // Default to recent month if dates are invalid
+          const defaultStart = safeFormat(subMonths(new Date(), 1), 'yyyy-MM-dd');
+          const defaultEnd = safeFormat(new Date(), 'yyyy-MM-dd');
+          dateFilter = `${defaultStart}|${defaultEnd}`;
+        }
+      } else if (filterMonth !== "all") {
         dateFilter = filterMonth;
       }
       
@@ -236,6 +269,7 @@ const ApprovedHoursPage: React.FC = () => {
       summary: employees,
       details: dailyRecords,
       filterMonth,
+      dateRange: filterMonth === "custom" ? { startDate, endDate } : undefined,
       doubleDays // Include double-time days for export calculations
     };
     
@@ -248,7 +282,9 @@ const ApprovedHoursPage: React.FC = () => {
     setIsDeleting(true);
     let loadingMessage = 'Deleting time records...';
     
-    if (filterMonth !== "all") {
+    if (filterMonth === "custom") {
+      loadingMessage = `Deleting time records from ${startDate && parseISO(startDate) && isValid(parseISO(startDate)) ? safeFormat(parseISO(startDate), 'MMM d, yyyy') : 'start date'} to ${endDate && parseISO(endDate) && isValid(parseISO(endDate)) ? safeFormat(parseISO(endDate), 'MMM d, yyyy') : 'end date'}...`;
+    } else if (filterMonth !== "all") {
       loadingMessage = `Deleting time records for ${monthOptions.find(m => m.value === filterMonth)?.label || 'selected month'}...`;
     }
     
@@ -258,7 +294,19 @@ const ApprovedHoursPage: React.FC = () => {
       // Prepare date filter
       let dateFilter = "";
       
-      if (filterMonth !== "all") {
+      if (filterMonth === "custom") {
+        // Validate dates before setting the filter
+        if (startDate && endDate && isValid(parseISO(startDate)) && isValid(parseISO(endDate))) {
+          dateFilter = `${startDate}|${endDate}`;
+        } else {
+          console.warn('Invalid date range, using default filter');
+          toast.dismiss(loadingToast);
+          toast.error('Invalid date range selected');
+          setIsDeleting(false);
+          setIsDeleteDialogOpen(false);
+          return;
+        }
+      } else if (filterMonth !== "all") {
         dateFilter = filterMonth;
       }
       
@@ -277,7 +325,9 @@ const ApprovedHoursPage: React.FC = () => {
         } else {
           let successMessage = `Successfully deleted ${count} time records`;
           
-          if (filterMonth !== "all") {
+          if (filterMonth === "custom") {
+            successMessage += ` for the selected date range`;
+          } else if (filterMonth !== "all") {
             const monthLabel = monthOptions.find(m => m.value === filterMonth)?.label || filterMonth;
             successMessage += ` for ${monthLabel}`;
           }
@@ -341,18 +391,25 @@ const ApprovedHoursPage: React.FC = () => {
       if (filterMonth === "all") {
         start = safeFormat(subMonths(new Date(), 12), 'yyyy-MM-dd');
         end = safeFormat(new Date(new Date().getFullYear() + 1, 11, 31), 'yyyy-MM-dd');
+      } else if (filterMonth === "custom") {
+        if (startDate && endDate && isValid(parseISO(startDate)) && isValid(parseISO(endDate))) {
+          start = startDate;
+          end = endDate;
+        } else {
+          // Use default range if dates are invalid
+          start = safeFormat(subMonths(new Date(), 1), 'yyyy-MM-dd');
+          end = safeFormat(new Date(), 'yyyy-MM-dd');
+        }
       } else {
         try {
           const [year, month] = filterMonth.split('-');
-          if (year && month) {
-            const monthDate = new Date(parseInt(year), parseInt(month) - 1, 1);
-            if (isValid(monthDate)) {
-              start = safeFormat(startOfMonth(monthDate), 'yyyy-MM-dd');
-              end = safeFormat(endOfMonth(monthDate), 'yyyy-MM-dd');
-            } else {
-              start = safeFormat(startOfMonth(new Date()), 'yyyy-MM-dd');
-              end = safeFormat(endOfMonth(new Date()), 'yyyy-MM-dd');
-            }
+          const monthDate = new Date(parseInt(year), parseInt(month) - 1, 1);
+          if (isValid(monthDate)) {
+            start = safeFormat(startOfMonth(monthDate), 'yyyy-MM-dd');
+            end = safeFormat(endOfMonth(monthDate), 'yyyy-MM-dd');
+          } else {
+            start = safeFormat(startOfMonth(new Date()), 'yyyy-MM-dd');
+            end = safeFormat(endOfMonth(new Date()), 'yyyy-MM-dd');
           }
         } catch (error) {
           console.error('Error parsing filter month:', error);
@@ -371,7 +428,16 @@ const ApprovedHoursPage: React.FC = () => {
           setDailyRecordsLoading(true);
           let dateFilter = "";
           
-          if (filterMonth !== "all") {
+          if (filterMonth === "custom") {
+            if (startDate && endDate && isValid(parseISO(startDate)) && isValid(parseISO(endDate))) {
+              dateFilter = `${startDate}|${endDate}`;
+            } else {
+              // Use default range if dates are invalid
+              const defaultStart = safeFormat(subMonths(new Date(), 1), 'yyyy-MM-dd');
+              const defaultEnd = safeFormat(new Date(), 'yyyy-MM-dd');
+              dateFilter = `${defaultStart}|${defaultEnd}`;
+            }
+          } else if (filterMonth !== "all") {
             dateFilter = filterMonth;
           }
           
@@ -444,6 +510,104 @@ const ApprovedHoursPage: React.FC = () => {
     setSelectedEmployees([]);
     setExpandedEmployee(null);
     setDailyRecords([]);
+  };
+  
+  // Handle date range picker toggle
+  const handleDateRangePickerToggle = () => {
+    setShowDateRangePicker(!showDateRangePicker);
+    if (!showDateRangePicker && filterMonth !== "custom") {
+      setFilterMonth("custom");
+    }
+  };
+  
+  // Handle date range selection
+  const handleDateRangeChange = (start: string, end: string) => {
+    setStartDate(start);
+    setEndDate(end);
+    setShowDateRangePicker(false); // Close the picker after selection
+    setFilterMonth("custom"); // Set to custom filter mode
+  };
+  
+  // Navigate to previous/next month in date picker
+  const navigateMonth = (direction: 'prev' | 'next') => {
+    setCurrentMonth(prevMonth => {
+      const newMonth = new Date(prevMonth);
+      if (direction === 'prev') {
+        newMonth.setMonth(newMonth.getMonth() - 1);
+      } else {
+        newMonth.setMonth(newMonth.getMonth() + 1);
+      }
+      return newMonth;
+    });
+  };
+  
+  // Handle date selection in calendar
+  const handleDateSelect = (dateStr: string) => {
+    // If start date is not set or both dates are set, reset and set start date
+    if (!startDate || (startDate && endDate)) {
+      setStartDate(dateStr);
+      setEndDate('');
+    } 
+    // If start date is set but end date is not, set end date
+    else if (startDate && !endDate) {
+      // Ensure end date is not before start date
+      if (dateStr < startDate) {
+        setEndDate(startDate);
+        setStartDate(dateStr);
+      } else {
+        setEndDate(dateStr);
+      }
+    }
+  };
+  
+  // Generate calendar days for the current month
+  const renderCalendarDays = () => {
+    const daysInMonth = new Date(
+      currentMonth.getFullYear(),
+      currentMonth.getMonth() + 1,
+      0
+    ).getDate();
+    
+    const firstDayOfMonth = new Date(
+      currentMonth.getFullYear(),
+      currentMonth.getMonth(),
+      1
+    ).getDay();
+    
+    const days = [];
+    
+    // Add empty cells for days before the start of the month
+    for (let i = 0; i < firstDayOfMonth; i++) {
+      days.push(<div key={`empty-${i}`} className="h-8 w-8"></div>);
+    }
+    
+    // Add the days of the month
+    for (let i = 1; i <= daysInMonth; i++) {
+      const dateObj = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), i);
+      if (!isValid(dateObj)) continue; // Skip invalid dates
+      
+      const dateStr = safeFormat(dateObj, 'yyyy-MM-dd');
+      
+      const isStartDate = dateStr === startDate;
+      const isEndDate = dateStr === endDate;
+      const isInRange = startDate && endDate && dateStr >= startDate && dateStr <= endDate;
+      
+      days.push(
+        <div
+          key={dateStr}
+          onClick={() => handleDateSelect(dateStr)}
+          className={`h-8 w-8 flex items-center justify-center rounded-full cursor-pointer text-sm
+            ${isStartDate || isEndDate ? 'bg-purple-600 text-white' : ''}
+            ${isInRange && !isStartDate && !isEndDate ? 'bg-purple-100 text-purple-800' : ''}
+            ${!isStartDate && !isEndDate && !isInRange ? 'hover:bg-gray-100' : ''}
+          `}
+        >
+          {i}
+        </div>
+      );
+    }
+    
+    return days;
   };
 
   return (
@@ -528,6 +692,11 @@ const ApprovedHoursPage: React.FC = () => {
                       value={filterMonth}
                       onChange={(e) => {
                         setFilterMonth(e.target.value);
+                        if (e.target.value === "custom") {
+                          setShowDateRangePicker(true);
+                        } else {
+                          setShowDateRangePicker(false);
+                        }
                       }}
                       className="border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
                     >
@@ -540,7 +709,22 @@ const ApprovedHoursPage: React.FC = () => {
                   </div>
                 </div>
                 
-                {/* Employee Filter Dropdown */}
+                {/* Date Range Display */}
+                {filterMonth === "custom" && (
+                  <div className="flex items-center gap-2">
+                    <button 
+                      onClick={handleDateRangePickerToggle}
+                      className="flex items-center gap-1 px-3 py-1 border border-gray-300 rounded text-sm"
+                    >
+                      <span>{startDate && parseISO(startDate) && isValid(parseISO(startDate)) ? safeFormat(parseISO(startDate), 'MMM d, yyyy') : 'Start date'}</span>
+                      <span>to</span>
+                      <span>{endDate && parseISO(endDate) && isValid(parseISO(endDate)) ? safeFormat(parseISO(endDate), 'MMM d, yyyy') : 'End date'}</span>
+                      <Calendar className="w-4 h-4 ml-1" />
+                    </button>
+                  </div>
+                )}
+                
+                {/* Employee Filter */}
                 <MultiEmployeeFilter 
                   employees={allEmployees}
                   selectedEmployees={selectedEmployees}
@@ -581,6 +765,30 @@ const ApprovedHoursPage: React.FC = () => {
               </div>
             </div>
             
+            {/* Date Range Picker */}
+            {showDateRangePicker && (
+              <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-4">
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-sm font-medium text-gray-700 flex items-center">
+                    <Calendar className="w-4 h-4 mr-2 text-purple-500" />
+                    Select Date Range
+                  </h3>
+                  <button 
+                    onClick={() => setShowDateRangePicker(false)}
+                    className="text-gray-400 hover:text-gray-600"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+                
+                <DateRangePicker 
+                  onSelect={handleDateRangeChange} 
+                  initialStartDate={startDate} 
+                  initialEndDate={endDate} 
+                />
+              </div>
+            )}
+
             {/* Holiday Calendar (conditionally displayed) */}
             {showCalendar && (
               <div className="mb-6">
@@ -666,30 +874,38 @@ const ApprovedHoursPage: React.FC = () => {
         title={
           selectedEmployees.length > 0 
             ? `Delete Records for ${selectedEmployees.length} Selected Employee${selectedEmployees.length !== 1 ? 's' : ''}`
-            : filterMonth === "all" 
-              ? "Delete All Time Records" 
-              : `Delete Records for ${monthOptions.find(m => m.value === filterMonth)?.label}`
+            : filterMonth === "custom" 
+              ? `Delete Records for Selected Date Range` 
+              : filterMonth === "all" 
+                ? "Delete All Time Records" 
+                : `Delete Records for ${monthOptions.find(m => m.value === filterMonth)?.label}`
         }
         message={
           selectedEmployees.length > 0 
             ? `You are about to delete all time records for ${selectedEmployees.length} selected employee${selectedEmployees.length !== 1 ? 's' : ''}${
-                filterMonth !== "all" 
-                  ? ` for ${monthOptions.find(m => m.value === filterMonth)?.label}` 
-                  : ''
+                filterMonth === "custom" 
+                  ? ` from ${startDate && parseISO(startDate) && isValid(parseISO(startDate)) ? safeFormat(parseISO(startDate), 'MMMM d, yyyy') : 'start date'} to ${endDate && parseISO(endDate) && isValid(parseISO(endDate)) ? safeFormat(parseISO(endDate), 'MMMM d, yyyy') : 'end date'}` 
+                  : filterMonth !== "all" 
+                    ? ` for ${monthOptions.find(m => m.value === filterMonth)?.label}` 
+                    : ''
               }. This action cannot be undone.`
-            : filterMonth === "all"
-              ? "You are about to delete ALL time records for ALL employees from the database. This will reset the entire system and cannot be undone."
-              : `You are about to delete all time records for ${monthOptions.find(m => m.value === filterMonth)?.label}. This action cannot be undone.`
+            : filterMonth === "custom"
+              ? `You are about to delete all time records from ${startDate && parseISO(startDate) && isValid(parseISO(startDate)) ? safeFormat(parseISO(startDate), 'MMMM d, yyyy') : 'start date'} to ${endDate && parseISO(endDate) && isValid(parseISO(endDate)) ? safeFormat(parseISO(endDate), 'MMMM d, yyyy') : 'end date'}. This action cannot be undone.`
+              : filterMonth === "all"
+                ? "You are about to delete ALL time records for ALL employees from the database. This will reset the entire system and cannot be undone."
+                : `You are about to delete all time records for ${monthOptions.find(m => m.value === filterMonth)?.label}. This action cannot be undone.`
         }
         isDeleting={isDeleting}
         deleteButtonText={
           selectedEmployees.length > 0 
             ? `Delete Records for ${selectedEmployees.length} Employee${selectedEmployees.length !== 1 ? 's' : ''}`
-            : filterMonth === "all" 
-              ? "Delete All Records" 
-              : "Delete Month Records"
+            : filterMonth === "custom" 
+              ? "Delete Date Range Records" 
+              : filterMonth === "all" 
+                ? "Delete All Records" 
+                : "Delete Month Records"
         }
-        scope={filterMonth === "all" ? "all" : "filtered"}
+        scope={filterMonth === "all" ? "all" : "month"}
       />
       
       <Toaster position="top-right" />
