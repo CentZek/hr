@@ -848,25 +848,21 @@ export const deleteAllTimeRecords = async (dateFilter: string = '', employeeFilt
           throw new Error('Invalid month format');
         }
       }
+    } else {
+      // If no date filter, we need a WHERE clause to delete all records
+      // Use a condition that will always be true
+      query = query.neq('id', '00000000-0000-0000-0000-000000000000');
     }
     
     // Apply employee filter if provided
     if (employeeFilter) {
       if (employeeFilter.includes(',')) {
-        // Multiple employees - make sure to use in() filter
-        const employeeIds = employeeFilter.split(',').filter(id => id.trim() !== '');
-        
-        if (employeeIds.length > 0) {
-          // Only apply the filter if we have valid IDs
-          query = query.in('employee_id', employeeIds);
-          console.log('Filtering by employee IDs:', employeeIds);
-        } else {
-          console.log('No valid employee IDs to filter by');
-        }
-      } else if (employeeFilter.trim() !== '') {
+        // Multiple employees
+        const employeeIds = employeeFilter.split(',');
+        query = query.in('employee_id', employeeIds);
+      } else {
         // Single employee
         query = query.eq('employee_id', employeeFilter);
-        console.log('Filtering by employee ID:', employeeFilter);
       }
     }
     
@@ -889,55 +885,12 @@ export const deleteAllTimeRecords = async (dateFilter: string = '', employeeFilt
       }
     }
     
-    // Get count before deleting
-    const countQuery = supabase
+    // Get count first
+    const { count, error: countError } = await supabase
       .from('time_records')
       .select('*', { count: 'exact', head: true });
-      
-    // Apply the same filters to the count query
-    if (dateFilter) {
-      if (dateFilter.includes('|')) {
-        const [startDate, endDate] = dateFilter.split('|');
-        if (startDate && endDate && isValid(parseISO(startDate)) && isValid(parseISO(endDate))) {
-          countQuery.gte('working_week_start', startDate).lte('working_week_start', endDate);
-        }
-      } else {
-        try {
-          const [year, month] = dateFilter.split('-');
-          if (year && month) {
-            const monthDate = new Date(parseInt(year), parseInt(month) - 1, 1);
-            if (isValid(monthDate)) {
-              const startDate = format(startOfMonth(monthDate), 'yyyy-MM-dd');
-              const endDate = format(endOfMonth(monthDate), 'yyyy-MM-dd');
-              countQuery.gte('working_week_start', startDate).lte('working_week_start', endDate);
-            }
-          }
-        } catch (err) {
-          console.error('Error parsing month filter for count:', err);
-        }
-      }
-    }
-    
-    if (employeeFilter) {
-      if (employeeFilter.includes(',')) {
-        const employeeIds = employeeFilter.split(',').filter(id => id.trim() !== '');
-        if (employeeIds.length > 0) {
-          countQuery.in('employee_id', employeeIds);
-        }
-      } else if (employeeFilter.trim() !== '') {
-        countQuery.eq('employee_id', employeeFilter);
-      }
-    }
-    
-    const { count, error: countError } = await countQuery;
     
     if (countError) throw countError;
-    
-    console.log(`About to delete ${count} records with filters:`, {
-      dateFilter,
-      employeeFilter,
-      preserveApproved
-    });
     
     // Execute the delete
     const { error } = await query;
