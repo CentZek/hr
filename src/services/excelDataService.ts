@@ -32,60 +32,75 @@ export const saveProcessedExcelFile = async (
 
     // Step 2: Save employee data
     for (const employee of employeeRecords) {
-      // Create employee record
-      const { data: employeeData, error: employeeError } = await supabase
-        .from('processed_employee_data')
-        .insert([
-          {
-            file_id: fileId,
-            employee_number: employee.employeeNumber,
-            name: employee.name,
-            department: employee.department || '',
-            total_days: employee.days.length
-          }
-        ])
-        .select()
-        .single();
+      try {
+        // Create employee record
+        const { data: employeeData, error: employeeError } = await supabase
+          .from('processed_employee_data')
+          .insert([
+            {
+              file_id: fileId,
+              employee_number: employee.employeeNumber,
+              name: employee.name,
+              department: employee.department || '',
+              total_days: employee.days.length
+            }
+          ])
+          .select()
+          .single();
 
-      if (employeeError) throw employeeError;
-      if (!employeeData) continue;
-
-      const employeeId = employeeData.id;
-
-      // Step 3: Save daily records for this employee
-      const dailyRecordsToInsert = employee.days.map(day => ({
-        employee_id: employeeId,
-        date: day.date,
-        first_check_in: day.firstCheckIn?.toISOString() || null,
-        last_check_out: day.lastCheckOut?.toISOString() || null,
-        hours_worked: day.hoursWorked,
-        approved: day.approved,
-        shift_type: day.shiftType,
-        notes: day.notes || '',
-        missing_check_in: day.missingCheckIn,
-        missing_check_out: day.missingCheckOut,
-        is_late: day.isLate,
-        early_leave: day.earlyLeave,
-        excessive_overtime: day.excessiveOvertime,
-        penalty_minutes: day.penaltyMinutes,
-        corrected_records: day.correctedRecords || false,
-        display_check_in: day.displayCheckIn || null,
-        display_check_out: day.displayCheckOut || null,
-        working_week_start: day.working_week_start || null,
-        all_time_records: day.allTimeRecords ? JSON.stringify(day.allTimeRecords) : null
-      }));
-
-      if (dailyRecordsToInsert.length > 0) {
-        // Insert in batches to avoid payload size limitations
-        const batchSize = 100;
-        for (let i = 0; i < dailyRecordsToInsert.length; i += batchSize) {
-          const batch = dailyRecordsToInsert.slice(i, i + batchSize);
-          const { error: dailyError } = await supabase
-            .from('processed_daily_records')
-            .insert(batch);
-
-          if (dailyError) throw dailyError;
+        if (employeeError) {
+          console.error('Error inserting employee data:', employeeError);
+          continue; // Skip this employee and continue with the next one
         }
+        
+        if (!employeeData || !employeeData.id) {
+          console.error('No employee data returned or missing ID for:', employee.employeeNumber);
+          continue; // Skip daily records for this employee
+        }
+
+        const employeeId = employeeData.id;
+
+        // Step 3: Save daily records for this employee
+        const dailyRecordsToInsert = employee.days.map(day => ({
+          employee_id: employeeId,
+          date: day.date,
+          first_check_in: day.firstCheckIn?.toISOString() || null,
+          last_check_out: day.lastCheckOut?.toISOString() || null,
+          hours_worked: day.hoursWorked,
+          approved: day.approved,
+          shift_type: day.shiftType,
+          notes: day.notes || '',
+          missing_check_in: day.missingCheckIn,
+          missing_check_out: day.missingCheckOut,
+          is_late: day.isLate,
+          early_leave: day.earlyLeave,
+          excessive_overtime: day.excessiveOvertime,
+          penalty_minutes: day.penaltyMinutes,
+          corrected_records: day.correctedRecords || false,
+          display_check_in: day.displayCheckIn || null,
+          display_check_out: day.displayCheckOut || null,
+          working_week_start: day.working_week_start || null,
+          all_time_records: day.allTimeRecords ? JSON.stringify(day.allTimeRecords) : null
+        }));
+
+        if (dailyRecordsToInsert.length > 0) {
+          // Insert in batches to avoid payload size limitations
+          const batchSize = 100;
+          for (let i = 0; i < dailyRecordsToInsert.length; i += batchSize) {
+            const batch = dailyRecordsToInsert.slice(i, i + batchSize);
+            const { error: dailyError } = await supabase
+              .from('processed_daily_records')
+              .insert(batch);
+
+            if (dailyError) {
+              console.error('Error inserting daily records batch:', dailyError);
+              // Continue processing other batches
+            }
+          }
+        }
+      } catch (empError) {
+        console.error('Error processing employee:', employee.employeeNumber, empError);
+        // Continue with other employees
       }
     }
 
@@ -197,8 +212,10 @@ export const updateProcessedEmployeeData = async (
   employeeRecords: EmployeeRecord[]
 ): Promise<boolean> => {
   try {
-    // For simplicity, we'll just delete and re-insert all records for this file
-    // This avoids complex update logic for nested data
+    if (!fileId || !employeeRecords || employeeRecords.length === 0) {
+      console.warn('No fileId or employee records provided for update');
+      return false;
+    }
     
     // Step 1: Get all employee IDs for this file
     const { data: employeesData, error: employeesError } = await supabase
@@ -206,8 +223,15 @@ export const updateProcessedEmployeeData = async (
       .select('id, employee_number')
       .eq('file_id', fileId);
 
-    if (employeesError) throw employeesError;
-    if (!employeesData) return false;
+    if (employeesError) {
+      console.error('Error fetching employee data:', employeesError);
+      return false;
+    }
+    
+    if (!employeesData || employeesData.length === 0) {
+      console.warn('No employees found for file ID:', fileId);
+      return false;
+    }
 
     // Create a map for easy lookup of employee IDs
     const employeeIdMap = new Map(
@@ -217,59 +241,78 @@ export const updateProcessedEmployeeData = async (
     // Step 2: Update each employee's daily records
     for (const employee of employeeRecords) {
       const employeeId = employeeIdMap.get(employee.employeeNumber);
-      if (!employeeId) continue;
-
-      // Delete existing daily records for this employee
-      const { error: deleteError } = await supabase
-        .from('processed_daily_records')
-        .delete()
-        .eq('employee_id', employeeId);
-
-      if (deleteError) throw deleteError;
-
-      // Insert updated daily records
-      const dailyRecordsToInsert = employee.days.map(day => ({
-        employee_id: employeeId,
-        date: day.date,
-        first_check_in: day.firstCheckIn?.toISOString() || null,
-        last_check_out: day.lastCheckOut?.toISOString() || null,
-        hours_worked: day.hoursWorked,
-        approved: day.approved,
-        shift_type: day.shiftType,
-        notes: day.notes || '',
-        missing_check_in: day.missingCheckIn,
-        missing_check_out: day.missingCheckOut,
-        is_late: day.isLate,
-        early_leave: day.earlyLeave,
-        excessive_overtime: day.excessiveOvertime,
-        penalty_minutes: day.penaltyMinutes,
-        corrected_records: day.correctedRecords || false,
-        display_check_in: day.displayCheckIn || null,
-        display_check_out: day.displayCheckOut || null,
-        working_week_start: day.working_week_start || null,
-        all_time_records: day.allTimeRecords ? JSON.stringify(day.allTimeRecords) : null
-      }));
-
-      if (dailyRecordsToInsert.length > 0) {
-        // Insert in batches to avoid payload size limitations
-        const batchSize = 100;
-        for (let i = 0; i < dailyRecordsToInsert.length; i += batchSize) {
-          const batch = dailyRecordsToInsert.slice(i, i + batchSize);
-          const { error: insertError } = await supabase
-            .from('processed_daily_records')
-            .insert(batch);
-
-          if (insertError) throw insertError;
-        }
+      
+      // Skip if employee ID doesn't exist in the database
+      if (!employeeId) {
+        console.warn(`Employee ${employee.employeeNumber} not found in database, skipping update`);
+        continue;
       }
 
-      // Update employee record with new total_days
-      const { error: updateError } = await supabase
-        .from('processed_employee_data')
-        .update({ total_days: employee.days.length })
-        .eq('id', employeeId);
+      try {
+        // Delete existing daily records for this employee
+        const { error: deleteError } = await supabase
+          .from('processed_daily_records')
+          .delete()
+          .eq('employee_id', employeeId);
 
-      if (updateError) throw updateError;
+        if (deleteError) {
+          console.error(`Error deleting daily records for employee ${employee.employeeNumber}:`, deleteError);
+          continue; // Skip to next employee if we can't delete existing records
+        }
+
+        // Only proceed with insertion if there are days to insert
+        if (employee.days && employee.days.length > 0) {
+          // Insert updated daily records
+          const dailyRecordsToInsert = employee.days.map(day => ({
+            employee_id: employeeId,
+            date: day.date,
+            first_check_in: day.firstCheckIn?.toISOString() || null,
+            last_check_out: day.lastCheckOut?.toISOString() || null,
+            hours_worked: day.hoursWorked,
+            approved: day.approved,
+            shift_type: day.shiftType,
+            notes: day.notes || '',
+            missing_check_in: day.missingCheckIn,
+            missing_check_out: day.missingCheckOut,
+            is_late: day.isLate,
+            early_leave: day.earlyLeave,
+            excessive_overtime: day.excessiveOvertime,
+            penalty_minutes: day.penaltyMinutes,
+            corrected_records: day.correctedRecords || false,
+            display_check_in: day.displayCheckIn || null,
+            display_check_out: day.displayCheckOut || null,
+            working_week_start: day.working_week_start || null,
+            all_time_records: day.allTimeRecords ? JSON.stringify(day.allTimeRecords) : null
+          }));
+
+          // Insert in batches to avoid payload size limitations
+          const batchSize = 100;
+          for (let i = 0; i < dailyRecordsToInsert.length; i += batchSize) {
+            const batch = dailyRecordsToInsert.slice(i, i + batchSize);
+            const { error: insertError } = await supabase
+              .from('processed_daily_records')
+              .insert(batch);
+
+            if (insertError) {
+              console.error(`Error inserting daily records batch for employee ${employee.employeeNumber}:`, insertError);
+              // Continue with other batches
+            }
+          }
+        }
+
+        // Update employee record with new total_days
+        const { error: updateError } = await supabase
+          .from('processed_employee_data')
+          .update({ total_days: employee.days.length })
+          .eq('id', employeeId);
+
+        if (updateError) {
+          console.error(`Error updating employee ${employee.employeeNumber} total days:`, updateError);
+        }
+      } catch (empError) {
+        console.error(`Error processing employee ${employee.employeeNumber}:`, empError);
+        // Continue with other employees
+      }
     }
 
     // Step 3: Update file record with new totals
@@ -281,7 +324,9 @@ export const updateProcessedEmployeeData = async (
       })
       .eq('id', fileId);
 
-    if (updateFileError) throw updateFileError;
+    if (updateFileError) {
+      console.error('Error updating file record:', updateFileError);
+    }
 
     return true;
   } catch (error) {
