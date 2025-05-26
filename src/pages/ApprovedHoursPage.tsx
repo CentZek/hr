@@ -310,9 +310,17 @@ const ApprovedHoursPage: React.FC = () => {
         dateFilter = filterMonth;
       }
       
-      // Prepare employee filter
-      const employeeFilter = selectedEmployees.length > 0 ? selectedEmployees.join(',') : 
-                            (filterEmployee !== "all" ? filterEmployee : "");
+      // Prepare employee filter - ensure it's properly formatted
+      const employeeFilter = selectedEmployees.length > 0 
+        ? selectedEmployees.join(',') 
+        : (filterEmployee !== "all" ? filterEmployee : "");
+      
+      // Log the filter criteria for debugging
+      console.log('Delete operation with filters:', {
+        dateFilter,
+        employeeFilter,
+        selectedEmployees
+      });
       
       // Perform the delete operation
       const { success, message, count } = await deleteAllTimeRecords(dateFilter, employeeFilter);
