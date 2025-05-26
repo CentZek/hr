@@ -25,15 +25,8 @@ export const saveProcessedExcelFile = async (
       .select()
       .single();
 
-    if (fileError) {
-      console.error('Error creating file record:', fileError);
-      return null;
-    }
-    
-    if (!fileData || !fileData.id) {
-      console.error('Failed to create file record or get file ID');
-      return null;
-    }
+    if (fileError) throw fileError;
+    if (!fileData) throw new Error('Failed to create file record');
 
     const fileId = fileData.id;
 
