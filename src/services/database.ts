@@ -811,18 +811,10 @@ export const deleteAllTimeRecords = async (dateFilter: string = '', employeeFilt
   count: number;
 }> => {
   try {
-    // Initialize query with a default WHERE clause to satisfy Supabase's requirement
-    // This prevents DELETE without WHERE clause errors
-    let query = supabase
-      .from('time_records')
-      .delete()
-      .neq('id', '00000000-0000-0000-0000-000000000000'); // Always true, provides a baseline WHERE clause
-    
-    let hasSpecificFilter = false;
+    let query = supabase.from('time_records').delete();
     
     // Apply date filter if provided
     if (dateFilter) {
-      hasSpecificFilter = true;
       if (dateFilter.includes('|')) {
         // Custom date range: startDate|endDate
         const [startDate, endDate] = dateFilter.split('|');
@@ -860,7 +852,6 @@ export const deleteAllTimeRecords = async (dateFilter: string = '', employeeFilt
     
     // Apply employee filter if provided
     if (employeeFilter) {
-      hasSpecificFilter = true;
       if (employeeFilter.includes(',')) {
         // Multiple employees - make sure to use in() filter
         const employeeIds = employeeFilter.split(',').filter(id => id.trim() !== '');
@@ -881,7 +872,6 @@ export const deleteAllTimeRecords = async (dateFilter: string = '', employeeFilt
     
     // If preserveApproved is true, only delete non-approved records
     if (preserveApproved) {
-      hasSpecificFilter = true;
       // We need to get all approved record IDs and exclude them
       const { data: approvedRecords, error: approvedError } = await supabase
         .from('time_records')
@@ -899,21 +889,10 @@ export const deleteAllTimeRecords = async (dateFilter: string = '', employeeFilt
       }
     }
     
-    // For safety, if no specific filters are applied (just our base filter),
-    // require an extra confirmation or default to a safer date range
-    if (!hasSpecificFilter) {
-      // Default to last 90 days if no other filters provided
-      // This prevents accidental deletion of all records
-      const ninetyDaysAgo = format(subDays(new Date(), 90), 'yyyy-MM-dd');
-      query = query.lt('created_at', ninetyDaysAgo);
-      console.log('No specific filters applied. Limiting deletion to records older than 90 days.');
-    }
-    
     // Get count before deleting
     const countQuery = supabase
       .from('time_records')
-      .select('*', { count: 'exact', head: true })
-      .neq('id', '00000000-0000-0000-0000-000000000000'); // Always true, provides a baseline WHERE clause
+      .select('*', { count: 'exact', head: true });
       
     // Apply the same filters to the count query
     if (dateFilter) {
@@ -950,24 +929,6 @@ export const deleteAllTimeRecords = async (dateFilter: string = '', employeeFilt
       }
     }
     
-    if (preserveApproved) {
-      const { data: approvedRecords, error: approvedError } = await supabase
-        .from('time_records')
-        .select('id')
-        .ilike('notes', '%approved%');
-        
-      if (approvedError) throw approvedError;
-      
-      if (approvedRecords && approvedRecords.length > 0) {
-        countQuery.not('id', 'in', approvedRecords.map(record => record.id));
-      }
-    }
-    
-    if (!hasSpecificFilter) {
-      const ninetyDaysAgo = format(subDays(new Date(), 90), 'yyyy-MM-dd');
-      countQuery.lt('created_at', ninetyDaysAgo);
-    }
-    
     const { count, error: countError } = await countQuery;
     
     if (countError) throw countError;
@@ -975,8 +936,7 @@ export const deleteAllTimeRecords = async (dateFilter: string = '', employeeFilt
     console.log(`About to delete ${count} records with filters:`, {
       dateFilter,
       employeeFilter,
-      preserveApproved,
-      hasSpecificFilter
+      preserveApproved
     });
     
     // Execute the delete
