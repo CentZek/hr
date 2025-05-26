@@ -164,6 +164,8 @@ function HrPage() {
     
     try {
       const records = await handleExcelFile(file);
+      // Sort records alphabetically by name
+      records.sort((a, b) => a.name.localeCompare(b.name));
       setEmployeeRecords(records);
       
       // Calculate statistics
@@ -560,6 +562,9 @@ function HrPage() {
       });
     }
     
+    // Sort employees alphabetically by name
+    updatedRecords.sort((a, b) => a.name.localeCompare(b.name));
+    
     // Update the state with new records
     setEmployeeRecords(updatedRecords);
     
@@ -762,6 +767,7 @@ function HrPage() {
                     <X className="w-5 h-5" />
                   </button>
                 </div>
+                
                 <DateRangePicker 
                   onSelect={handleDateRangeChange} 
                   initialStartDate={startDate} 

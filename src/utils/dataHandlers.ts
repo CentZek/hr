@@ -1,3 +1,6 @@
+/**
+ * Time record helper functions for applying changes to daily records
+ */
 import { EmployeeRecord, DailyRecord } from '../types';
 import { calculatePayableHours, determineShiftType } from './shiftCalculations';
 import { parse, format, eachDayOfInterval, parseISO } from 'date-fns';
@@ -165,6 +168,14 @@ export const addManualEntryToRecords = (
     employeeIndex = newRecords.length - 1;
   }
   
+  // Sort the employee records alphabetically by name
+  newRecords.sort((a, b) => a.name.localeCompare(b.name));
+  
+  // Update the employeeIndex after sorting
+  employeeIndex = newRecords.findIndex(emp => 
+    emp.employeeNumber === empNumber || emp.name === empName
+  );
+  
   return { 
     updatedRecords: newRecords,
     employeeIndex,
@@ -186,13 +197,16 @@ export const calculateStats = (employeeRecords: EmployeeRecord[]) => {
 
 // Process employee record updates after saving to database
 export const processRecordsAfterSave = (employeeRecords: EmployeeRecord[]) => {
-  const updatedRecords = employeeRecords
+  let updatedRecords = employeeRecords
     .map(emp => ({
       ...emp,
       days: emp.days.filter(d => !d.approved) // Remove approved days
     }))
     .filter(emp => emp.days.length > 0); // Remove employees with no remaining days
     
+  // Sort records alphabetically by name
+  updatedRecords.sort((a, b) => a.name.localeCompare(b.name));
+  
   return updatedRecords;
 };
 
@@ -231,7 +245,7 @@ export const addOffDaysToRecords = (employeeRecords: EmployeeRecord[]): Employee
       days: updatedDays,
       totalDays: updatedDays.length
     };
-  });
+  }).sort((a, b) => a.name.localeCompare(b.name)); // Sort employees alphabetically
 };
 
 // Helper function to create an OFF-DAY record
@@ -329,7 +343,8 @@ export const convertShiftRequestsToRecords = async () => {
       emp.totalDays++;
     });
     
-    return Array.from(employeeMap.values());
+    // Convert to array and sort alphabetically by name
+    return Array.from(employeeMap.values()).sort((a, b) => a.name.localeCompare(b.name));
   } catch (error) {
     console.error('Error converting shift requests to records:', error);
     return [];
