@@ -256,8 +256,8 @@ const TimeEditModal: React.FC<TimeEditModalProps> = ({ employee, day, onClose, o
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-md mx-4 flex flex-col max-h-[90vh]">
-        <div className="p-4 border-b border-gray-200 flex justify-between items-center flex-shrink-0">
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-md mx-4">
+        <div className="p-4 border-b border-gray-200 flex justify-between items-center">
           <h3 className="text-lg font-semibold text-gray-900">Edit Time Records</h3>
           <button 
             onClick={onClose}
@@ -267,7 +267,7 @@ const TimeEditModal: React.FC<TimeEditModalProps> = ({ employee, day, onClose, o
           </button>
         </div>
         
-        <div className="overflow-y-auto p-6">
+        <div className="p-6">
           <div className="mb-6">
             <h4 className="text-base font-medium text-gray-800 mb-2">Employee Information</h4>
             <div className="grid grid-cols-2 gap-4 text-sm">
@@ -481,10 +481,8 @@ const TimeEditModal: React.FC<TimeEditModalProps> = ({ employee, day, onClose, o
               </button>
             </div>
           </div>
-        </div>
-        
-        <div className="p-4 border-t border-gray-200 mt-auto flex-shrink-0">
-          <div className="flex justify-end space-x-3">
+          
+          <div className="mt-6 flex justify-end space-x-3">
             <button
               onClick={onClose}
               className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"

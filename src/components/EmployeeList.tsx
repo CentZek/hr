@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { format, isValid, parseISO } from 'date-fns';
+import { format } from 'date-fns';
 import { AlertTriangle, CheckCircle, XCircle, ChevronDown, ChevronRight, Clock, PenSquare, TrendingUp, FileSpreadsheet } from 'lucide-react';
 import { EmployeeRecord, DailyRecord, PENALTY_OPTIONS } from '../types';
 import PenaltyModal from './PenaltyModal';
@@ -150,24 +150,6 @@ const EmployeeList: React.FC<EmployeeListProps> = ({
     return (hour > 21) || (hour === 21 && minute > 0);
   };
 
-  // Helper function to format timestamp safely
-  const formatTimestampSafely = (timestamp: any): string => {
-    if (!timestamp) return 'Invalid date';
-    
-    // If timestamp is already a Date object
-    if (timestamp instanceof Date) {
-      return isValid(timestamp) ? format(timestamp, 'MM/dd/yyyy HH:mm:ss') : 'Invalid date';
-    }
-    
-    // If timestamp is a string, try to parse it
-    try {
-      const parsedDate = typeof timestamp === 'string' ? parseISO(timestamp) : new Date(timestamp);
-      return isValid(parsedDate) ? format(parsedDate, 'MM/dd/yyyy HH:mm:ss') : 'Invalid date';
-    } catch (error) {
-      return 'Invalid date';
-    }
-  };
-
   const renderRawDataTable = (day: DailyRecord, empIndex: number, dayIndex: number) => {
     if (!day.allTimeRecords || day.allTimeRecords.length === 0) {
       return <div className="px-4 py-2 text-center text-sm text-gray-500">No raw Excel data available</div>;
@@ -192,7 +174,7 @@ const EmployeeList: React.FC<EmployeeListProps> = ({
               {day.allTimeRecords.sort((a, b) => (a.originalIndex || 0) - (b.originalIndex || 0)).map((record, index) => (
                 <tr key={index} className={record.mislabeled ? 'bg-amber-50' : ''}>
                   <td className="px-3 py-2 whitespace-nowrap">{record.originalIndex || index}</td>
-                  <td className="px-3 py-2 whitespace-nowrap">{formatTimestampSafely(record.timestamp)}</td>
+                  <td className="px-3 py-2 whitespace-nowrap">{format(record.timestamp, 'MM/dd/yyyy HH:mm:ss')}</td>
                   <td className={`px-3 py-2 whitespace-nowrap ${record.mislabeled ? 'text-amber-600 font-medium' : ''}`}>
                     {record.status === 'check_in' ? 'C/In' : 'C/Out'}
                     {record.mislabeled && record.originalStatus && 
@@ -469,7 +451,7 @@ const EmployeeList: React.FC<EmployeeListProps> = ({
                           </div>
                           <div className={`flex items-center ${day.missingCheckIn ? 'text-red-500' : (day.isLate || isLateNightCheckIn) ? 'text-amber-600' : 'text-gray-700'}`}>
                             {day.firstCheckIn ? 
-                              <>{(day.isLate || isLateNightCheckIn) && <AlertTriangle className="w-4 h-4 mr-1 text-amber-500\" title="Late check-in" />}
+                              <>{(day.isLate || isLateNightCheckIn) && <AlertTriangle className="w-4 h-4 mr-1 text-amber-500" title="Late check-in" />}
                               {checkInDisplay}
                               {day.shiftType === 'canteen' && 
                                 <span className="ml-1 text-xs bg-yellow-100 text-yellow-800 px-1 rounded">
