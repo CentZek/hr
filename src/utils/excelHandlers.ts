@@ -687,7 +687,6 @@ export const processExcelData = async (data: any[]): Promise<EmployeeRecord[]> =
         // Calculate hours for night shift
         const hoursWorked = calculateNightShiftHours(checkIn.timestamp, checkOut.timestamp);
         
-        
         // Store original check-in and check-out times as display values
         const checkInDisplayTime = format(checkIn.timestamp, 'HH:mm');
         const checkOutDisplayTime = format(checkOut.timestamp, 'HH:mm');
@@ -1372,13 +1371,13 @@ export const exportApprovedHoursToExcel = (data: {
   }
   
   // Convert overtime hours to days (assuming 8-hour workday for overtime calculation)
-  const totalOvertimeDays = parseFloat((totalO
-vertimeHours / 8).toFixed(2));
+  const totalOvertimeDays = parseFloat((totalOvertimeHours / 8).toFixed(2));
   
   // Add statistics rows
   statsData.push(['Total Employees', summaryData.length - 1]);
   statsData.push(['Total Days', totalDays]);
-  statsData.push(['Total Regular Hours', totalRegularHours.toFixed(2)]);
+  statsData.push(['Total Regular Hours', totalRegularHours.toFixe
+d(2)]);
   statsData.push(['Total Double-Time Hours', totalDoubleTimeHours.toFixed(2)]);
   statsData.push(['Total Payable Hours', totalPayableHours.toFixed(2)]);
   statsData.push(['Fridays Worked (Days)', totalFridaysWorked]);
