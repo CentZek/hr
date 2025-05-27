@@ -222,19 +222,6 @@ export const exportApprovedHoursToExcel = (data: any) => {
     totalPayableHours += payableHours;
   });
   
-  // Add totals row
-  summaryData.push([
-    'TOTALS',
-    `${totalEmployees} Employees`,
-    '',
-    totalRegularHours.toFixed(2),
-    totalDoubleTimeHours.toFixed(2),
-    totalPayableHours.toFixed(2),
-    '',
-    totalOffDays,
-    totalWorkingDays
-  ]);
-  
   // Create summary worksheet
   const summaryWs = XLSX.utils.aoa_to_sheet(summaryData);
   
