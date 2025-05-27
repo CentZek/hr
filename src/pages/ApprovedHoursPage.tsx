@@ -79,19 +79,19 @@ const ApprovedHoursPage: React.FC = () => {
   useEffect(() => {
     const loadDoubleDays = async () => {
       try {
-        let dateRangeStart, dateRangeEnd;
+        let start, end;
         
         if (filterMonth === "all") {
           // Use a large date range for "all time" (past year to future year)
-          dateRangeStart = safeFormat(subMonths(new Date(), 12), 'yyyy-MM-dd');
-          dateRangeEnd = safeFormat(new Date(new Date().getFullYear() + 1, 11, 31), 'yyyy-MM-dd');
+          start = safeFormat(subMonths(new Date(), 12), 'yyyy-MM-dd');
+          end = safeFormat(new Date(new Date().getFullYear() + 1, 11, 31), 'yyyy-MM-dd');
         } else if (filterMonth === "custom") {
           // Use the selected date range
-          dateRangeStart = startDate;
-          dateRangeEnd = endDate;
+          start = startDate;
+          end = endDate;
           
           // Validate dates
-          if (!dateRangeStart || !dateRangeEnd || !isValid(parseISO(dateRangeStart)) || !isValid(parseISO(dateRangeEnd))) {
+          if (!start || !end || !isValid(parseISO(start)) || !isValid(parseISO(end))) {
             console.error('Invalid date range for double days query');
             return;
           }
@@ -101,24 +101,24 @@ const ApprovedHoursPage: React.FC = () => {
             const [year, month] = filterMonth.split('-');
             const monthDate = new Date(parseInt(year), parseInt(month) - 1, 1);
             if (isValid(monthDate)) {
-              dateRangeStart = safeFormat(startOfMonth(monthDate), 'yyyy-MM-dd');
-              dateRangeEnd = safeFormat(endOfMonth(monthDate), 'yyyy-MM-dd');
+              start = safeFormat(startOfMonth(monthDate), 'yyyy-MM-dd');
+              end = safeFormat(endOfMonth(monthDate), 'yyyy-MM-dd');
             } else {
               // Use current month as fallback
-              dateRangeStart = safeFormat(startOfMonth(new Date()), 'yyyy-MM-dd');
-              dateRangeEnd = safeFormat(endOfMonth(new Date()), 'yyyy-MM-dd');
+              start = safeFormat(startOfMonth(new Date()), 'yyyy-MM-dd');
+              end = safeFormat(endOfMonth(new Date()), 'yyyy-MM-dd');
             }
           } catch (error) {
             console.error('Error parsing filter month:', error);
             // Use current month as fallback
-            dateRangeStart = safeFormat(startOfMonth(new Date()), 'yyyy-MM-dd');
-            dateRangeEnd = safeFormat(endOfMonth(new Date()), 'yyyy-MM-dd');
+            start = safeFormat(startOfMonth(new Date()), 'yyyy-MM-dd');
+            end = safeFormat(endOfMonth(new Date()), 'yyyy-MM-dd');
           }
         }
         
         // Only proceed if we have valid dates
-        if (dateRangeStart && dateRangeEnd) {
-          const days = await getDoubleTimeDays(dateRangeStart, dateRangeEnd);
+        if (start && end) {
+          const days = await getDoubleTimeDays(start, end);
           setDoubleDays(days);
         }
       } catch (error) {
