@@ -32,12 +32,6 @@ export const saveProcessedExcelFile = async (
 
     // Step 2: Save employee data
     for (const employee of employeeRecords) {
-      // Validate employee number - skip records with missing employee numbers
-      if (!employee.employeeNumber) {
-        console.warn('Skipping employee record with missing employee number:', employee.name);
-        continue;
-      }
-
       // Create employee record
       const { data: employeeData, error: employeeError } = await supabase
         .from('processed_employee_data')
@@ -45,7 +39,7 @@ export const saveProcessedExcelFile = async (
           {
             file_id: fileId,
             employee_number: employee.employeeNumber,
-            name: employee.name || 'Unknown',
+            name: employee.name,
             department: employee.department || '',
             total_days: employee.days.length
           }
@@ -222,12 +216,6 @@ export const updateProcessedEmployeeData = async (
 
     // Step 2: Update each employee's daily records
     for (const employee of employeeRecords) {
-      // Skip employees with missing employee numbers
-      if (!employee.employeeNumber) {
-        console.warn('Skipping employee update with missing employee number:', employee.name);
-        continue;
-      }
-      
       const employeeId = employeeIdMap.get(employee.employeeNumber);
       if (!employeeId) continue;
 
