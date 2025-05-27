@@ -12,6 +12,11 @@ const EmployeeDetailCard: React.FC<EmployeeDetailCardProps> = ({ employee, doubl
   const doubleTimeHours = employee.double_time_hours || 0;
   const regularHours = employee.total_hours || 0;
   const totalPayableHours = regularHours + doubleTimeHours;
+  
+  // Get working days and off days counts
+  const totalDays = employee.total_days || 0;
+  const offDaysCount = employee.off_days_count || 0;
+  const workingDays = employee.working_days !== undefined ? employee.working_days : (totalDays - offDaysCount);
 
   return (
     <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200 mb-6">
@@ -24,12 +29,22 @@ const EmployeeDetailCard: React.FC<EmployeeDetailCardProps> = ({ employee, doubl
         <div className="flex flex-wrap gap-4">
           <div className="bg-gray-100 p-3 rounded-md">
             <p className="text-xs text-gray-500">Total Days</p>
-            <p className="text-lg font-bold text-gray-800">{employee.total_days}</p>
+            <p className="text-lg font-bold text-gray-800">{totalDays}</p>
+          </div>
+          
+          <div className="bg-gray-100 p-3 rounded-md">
+            <p className="text-xs text-gray-500">Working Days</p>
+            <p className="text-lg font-bold text-gray-800">{workingDays}</p>
+          </div>
+          
+          <div className="bg-gray-100 p-3 rounded-md">
+            <p className="text-xs text-gray-500">Off Days</p>
+            <p className="text-lg font-bold text-gray-800">{offDaysCount}</p>
           </div>
           
           <div className="bg-blue-50 p-3 rounded-md">
-            <p className="text-xs text-blue-500">Regular Hours</p>
-            <p className="text-lg font-bold text-blue-700">{regularHours.toFixed(2)}</p>
+            <p className="text-xs text-blue-600 font-medium">Regular Hours</p>
+            <p className="text-lg font-bold text-blue-900">{regularHours.toFixed(2)}</p>
           </div>
           
           <div className="bg-amber-50 p-3 rounded-md">

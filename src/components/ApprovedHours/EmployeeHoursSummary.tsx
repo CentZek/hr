@@ -1,5 +1,6 @@
 import React from 'react';
-import { ChevronDown, ChevronRight, Calendar as Calendar2 } from 'lucide-react';
+import { format } from 'date-fns';
+import { Calendar, Clock, Calendar as Calendar2, ChevronDown, ChevronRight } from 'lucide-react';
 
 interface EmployeeHoursSummaryProps {
   employee: {
@@ -8,6 +9,8 @@ interface EmployeeHoursSummaryProps {
     employee_number: string;
     total_days: number;
     total_hours: number;
+    working_days?: number; // Number of actual working days (total days minus off days)
+    off_days_count?: number; // Number of off days
     double_time_hours?: number;
   };
   isExpanded: boolean;
@@ -19,8 +22,10 @@ const EmployeeHoursSummary: React.FC<EmployeeHoursSummaryProps> = ({
   isExpanded, 
   onExpand 
 }) => {
-  const avgHoursPerDay = employee.total_hours > 0 && employee.total_days > 0 
-    ? parseFloat((employee.total_hours / employee.total_days).toFixed(2))
+  // Calculate average hours per day - use working_days if available, otherwise total_days
+  const workingDays = employee.working_days !== undefined ? employee.working_days : employee.total_days;
+  const avgHoursPerDay = employee.total_hours > 0 && workingDays > 0 
+    ? parseFloat((employee.total_hours / workingDays).toFixed(2))
     : 0;
     
   // Calculate double-time hours (if available)
@@ -53,6 +58,16 @@ const EmployeeHoursSummary: React.FC<EmployeeHoursSummaryProps> = ({
           <div className="px-2 py-1 bg-blue-50 text-blue-700 rounded text-xs">
             Days: <span className="font-medium">{employee.total_days}</span>
           </div>
+          {employee.off_days_count !== undefined && employee.off_days_count > 0 && (
+            <div className="px-2 py-1 bg-gray-100 text-gray-700 rounded text-xs">
+              Off-Days: <span className="font-medium">{employee.off_days_count}</span>
+            </div>
+          )}
+          {employee.working_days !== undefined && (
+            <div className="px-2 py-1 bg-green-50 text-green-700 rounded text-xs">
+              Working: <span className="font-medium">{employee.working_days}</span>
+            </div>
+          )}
           <div className="px-2 py-1 bg-purple-50 text-purple-700 rounded text-xs">
             Hours: <span className="font-medium">{employee.total_hours.toFixed(2)}</span>
           </div>
@@ -85,7 +100,19 @@ const EmployeeHoursSummary: React.FC<EmployeeHoursSummaryProps> = ({
           <div className="text-xs text-gray-500">#{employee.employee_number}</div>
         </div>
       </div>
-      <div className="hidden sm:flex sm:items-center font-medium text-gray-800">{employee.total_days}</div>
+      <div className="hidden sm:flex sm:items-center sm:gap-2">
+        <div className="font-medium text-gray-800">{employee.total_days}</div>
+        {employee.off_days_count !== undefined && employee.off_days_count > 0 && (
+          <div className="ml-1 px-1.5 py-0.5 bg-gray-100 text-gray-700 rounded-full text-xs flex items-center">
+            <span>{employee.off_days_count} off</span>
+          </div>
+        )}
+        {employee.working_days !== undefined && (
+          <div className="ml-1 px-1.5 py-0.5 bg-green-50 text-green-700 rounded-full text-xs flex items-center">
+            <span>{employee.working_days} work</span>
+          </div>
+        )}
+      </div>
       <div className="hidden sm:flex sm:items-center">
         <div className="font-medium text-gray-800">
           <span className="mr-1">{totalPayableHours.toFixed(2)}</span>
