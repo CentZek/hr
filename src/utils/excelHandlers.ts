@@ -685,9 +685,7 @@ export const processExcelData = async (data: any[]): Promise<EmployeeRecord[]> =
         const checkOut = morningCheckOuts[0]; // Use first morning check-out
         
         // Calculate hours for night shift
-        const ho
-ursWorked = calculateNightShiftHours(checkIn.timestamp, checkOut.timestamp);
-        
+        const hoursWorked = calculateNightShiftHours(checkIn.timestamp, checkOut.timestamp);
         
         // Store original check-in and check-out times as display values
         const checkInDisplayTime = format(checkIn.timestamp, 'HH:mm');
@@ -1378,7 +1376,8 @@ export const exportApprovedHoursToExcel = (data: {
   // Add statistics rows
   statsData.push(['Total Employees', summaryData.length - 1]);
   statsData.push(['Total Days', totalDays]);
-  statsData.push(['Total Regular Hours', totalRegularHours.toFixed(2)]);
+  statsData.push(['Total Regular Hours', totalRegularHours.toFixe
+d(2)]);
   statsData.push(['Total Double-Time Hours', totalDoubleTimeHours.toFixed(2)]);
   statsData.push(['Total Payable Hours', totalPayableHours.toFixed(2)]);
   statsData.push(['Fridays Worked (Days)', totalFridaysWorked]);
