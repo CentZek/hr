@@ -179,10 +179,6 @@ export const fetchApprovedHours = async (dateFilter: string = ''): Promise<{
           console.error('Error parsing month filter for off days:', err);
         }
       }
-    } else {
-      // Default to last 365 days
-      const startDate = format(subDays(new Date(), 365), 'yyyy-MM-dd');
-      const endDate = format(addDays(new Date(), 30), 'yyyy-MM-dd');
     }
     
     const { data: offDayData, error: offDayError } = await offDayQuery;
@@ -263,36 +259,12 @@ export const fetchApprovedHours = async (dateFilter: string = ''): Promise<{
     const result = Array.from(employeeSummary.values()).map(emp => {
       // Calculate double-time hours
       let doubleTimeHours = 0;
-      let fridaysWorked = 0;
-      let holidaysWorked = 0;
-      let offDays = 0;
-      
       const workingDates = Array.from(emp.working_week_dates);
       
       workingDates.forEach(date => {
-        const dateHours = emp.hours_by_date[date] || 0;
-        
-        // Check if the employee worked on this date (hours > 0)
-        const workedThisDay = dateHours > 0;
-        
-        // Check if this is a double-time day (Friday or holiday)
         if (doubleDays.includes(date)) {
-          if (workedThisDay) {
-            doubleTimeHours += dateHours;
-            
-            // Determine if it's a Friday or a holiday
-            const dateObj = parseISO(date);
-            if (isValid(dateObj)) {
-              if (isFriday(dateObj)) {
-                fridaysWorked++;
-              } else {
-                holidaysWorked++;
-              }
-            }
-          }
-        } else if (!workedThisDay) {
-          // If they didn't work on this day and it's not a double-time day, it's an off day
-          offDays++;
+          const dateHours = emp.hours_by_date[date] || 0;
+          doubleTimeHours += dateHours;
         }
       });
       
@@ -301,10 +273,7 @@ export const fetchApprovedHours = async (dateFilter: string = ''): Promise<{
         total_days: emp.total_days.size,
         total_hours: parseFloat(emp.total_hours.toFixed(2)),
         double_time_hours: parseFloat(doubleTimeHours.toFixed(2)),
-        working_week_dates: Array.from(emp.working_week_dates),
-        fridaysWorked,
-        holidaysWorked,
-        offDays
+        working_week_dates: Array.from(emp.working_week_dates)
       };
     });
     
