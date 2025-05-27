@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Upload, Clock, AlertCircle, CheckCircle, Download, RefreshCw, PlusCircle, Database, KeyRound, Home, AlertTriangle, Calendar, X } from 'lucide-react';
+import { Upload, Clock, AlertCircle, CheckCircle, Download, RefreshCw, PlusCircle, Database, KeyRound, Home, AlertTriangle, Calendar } from 'lucide-react';
 import toast, { Toaster } from 'react-hot-toast';
 
 // Import types
@@ -165,16 +165,10 @@ function HrPage() {
     try {
       console.log('Starting Excel file processing...');
       const records = await handleExcelFile(file);
-      console.log('Excel processing complete, setting records:', records?.length || 0);
+      console.log('Excel processing complete, setting records:', records.length);
       
-      // Enhanced error handling for empty or invalid records
       if (!records || records.length === 0) {
-        throw new Error(
-          "No valid records found in the file. Please check that your Excel file:" +
-          "\n• Contains employee data with check-in/check-out times" + 
-          "\n• Has the correct column headers" +
-          "\n• Has at least one valid employee record"
-        );
+        throw new Error("No valid records found in the file");
       }
       
       setEmployeeRecords(records);
@@ -192,14 +186,7 @@ function HrPage() {
     } catch (error) {
       console.error('Error processing file:', error);
       toast.dismiss(loadingToast);
-      
-      // Show more detailed error message
-      const errorMessage = error instanceof Error ? error.message : 'Error processing file';
-      toast.error(errorMessage, { duration: 6000 });
-      
-      // Reset the uploaded file state since it failed
-      setHasUploadedFile(false);
-      setCurrentFileName('');
+      toast.error(error instanceof Error ? error.message : 'Error processing file');
     } finally {
       setIsUploading(false);
       // Reset the file input
