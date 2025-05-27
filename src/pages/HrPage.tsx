@@ -166,11 +166,6 @@ function HrPage() {
       console.log('Starting Excel file processing...');
       const records = await handleExcelFile(file);
       console.log('Excel processing complete, setting records:', records.length);
-      
-      if (!records || records.length === 0) {
-        throw new Error("No valid records found in the file");
-      }
-      
       setEmployeeRecords(records);
       
       // Calculate statistics
@@ -769,7 +764,6 @@ function HrPage() {
                     <X className="w-5 h-5" />
                   </button>
                 </div>
-                
                 <DateRangePicker 
                   onSelect={handleDateRangeChange} 
                   initialStartDate={startDate} 
