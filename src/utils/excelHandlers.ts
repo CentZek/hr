@@ -1,151 +1,8 @@
 import * as XLSX from 'xlsx';
-import { format } from 'date-fns';
+import { format, parseISO, isFriday } from 'date-fns';
 import { EmployeeRecord, DailyRecord } from '../types';
 import { isDoubleTimeDay } from '../services/holidayService';
 import { calculateDoubleTimeHours } from '../services/holidayService';
-
-// Export to Excel function
-export const exportToExcel = (employeeRecords: EmployeeRecord[]) => {
-  // Create a workbook
-  const wb = XLSX.utils.book_new();
-
-  // Create a worksheet for employee data
-  const employeeData: any[] = [];
-  
-  // Summary data
-  let totalDays = 0;
-  let totalHours = 0;
-  let totalDoubleTimeHours = 0;
-  let totalPayableHours = 0;
-  let totalFridaysOrDoubleDays = 0;
-  let totalOvertimeHours = 0;
-  let totalOffDays = 0;
-  let totalWorkingDays = 0;
-
-  // Track column names used
-  const columnNames = new Set<string>();
-  
-  // Process each employee
-  employeeRecords.forEach(employee => {
-    // Create a record for the employee
-    const record: any = {
-      'Employee Number': employee.employeeNumber,
-      'Name': employee.name,
-      'Department': employee.department || '',
-      'Total Days': employee.days.length,
-    };
-
-    // Track all days with statistics for this employee
-    let employeeTotalHours = 0;
-    let employeeDoubleTimeHours = 0;
-    let employeeFridaysOrDoubleDays = 0;
-    let employeeOvertimeHours = 0;
-    let employeeOffDays = 0;
-    let employeeWorkingDays = 0;
-
-    // Process each day
-    employee.days.forEach(day => {
-      // Count statistics
-      totalDays++;
-      
-      // Add to off days or working days
-      if (day.hoursWorked === 0) {
-        totalOffDays++;
-        employeeOffDays++;
-      } else {
-        totalWorkingDays++;
-        employeeWorkingDays++;
-      }
-      
-      // Add hours to total
-      totalHours += day.hoursWorked;
-      employeeTotalHours += day.hoursWorked;
-      
-      // Check for double time (Fridays and holidays)
-      if (day.date.includes('Friday') || isDoubleTimeDay(day.date)) {
-        totalFridaysOrDoubleDays++;
-        employeeFridaysOrDoubleDays++;
-        
-        const doubleTimeHours = day.hoursWorked; // All hours on these days count as double
-        totalDoubleTimeHours += doubleTimeHours;
-        employeeDoubleTimeHours += doubleTimeHours;
-      }
-      
-      // Count overtime (hours > 9)
-      if (day.hoursWorked > 9) {
-        const overtimeHours = day.hoursWorked - 9;
-        totalOvertimeHours += overtimeHours;
-        employeeOvertimeHours += overtimeHours;
-      }
-
-      // Add day columns (e.g., Day 1, Day 2, etc.)
-      const dayIndex = employee.days.indexOf(day) + 1;
-      const dayKey = `Day ${dayIndex}`;
-      const dateKey = `Date ${dayIndex}`;
-      const hourKey = `Hours ${dayIndex}`;
-      const approvedKey = `Approved ${dayIndex}`;
-
-      // Track column names
-      columnNames.add(dayKey);
-      columnNames.add(dateKey);
-      columnNames.add(hourKey);
-      columnNames.add(approvedKey);
-
-      // Add day data
-      record[dateKey] = day.date;
-      record[dayKey] = day.shiftType ? day.shiftType.charAt(0).toUpperCase() + day.shiftType.slice(1) : '';
-      record[hourKey] = day.hoursWorked.toFixed(2);
-      record[approvedKey] = day.approved ? 'Yes' : 'No';
-    });
-
-    // Add employee total statistics
-    record['Total Hours'] = employeeTotalHours.toFixed(2);
-    record['Double-Time Hours'] = employeeDoubleTimeHours.toFixed(2);
-    record['Payable Hours'] = (employeeTotalHours + employeeDoubleTimeHours).toFixed(2);
-    record['Fridays/Double Days'] = employeeFridaysOrDoubleDays;
-    record['Overtime Hours'] = employeeOvertimeHours.toFixed(2);
-    record['Off Days'] = employeeOffDays;
-    record['Working Days'] = employeeWorkingDays;
-
-    // Add to total payable hours
-    totalPayableHours = totalHours + totalDoubleTimeHours;
-
-    // Add the record to the worksheet data
-    employeeData.push(record);
-  });
-
-  // Create the employee worksheet
-  const ws = XLSX.utils.json_to_sheet(employeeData);
-
-  // Add the worksheet to the workbook
-  XLSX.utils.book_append_sheet(wb, ws, 'Employee Data');
-
-  // Create statistics worksheet
-  const statsData: any[] = [];
-  
-  // Add statistics rows
-  statsData.push(['Total Employees', employeeRecords.length]);
-  statsData.push(['Total Days', totalDays]);
-  statsData.push(['Total Regular Hours', totalHours.toFixed(2)]);
-  statsData.push(['Total Double-Time Hours', totalDoubleTimeHours.toFixed(2)]);
-  statsData.push(['Total Payable Hours', totalPayableHours.toFixed(2)]);
-  statsData.push(['Fridays or Double Days', totalFridaysOrDoubleDays]);
-  statsData.push(['Overtime Hours', totalOvertimeHours.toFixed(2)]);
-  statsData.push(['Off Days', totalOffDays]);
-  statsData.push(['Working Days', totalWorkingDays]);
-
-  // Create the statistics worksheet
-  const statsWs = XLSX.utils.aoa_to_sheet(statsData);
-
-  // Add the statistics worksheet to the workbook
-  XLSX.utils.book_append_sheet(wb, statsWs, 'Statistics');
-
-  // Generate filename with timestamp
-  const filename = `employee_data_${format(new Date(), 'yyyy-MM-dd_HH-mm-ss')}.xlsx`;
-
-  // Save the workbook
-  XLSX.writeFile(wb, filename);
-};
 
 // Export approved hours to Excel
 export const exportApprovedHoursToExcel = (data: any) => {
@@ -155,7 +12,7 @@ export const exportApprovedHoursToExcel = (data: any) => {
   // Summary worksheet data
   const summaryData: any[] = [];
   let totalEmployees = 0;
-  let totalRegularHours = 0;
+  let totalHours = 0;
   let totalDoubleTimeHours = 0;
   let totalPayableHours = 0;
   let totalOffDays = 0;
@@ -169,11 +26,13 @@ export const exportApprovedHoursToExcel = (data: any) => {
     'Employee Number',
     'Name',
     'Total Days',
-    'Working Days',
     'Regular Hours',
     'Double-Time Hours',
+    'Fridays Worked',
+    'Over Time (Hours)',
+    'Over Time (Days)',
     'Total Payable Hours',
-    'Avg Hours/Day',
+    'Working Days',
     'Off Days'
   ]);
   
@@ -188,10 +47,26 @@ export const exportApprovedHoursToExcel = (data: any) => {
     // Calculate working days (days with hours > 0)
     let workingDays = 0;
     let offDays = 0;
+    let fridaysWorked = 0;
+    let overtimeHours = 0;
+    let overtimeDays = 0;
     
     if (employee.working_week_dates) {
       employee.working_week_dates.forEach((date: string) => {
         const hours = employee.hours_by_date?.[date] || 0;
+        const dateObj = parseISO(date);
+        
+        // Check if it's a Friday
+        if (isFriday(dateObj)) {
+          fridaysWorked++;
+        }
+        
+        // Check overtime
+        if (hours > 9) {
+          overtimeHours += (hours - 9);
+          overtimeDays++;
+        }
+        
         if (hours === 0) {
           offDays++;
           totalOffDays++;
@@ -202,23 +77,23 @@ export const exportApprovedHoursToExcel = (data: any) => {
       });
     }
     
-    const avgHoursPerDay = workingDays > 0 ? (regularHours / workingDays) : 0;
-    
     // Add row to summary data
     summaryData.push([
       employee.employee_number,
       employee.name,
       totalDays,
-      workingDays,
       regularHours.toFixed(2),
       doubleTimeHours.toFixed(2),
+      fridaysWorked,
+      overtimeHours.toFixed(2),
+      overtimeDays,
       payableHours.toFixed(2),
-      avgHoursPerDay.toFixed(2),
+      workingDays,
       offDays
     ]);
     
     // Add to totals
-    totalRegularHours += regularHours;
+    totalHours += regularHours;
     totalDoubleTimeHours += doubleTimeHours;
     totalPayableHours += payableHours;
   });
@@ -228,11 +103,13 @@ export const exportApprovedHoursToExcel = (data: any) => {
     'TOTALS',
     `${totalEmployees} Employees`,
     '',
-    totalWorkingDays,
-    totalRegularHours.toFixed(2),
+    totalHours.toFixed(2),
     totalDoubleTimeHours.toFixed(2),
-    totalPayableHours.toFixed(2),
     '',
+    '',
+    '',
+    totalPayableHours.toFixed(2),
+    totalWorkingDays,
     totalOffDays
   ]);
   
@@ -244,11 +121,13 @@ export const exportApprovedHoursToExcel = (data: any) => {
     { wch: 15 }, // Employee Number
     { wch: 25 }, // Name
     { wch: 12 }, // Total Days
-    { wch: 12 }, // Working Days
     { wch: 15 }, // Regular Hours
     { wch: 15 }, // Double-Time Hours
+    { wch: 15 }, // Fridays Worked
+    { wch: 15 }, // Over Time (Hours)
+    { wch: 15 }, // Over Time (Days)
     { wch: 15 }, // Total Payable Hours
-    { wch: 15 }, // Avg Hours/Day
+    { wch: 12 }, // Working Days
     { wch: 12 }  // Off Days
   ];
   summaryWs['!cols'] = summaryColWidths;
@@ -368,7 +247,7 @@ export const exportApprovedHoursToExcel = (data: any) => {
   statsData.push(['Total Employees', totalEmployees]);
   statsData.push(['Total Working Days', totalWorkingDays]);
   statsData.push(['Total Off Days', totalOffDays]);
-  statsData.push(['Total Regular Hours', totalRegularHours.toFixed(2)]);
+  statsData.push(['Total Regular Hours', totalHours.toFixed(2)]);
   statsData.push(['Total Double-Time Hours', totalDoubleTimeHours.toFixed(2)]);
   statsData.push(['Total Payable Hours', totalPayableHours.toFixed(2)]);
   
