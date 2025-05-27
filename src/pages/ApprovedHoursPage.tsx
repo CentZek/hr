@@ -134,12 +134,15 @@ const ApprovedHoursPage: React.FC = () => {
     const loadApprovedHours = async () => {
       setIsLoading(true);
       try {
+        // Initialize dateFilter with an empty string and declare variables at the beginning
         let dateFilter = "";
+        let localStartDate = startDate;
+        let localEndDate = endDate;
         
         if (filterMonth === "custom") {
           // Validate dates before setting the filter
-          if (startDate && endDate && isValid(parseISO(startDate)) && isValid(parseISO(endDate))) {
-            dateFilter = `${startDate}|${endDate}`;
+          if (localStartDate && localEndDate && isValid(parseISO(localStartDate)) && isValid(parseISO(localEndDate))) {
+            dateFilter = `${localStartDate}|${localEndDate}`;
           } else {
             console.warn('Invalid date range, using default filter');
             // Default to recent month if dates are invalid
@@ -237,11 +240,13 @@ const ApprovedHoursPage: React.FC = () => {
     try {
       // Fetch detailed daily breakdown for this employee
       let dateFilter = "";
+      let localStartDate = startDate;
+      let localEndDate = endDate;
       
       if (filterMonth === "custom") {
         // Validate dates before setting the filter
-        if (startDate && endDate && isValid(parseISO(startDate)) && isValid(parseISO(endDate))) {
-          dateFilter = `${startDate}|${endDate}`;
+        if (localStartDate && localEndDate && isValid(parseISO(localStartDate)) && isValid(parseISO(localEndDate))) {
+          dateFilter = `${localStartDate}|${localEndDate}`;
         } else {
           console.warn('Invalid date range, using default filter');
           // Default to recent month if dates are invalid
@@ -293,11 +298,13 @@ const ApprovedHoursPage: React.FC = () => {
     try {
       // Prepare date filter
       let dateFilter = "";
+      let localStartDate = startDate;
+      let localEndDate = endDate;
       
       if (filterMonth === "custom") {
         // Validate dates before setting the filter
-        if (startDate && endDate && isValid(parseISO(startDate)) && isValid(parseISO(endDate))) {
-          dateFilter = `${startDate}|${endDate}`;
+        if (localStartDate && localEndDate && isValid(parseISO(localStartDate)) && isValid(parseISO(localEndDate))) {
+          dateFilter = `${localStartDate}|${localEndDate}`;
         } else {
           console.warn('Invalid date range, using default filter');
           toast.dismiss(loadingToast);
