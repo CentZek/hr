@@ -164,15 +164,22 @@ function HrPage() {
     
     try {
       const records = await handleExcelFile(file);
-      setEmployeeRecords(records);
+      
+      // Ensure each employee record has a days array
+      const processedRecords = records.map(emp => ({
+        ...emp,
+        days: emp.days || [] // Initialize days as empty array if undefined
+      }));
+      
+      setEmployeeRecords(processedRecords);
       
       // Calculate statistics
-      const stats = calculateStats(records);
+      const stats = calculateStats(processedRecords);
       setTotalEmployees(stats.totalEmployees);
       setTotalDays(stats.totalDays);
       
       // Save to Supabase for persistence
-      await saveToSupabase(file.name, records);
+      await saveToSupabase(file.name, processedRecords);
       
       toast.dismiss(loadingToast);
       toast.success('File processed successfully. Review and approve hours before saving.');
@@ -201,6 +208,10 @@ function HrPage() {
   const handleToggleApproveDay = (employeeIndex: number, dayIndex: number) => {
     setEmployeeRecords(prev => {
       const newRecords = [...prev];
+      // Ensure days array exists before accessing it
+      if (!newRecords[employeeIndex].days) {
+        newRecords[employeeIndex].days = [];
+      }
       newRecords[employeeIndex].days[dayIndex].approved = !newRecords[employeeIndex].days[dayIndex].approved;
       return newRecords;
     });
@@ -211,6 +222,12 @@ function HrPage() {
     
     setEmployeeRecords(prev => {
       const newRecords = [...prev];
+      // Ensure days array exists before accessing it
+      if (!newRecords[employeeIndex].days) {
+        newRecords[employeeIndex].days = [];
+        return newRecords; // Return early if no days exist
+      }
+      
       const day = newRecords[employeeIndex].days[dayIndex];
       
       // Update penalty minutes
@@ -251,6 +268,12 @@ function HrPage() {
   const handleEditTime = (employeeIndex: number, dayIndex: number, checkIn: Date | null, checkOut: Date | null) => {
     setEmployeeRecords(prev => {
       const newRecords = [...prev];
+      // Ensure days array exists before accessing it
+      if (!newRecords[employeeIndex].days) {
+        newRecords[employeeIndex].days = [];
+        return newRecords; // Return early if no days exist
+      }
+      
       const day = newRecords[employeeIndex].days[dayIndex];
       
       // If both check-in and check-out are null, mark as OFF-DAY
@@ -316,6 +339,12 @@ function HrPage() {
   const handleApproveAllForEmployee = (employeeIndex: number) => {
     setEmployeeRecords(prev => {
       const newRecords = [...prev];
+      // Ensure days array exists before accessing it
+      if (!newRecords[employeeIndex].days) {
+        newRecords[employeeIndex].days = [];
+        return newRecords;
+      }
+      
       newRecords[employeeIndex].days = newRecords[employeeIndex].days.map(day => ({
         ...day,
         approved: true
@@ -332,10 +361,10 @@ function HrPage() {
     setEmployeeRecords(prev => 
       prev.map(employee => ({
         ...employee,
-        days: employee.days.map(day => ({
+        days: employee.days ? employee.days.map(day => ({
           ...day,
           approved: true
-        }))
+        })) : [] // Ensure days array exists
       }))
     );
     
@@ -393,9 +422,12 @@ function HrPage() {
     
     // Count total approved records
     employeeRecords.forEach(emp => {
-      emp.days.forEach(day => {
-        if (day.approved) approvedCount++;
-      });
+      // Ensure days array exists before accessing it
+      if (emp.days) {
+        emp.days.forEach(day => {
+          if (day.approved) approvedCount++;
+        });
+      }
     });
     
     if (approvedCount === 0) {
@@ -533,6 +565,11 @@ function HrPage() {
     
     if (employeeIndex >= 0) {
       // Employee exists, check if this date already exists
+      // Ensure days array exists before accessing it
+      if (!updatedRecords[employeeIndex].days) {
+        updatedRecords[employeeIndex].days = [];
+      }
+      
       const dayIndex = updatedRecords[employeeIndex].days.findIndex(day => day.date === shiftData.date);
       
       if (dayIndex >= 0) {
@@ -921,7 +958,7 @@ function HrPage() {
                     {/* Third row (full-width Save button on mobile) */}
                     <button
                       onClick={handleSaveToDatabase}
-                      disabled={isSaving || !employeeRecords.some(emp => emp.days.some(d => d.approved)) || !!connectionError}
+                      disabled={isSaving || !employeeRecords.some(emp => emp.days && emp.days.some(d => d.approved)) || !!connectionError}
                       className="col-span-2 sm:col-span-1 inline-flex items-center justify-center px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white text-sm rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       {isSaving ? (
