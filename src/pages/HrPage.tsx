@@ -71,12 +71,13 @@ function HrPage() {
   // Reset confirmation dialog state
   const [isResetConfirmOpen, setIsResetConfirmOpen] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
+  
+  // Reference to the file input element
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   // Check if screen is mobile
   useEffect(() => {
-    const checkIfMobile = () => {
-      setIsMobile(window.innerWidth < 640);
-    };
+    const checkIfMobile = () => setIsMobile(window.innerWidth < 640);
     
     checkIfMobile();
     window.addEventListener('resize', checkIfMobile);
@@ -183,7 +184,9 @@ function HrPage() {
     } finally {
       setIsUploading(false);
       // Reset the file input
-      event.target.value = '';
+      if (event.target) {
+        event.target.value = '';
+      }
     }
   };
 
@@ -640,6 +643,16 @@ function HrPage() {
     setEndDate(end);
     setShowDateRangePicker(false); // Close the picker after selection
   };
+  
+  // Handle file selection button click
+  const handleSelectFileClick = () => {
+    // Programmatically click the hidden file input
+    if (fileInputRef.current) {
+      fileInputRef.current.click();
+    } else {
+      toast.error("File upload component not available");
+    }
+  };
 
   // If still loading from context, show loading state
   if (isContextLoading) {
@@ -826,7 +839,7 @@ function HrPage() {
                 </button>
               </div>
               <button 
-                onClick={() => document.getElementById('file-upload')?.click()}
+                onClick={handleSelectFileClick}
                 disabled={isUploading}
                 className="w-full bg-purple-600 hover:bg-purple-700 focus:ring-4 focus:ring-purple-200 
                   text-white rounded-md py-2.5 px-4 flex items-center justify-center
@@ -836,6 +849,7 @@ function HrPage() {
                 {isUploading ? 'Processing...' : 'Select File'}
               </button>
               <input
+                ref={fileInputRef}
                 type="file"
                 accept=".xlsx,.xls"
                 onChange={handleFileUpload}
@@ -984,7 +998,7 @@ function HrPage() {
               // Empty state
               <EmptyState 
                 hasUploadedFile={hasUploadedFile}
-                onUploadClick={() => document.getElementById('file-upload')?.click()}
+                onUploadClick={handleSelectFileClick}
                 onManualEntryClick={() => setIsManualEntryOpen(true)}
               />
             )}
