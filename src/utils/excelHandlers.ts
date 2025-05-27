@@ -173,8 +173,7 @@ export const exportApprovedHoursToExcel = (data: any) => {
     'Off Days',
     'Regular Hours',
     'Double-Time Hours',
-    'Total Payable Hours',
-    'Avg Hours/Day'
+    'Total Payable Hours'
   ]);
   
   // Process summary data
@@ -184,7 +183,6 @@ export const exportApprovedHoursToExcel = (data: any) => {
     const doubleTimeHours = employee.double_time_hours || 0;
     const payableHours = regularHours + doubleTimeHours;
     const totalDays = employee.total_days || 0;
-    const avgHoursPerDay = totalDays > 0 ? (regularHours / totalDays) : 0;
     
     // Count off days and working days
     let offDays = 0;
@@ -212,8 +210,7 @@ export const exportApprovedHoursToExcel = (data: any) => {
       offDays,
       regularHours.toFixed(2),
       doubleTimeHours.toFixed(2),
-      payableHours.toFixed(2),
-      avgHoursPerDay.toFixed(2)
+      payableHours.toFixed(2)
     ]);
     
     // Add to totals
@@ -234,8 +231,7 @@ export const exportApprovedHoursToExcel = (data: any) => {
     { wch: 12 }, // Off Days
     { wch: 15 }, // Regular Hours
     { wch: 15 }, // Double-Time Hours
-    { wch: 15 }, // Total Payable Hours
-    { wch: 15 }  // Avg Hours/Day
+    { wch: 15 }  // Total Payable Hours
   ];
   summaryWs['!cols'] = summaryColWidths;
   
