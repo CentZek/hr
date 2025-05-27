@@ -44,20 +44,6 @@ const EmployeeDetailCard: React.FC<EmployeeDetailCardProps> = ({ employee, doubl
             <p className="text-xs text-green-500">Total Payable Hours</p>
             <p className="text-lg font-bold text-green-700">{totalPayableHours.toFixed(2)}</p>
           </div>
-
-          {employee.offDays !== undefined && (
-            <div className="bg-gray-100 p-3 rounded-md">
-              <p className="text-xs text-gray-500">Off Days</p>
-              <p className="text-lg font-bold text-gray-800">{employee.offDays}</p>
-            </div>
-          )}
-          
-          {employee.holidaysWorked !== undefined && (
-            <div className="bg-red-50 p-3 rounded-md">
-              <p className="text-xs text-red-500">Holidays Worked</p>
-              <p className="text-lg font-bold text-red-700">{employee.holidaysWorked}</p>
-            </div>
-          )}
         </div>
       </div>
       
