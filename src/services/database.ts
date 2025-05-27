@@ -944,9 +944,10 @@ export const resetAllDatabaseData = async (): Promise<{
   message: string;
 }> => {
   try {
-    // Delete from all related tables EXCEPT approved records
+    // IMPORTANT FIX: When resetting, we want to preserve approved records
+    // So we'll pass TRUE to preserveApproved parameter
     
-    // First, delete time_records but preserve approved records
+    // Delete from all related tables EXCEPT approved records
     const { success: timeRecordsDeleted, count: timeRecordsCount, message: timeRecordsMessage } = 
       await deleteAllTimeRecords('', '', true); // Pass true to preserve approved records
     

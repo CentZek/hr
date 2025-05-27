@@ -184,58 +184,45 @@ const handleCloseConsecutiveRecords = (records: TimeRecord[]): TimeRecord[] => {
     const current = records[i];
     const next = records[i + 1];
     
-    // If they have the same status and are close in time
-    if (current.status === next.status) {
-      const timeDiffMinutes = differenceInMinutes(next.timestamp, current.timestamp);
-      
-      // If the time difference is small, handle as duplicate rather than separate shift
-      if (timeDiffMinutes <= CLOSE_RECORDS_THRESHOLD_MINUTES) {
-        // For check-ins, keep the earlier one
-        if (current.status === 'check_in') {
-          next.mislabeled = true;
-          next.originalStatus = 'check_in';
-          next.notes = 'Fixed duplicate: consecutive check-ins close in time';
-          next.status = 'check_out'; // Mark as check-out
-          
-          // Check if this would create a very short shift
-          const nextRecord = i + 2 < records.length ? records[i + 2] : null;
-          if (nextRecord) {
-            const possibleShiftHours = differenceInMinutes(nextRecord.timestamp, current.timestamp) / 60;
-            if (possibleShiftHours < MINIMUM_SHIFT_HOURS) {
-              // This would create a very short shift, likely incorrect
-              // Revert the change and mark as duplicate to ignore
-              next.status = 'check_in';
-              next.mislabeled = true;
-              next.notes = 'Duplicate check-in, too close to previous record';
-              next.processed = true; // Mark as processed to exclude it
-            }
-          }
-        }
-        // For check-outs, keep the later one
-        else if (current.status === 'check_out') {
-          current.mislabeled = true;
-          current.originalStatus = 'check_out';
-          current.notes = 'Fixed duplicate: consecutive check-outs close in time';
-          current.status = 'check_in'; // Mark as check-in
-          
-          // Check if this would create a very short shift
-          const prevRecord = i > 0 ? records[i - 1] : null;
-          if (prevRecord) {
-            const possibleShiftHours = differenceInMinutes(next.timestamp, prevRecord.timestamp) / 60;
-            if (possibleShiftHours < MINIMUM_SHIFT_HOURS) {
-              // This would create a very short shift, likely incorrect
-              // Revert the change and mark as duplicate to ignore
-              current.status = 'check_out';
-              current.mislabeled = true;
-              current.notes = 'Duplicate check-out, too close to next record';
-              current.processed = true; // Mark as processed to exclude it
-            }
-          }
-        }
-      } else {
-        // If they're far enough apart, they might be legitimate separate shifts
-        // Let the multi-shift detection handle this case
-      }
+    // Skip if already processed or statuses are different
+    if (current.processed || next.processed || current.status !== next.status) continue;
+    
+    // CRITICAL FIX: Only flip consecutive records if they're far enough apart
+    const timeDiffMinutes = differenceInMinutes(next.timestamp, current.timestamp);
+    
+    // NEW LOGIC: For consecutive check-outs, don't flip if they're less than 60 minutes apart
+    if (current.status === 'check_out' && timeDiffMinutes < 60) {
+      // Instead of flipping, mark the earlier one as a duplicate to ignore
+      current.mislabeled = true;
+      current.originalStatus = current.originalStatus || 'check_out';
+      current.notes = 'Duplicate check-out, too close to next record';
+      current.processed = true; // Mark as processed to exclude it
+      continue;
+    }
+    
+    // NEW LOGIC: For consecutive check-ins, don't flip if they're less than 60 minutes apart
+    if (current.status === 'check_in' && timeDiffMinutes < 60) {
+      // Instead of flipping, mark the later one as a duplicate to ignore
+      next.mislabeled = true;
+      next.originalStatus = next.originalStatus || 'check_in';
+      next.notes = 'Duplicate check-in, too close to previous record';
+      next.processed = true; // Mark as processed to exclude it
+      continue;
+    }
+    
+    // Original logic for records that are far enough apart
+    if (current.status === 'check_in') {
+      // Two consecutive check-ins: convert second to check-out
+      next.status = 'check_out';
+      next.mislabeled = true;
+      next.originalStatus = 'check_in';
+      next.notes = 'Fixed mislabeled: Changed from check-in to check-out (duplicate check-in pattern)';
+    } else if (current.status === 'check_out') {
+      // Two consecutive check-outs: convert first to check-in
+      current.status = 'check_in';
+      current.mislabeled = true;
+      current.originalStatus = 'check_out';
+      current.notes = 'Fixed mislabeled: Changed from check-out to check-in (duplicate check-out pattern)';
     }
   }
   
@@ -1175,12 +1162,11 @@ export const exportApprovedHoursToExcel = (data: {
   summary: any[], 
   details: any[], 
   filterMonth: string,
-  dateRange?: { startDate: string, endDate: string },
   doubleDays?: string[] 
 }): void => {
   // Create worksheets for summary and details
   const summaryData = [
-    ['Employee Number', 'Name', 'Total Days', 'Working Days', 'Off-Days', 'Regular Hours', 'Double-Time Hours', 'Fridays Worked', 'Over Time (Hours)', 'Over Time (Days)', 'Total Payable Hours']
+    ['Employee Number', 'Name', 'Total Days', 'Working Days', 'Off Days', 'Regular Hours', 'Double-Time Hours', 'Fridays Worked', 'Over Time (Hours)', 'Over Time (Days)', 'Total Payable Hours']
   ];
   
   const detailsData = [
@@ -1207,6 +1193,11 @@ export const exportApprovedHoursToExcel = (data: {
     // Calculate total payable hours (regular hours + double-time bonus)
     const totalPayableHours = emp.total_hours + doubleTimeHours;
     
+    // Get working days and off days
+    const totalDays = emp.total_days || 0;
+    const offDaysCount = emp.off_days_count || 0;
+    const workingDays = emp.working_days !== undefined ? emp.working_days : (totalDays - offDaysCount);
+    
     // Calculate Fridays worked
     let fridaysWorked = 0;
     if (emp.working_week_dates) {
@@ -1232,16 +1223,12 @@ export const exportApprovedHoursToExcel = (data: {
     // Convert overtime hours to days (assuming 8-hour workday for overtime calculation)
     const overtimeDays = parseFloat((overtimeHours / 8).toFixed(2));
     
-    // Get the count of working days and off days
-    const workingDays = emp.working_days || (emp.total_days - (emp.off_days_count || 0));
-    const offDays = emp.off_days_count || 0;
-    
     summaryData.push([
       emp.employee_number,
       emp.name,
-      emp.total_days,
+      totalDays,
       workingDays,
-      offDays,
+      offDaysCount,
       emp.total_hours.toFixed(2),
       doubleTimeHours.toFixed(2),
       fridaysWorked,
@@ -1398,11 +1385,7 @@ export const exportApprovedHoursToExcel = (data: {
   statsData.push(['Overtime (Days)', totalOvertimeDays.toFixed(2)]);
   
   // Filter period
-  if (data.dateRange && data.filterMonth === "custom") {
-    statsData.push(['Filter Period', `${data.dateRange.startDate} to ${data.dateRange.endDate}`]);
-  } else {
-    statsData.push(['Filter Period', data.filterMonth === 'all' ? 'All Time' : data.filterMonth]);
-  }
+  statsData.push(['Filter Period', data.filterMonth === 'all' ? 'All Time' : data.filterMonth]);
   
   // Create the statistics worksheet
   const statsWorksheet = utils.aoa_to_sheet(statsData);
