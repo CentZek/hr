@@ -29,18 +29,6 @@ const EmployeeSummary: React.FC<EmployeeSummaryProps> = ({ days, doubleDays = []
   // Calculate total payable hours (regular + double-time)
   const totalPayableHours = totalHours + doubleTimeHours;
   
-  // Count holidays worked (days in doubleDays that aren't Fridays)
-  const holidaysWorked = validDays.filter(day => {
-    if (!doubleDays.includes(day.date)) return false;
-    
-    // Get day of week (0 = Sunday, 5 = Friday)
-    const date = new Date(day.date);
-    const dayOfWeek = date.getDay();
-    
-    // If it's in doubleDays but not a Friday, it's a holiday
-    return dayOfWeek !== 5; 
-  }).length;
-  
   // Count issues
   const lateDays = days.filter(d => d.isLate).length;
   const earlyLeaveDays = days.filter(d => d.earlyLeave).length;
@@ -136,8 +124,7 @@ const EmployeeSummary: React.FC<EmployeeSummaryProps> = ({ days, doubleDays = []
               { label: 'Canteen Late:', value: canteenLateDays },
               { label: 'Early Leave:', value: earlyLeaveDays },
               { label: 'Missing Records:', value: missingRecordDays },
-              { label: 'Overtime Days:', value: overtimeDays },
-              { label: 'Holidays Worked:', value: holidaysWorked }
+              { label: 'Overtime Days:', value: overtimeDays }
             ].map((issue, i) => issue.value > 0 && (
               <div key={i} className="flex justify-between">
                 <span className="text-xs">{issue.label}</span>
@@ -146,7 +133,7 @@ const EmployeeSummary: React.FC<EmployeeSummaryProps> = ({ days, doubleDays = []
             ))}
             
             {lateDays === 0 && canteenLateDays === 0 && earlyLeaveDays === 0 && 
-             missingRecordDays === 0 && overtimeDays === 0 && holidaysWorked === 0 && (
+             missingRecordDays === 0 && overtimeDays === 0 && (
               <div className="flex items-center text-green-600">
                 <CheckCircle className="w-3 h-3 mr-1" />
                 <span className="text-xs">No issues found</span>

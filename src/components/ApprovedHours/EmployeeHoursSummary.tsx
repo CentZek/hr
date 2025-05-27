@@ -9,9 +9,6 @@ interface EmployeeHoursSummaryProps {
     total_days: number;
     total_hours: number;
     double_time_hours?: number;
-    fridaysWorked?: number;
-    holidaysWorked?: number;
-    offDays?: number;
   };
   isExpanded: boolean;
   onExpand: () => void;
@@ -72,23 +69,6 @@ const EmployeeHoursSummary: React.FC<EmployeeHoursSummaryProps> = ({
           <div className="px-2 py-1 bg-green-50 text-green-700 rounded text-xs">
             Avg: <span className="font-medium">{avgHoursPerDay.toFixed(2)}/day</span>
           </div>
-          
-          {/* New statistics */}
-          {(employee.offDays ?? 0) > 0 && (
-            <div className="px-2 py-1 bg-gray-50 text-gray-700 rounded text-xs">
-              Off-Days: <span className="font-medium">{employee.offDays}</span>
-            </div>
-          )}
-          {(employee.holidaysWorked ?? 0) > 0 && (
-            <div className="px-2 py-1 bg-red-50 text-red-700 rounded text-xs">
-              Holidays: <span className="font-medium">{employee.holidaysWorked}</span>
-            </div>
-          )}
-          {(employee.fridaysWorked ?? 0) > 0 && (
-            <div className="px-2 py-1 bg-amber-50 text-amber-700 rounded text-xs">
-              Fridays: <span className="font-medium">{employee.fridaysWorked}</span>
-            </div>
-          )}
         </div>
       </div>
       
@@ -103,19 +83,6 @@ const EmployeeHoursSummary: React.FC<EmployeeHoursSummaryProps> = ({
         <div>
           <div className="font-medium text-gray-900">{employee.name}</div>
           <div className="text-xs text-gray-500">#{employee.employee_number}</div>
-          {/* Show additional statistics */}
-          <div className="flex gap-2 mt-1">
-            {(employee.offDays ?? 0) > 0 && (
-              <span className="text-xs bg-gray-100 text-gray-700 px-1 rounded">
-                Off-Days: {employee.offDays}
-              </span>
-            )}
-            {(employee.holidaysWorked ?? 0) > 0 && (
-              <span className="text-xs bg-red-100 text-red-700 px-1 rounded">
-                Holidays: {employee.holidaysWorked}
-              </span>
-            )}
-          </div>
         </div>
       </div>
       <div className="hidden sm:flex sm:items-center font-medium text-gray-800">{employee.total_days}</div>
