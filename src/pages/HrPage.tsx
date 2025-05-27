@@ -157,6 +157,14 @@ function HrPage() {
       return;
     }
 
+    // Validate file type
+    const fileExtension = file.name.split('.').pop()?.toLowerCase();
+    if (fileExtension !== 'xlsx' && fileExtension !== 'xls') {
+      toast.error('Invalid file format. Please upload an Excel file (.xlsx or .xls)');
+      event.target.value = '';
+      return;
+    }
+    
     setIsUploading(true);
     setHasUploadedFile(true);
     setCurrentFileName(file.name);
@@ -164,6 +172,8 @@ function HrPage() {
     
     try {
       console.log('Starting Excel file processing...');
+      
+      // Process the Excel file
       const records = await handleExcelFile(file);
       console.log('Excel processing complete, setting records:', records?.length || 0);
       
@@ -174,6 +184,37 @@ function HrPage() {
           "\n• Contains employee data with check-in/check-out times" + 
           "\n• Has the correct column headers" +
           "\n• Has at least one valid employee record"
+        );
+      }
+      
+      // Check if records have the expected structure
+      const hasValidStructure = records.every(record => 
+        record.employeeNumber && 
+        record.name && 
+        Array.isArray(record.days) && 
+        record.days.length > 0
+      );
+      
+      if (!hasValidStructure) {
+        throw new Error(
+          "Invalid data format in the file. Please ensure:" +
+          "\n• The file contains employee number and name columns" +
+          "\n• Each employee has at least one day of records" +
+          "\n• The timestamp data is in a recognized format (DD/MM/YYYY HH:MM:SS)"
+        );
+      }
+      
+      // Check if any records have days with timestamps
+      const hasAnyTimestamps = records.some(record => 
+        record.days.some(day => day.firstCheckIn || day.lastCheckOut)
+      );
+      
+      if (!hasAnyTimestamps) {
+        throw new Error(
+          "No valid timestamp data found. Please check that:" +
+          "\n• Your file contains check-in and check-out times" +
+          "\n• Timestamps are in a valid format" +
+          "\n• The timestamp column headers are correctly labeled"
         );
       }
       
