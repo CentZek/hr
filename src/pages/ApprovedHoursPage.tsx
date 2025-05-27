@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { format, subMonths, isSameDay, startOfMonth, endOfMonth, parseISO, isValid } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
-import { Clock, ArrowLeft, Download, Users, Calendar, Filter, Trash2, Home, User, X, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Clock, ArrowLeft, Download, Users, Calendar, Filter, Trash2, Home, Calendar as Calendar2, User, X, ChevronLeft, ChevronRight } from 'lucide-react';
 import toast, { Toaster } from 'react-hot-toast';
 import { fetchApprovedHours, fetchEmployeeDetails, deleteAllTimeRecords } from '../services/database';
 import { exportApprovedHoursToExcel } from '../utils/excelHandlers';
@@ -134,15 +134,15 @@ const ApprovedHoursPage: React.FC = () => {
     const loadApprovedHours = async () => {
       setIsLoading(true);
       try {
-        // Initialize variables at the beginning
+        // Initialize dateFilter with an empty string and declare variables at the beginning
         let dateFilter = "";
-        const stateStartDate = startDate; // Use different names to avoid shadowing
-        const stateEndDate = endDate;     // Use different names to avoid shadowing
+        let localStartDate = startDate;
+        let localEndDate = endDate;
         
         if (filterMonth === "custom") {
           // Validate dates before setting the filter
-          if (stateStartDate && stateEndDate && isValid(parseISO(stateStartDate)) && isValid(parseISO(stateEndDate))) {
-            dateFilter = `${stateStartDate}|${stateEndDate}`;
+          if (localStartDate && localEndDate && isValid(parseISO(localStartDate)) && isValid(parseISO(localEndDate))) {
+            dateFilter = `${localStartDate}|${localEndDate}`;
           } else {
             console.warn('Invalid date range, using default filter');
             // Default to recent month if dates are invalid
@@ -240,13 +240,13 @@ const ApprovedHoursPage: React.FC = () => {
     try {
       // Fetch detailed daily breakdown for this employee
       let dateFilter = "";
-      const stateStartDate = startDate; // Renamed to avoid shadowing
-      const stateEndDate = endDate;     // Renamed to avoid shadowing
+      let localStartDate = startDate;
+      let localEndDate = endDate;
       
       if (filterMonth === "custom") {
         // Validate dates before setting the filter
-        if (stateStartDate && stateEndDate && isValid(parseISO(stateStartDate)) && isValid(parseISO(stateEndDate))) {
-          dateFilter = `${stateStartDate}|${stateEndDate}`;
+        if (localStartDate && localEndDate && isValid(parseISO(localStartDate)) && isValid(parseISO(localEndDate))) {
+          dateFilter = `${localStartDate}|${localEndDate}`;
         } else {
           console.warn('Invalid date range, using default filter');
           // Default to recent month if dates are invalid
@@ -298,13 +298,13 @@ const ApprovedHoursPage: React.FC = () => {
     try {
       // Prepare date filter
       let dateFilter = "";
-      const stateStartDate = startDate; // Renamed to avoid shadowing
-      const stateEndDate = endDate;     // Renamed to avoid shadowing
+      let localStartDate = startDate;
+      let localEndDate = endDate;
       
       if (filterMonth === "custom") {
         // Validate dates before setting the filter
-        if (stateStartDate && stateEndDate && isValid(parseISO(stateStartDate)) && isValid(parseISO(stateEndDate))) {
-          dateFilter = `${stateStartDate}|${stateEndDate}`;
+        if (localStartDate && localEndDate && isValid(parseISO(localStartDate)) && isValid(parseISO(localEndDate))) {
+          dateFilter = `${localStartDate}|${localEndDate}`;
         } else {
           console.warn('Invalid date range, using default filter');
           toast.dismiss(loadingToast);
@@ -674,7 +674,7 @@ const ApprovedHoursPage: React.FC = () => {
                   </div>
                 </div>
                 <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 rounded-md">
-                  <Calendar className="w-5 h-5 text-amber-600" />
+                  <Calendar2 className="w-5 h-5 text-amber-600" />
                   <div>
                     <div className="text-xs text-amber-600 font-medium">Double-Time Hours</div>
                     <div className="text-lg font-bold text-amber-900">{totalDoubleTimeHours.toFixed(2)}</div>
