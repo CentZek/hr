@@ -62,13 +62,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           const employees = await getProcessedEmployees(storedFileId);
           
           if (employees && employees.length > 0) {
-            // Sort employees alphabetically by name
-            const sortedEmployees = [...employees].sort((a, b) => a.name.localeCompare(b.name));
-            
-            setEmployeeRecords(sortedEmployees);
+            setEmployeeRecords(employees);
             setHasUploadedFile(true);
-            setTotalEmployees(sortedEmployees.length);
-            setTotalDays(sortedEmployees.reduce((sum, emp) => sum + emp.days.length, 0));
+            setTotalEmployees(employees.length);
+            setTotalDays(employees.reduce((sum, emp) => sum + emp.days.length, 0));
             
             // Try to get file name from localStorage if available
             const storedFileName = localStorage.getItem('currentFileName');
@@ -99,10 +96,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           const employees = await getProcessedEmployees(activeFile.fileId);
           
           if (employees && employees.length > 0) {
-            // Sort employees alphabetically by name
-            const sortedEmployees = [...employees].sort((a, b) => a.name.localeCompare(b.name));
-            
-            setEmployeeRecords(sortedEmployees);
+            setEmployeeRecords(employees);
             setHasUploadedFile(true);
           }
         }
@@ -150,10 +144,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Save processed data to Supabase
   const saveToSupabase = async (fileName: string, records: EmployeeRecord[]): Promise<boolean> => {
     try {
-      // Ensure records are sorted by name
-      const sortedRecords = [...records].sort((a, b) => a.name.localeCompare(b.name));
-      
-      const fileId = await saveProcessedExcelFile(fileName, sortedRecords);
+      const fileId = await saveProcessedExcelFile(fileName, records);
       
       if (fileId) {
         setActiveFileId(fileId);
@@ -172,9 +163,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (!activeFileId) return false;
     
     try {
-      // Ensure records are sorted by name before updating
-      const sortedRecords = [...records].sort((a, b) => a.name.localeCompare(b.name));
-      return await updateProcessedEmployeeData(activeFileId, sortedRecords);
+      return await updateProcessedEmployeeData(activeFileId, records);
     } catch (error) {
       console.error('Error updating in Supabase:', error);
       return false;

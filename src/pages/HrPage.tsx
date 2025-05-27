@@ -164,18 +164,15 @@ function HrPage() {
     
     try {
       const records = await handleExcelFile(file);
-      
-      // Sort records alphabetically by name
-      const sortedRecords = [...records].sort((a, b) => a.name.localeCompare(b.name));
-      setEmployeeRecords(sortedRecords);
+      setEmployeeRecords(records);
       
       // Calculate statistics
-      const stats = calculateStats(sortedRecords);
+      const stats = calculateStats(records);
       setTotalEmployees(stats.totalEmployees);
       setTotalDays(stats.totalDays);
       
       // Save to Supabase for persistence
-      await saveToSupabase(file.name, sortedRecords);
+      await saveToSupabase(file.name, records);
       
       toast.dismiss(loadingToast);
       toast.success('File processed successfully. Review and approve hours before saving.');
@@ -419,20 +416,17 @@ function HrPage() {
 
       // Process records after saving - remove approved days
       const updatedRecords = processRecordsAfterSave(employeeRecords);
-      
-      // Sort the records alphabetically by name
-      const sortedRecords = [...updatedRecords].sort((a, b) => a.name.localeCompare(b.name));
-      setEmployeeRecords(sortedRecords);
+      setEmployeeRecords(updatedRecords);
       
       // Update totals
-      const { totalEmployees: updatedEmpCount, totalDays: updatedDaysCount } = calculateStats(sortedRecords);
+      const { totalEmployees: updatedEmpCount, totalDays: updatedDaysCount } = calculateStats(updatedRecords);
       setTotalEmployees(updatedEmpCount);
       setTotalDays(updatedDaysCount);
       
       // Update in Supabase
-      if (sortedRecords.length > 0) {
+      if (updatedRecords.length > 0) {
         // Only update Supabase if there are records left
-        await saveToSupabase(currentFileName, sortedRecords);
+        await saveToSupabase(currentFileName, updatedRecords);
       }
 
       // FIXED: Refresh manually approved records from database instead of manually updating state
@@ -566,11 +560,8 @@ function HrPage() {
       });
     }
     
-    // Sort records alphabetically by name
-    const sortedRecords = [...updatedRecords].sort((a, b) => a.name.localeCompare(b.name));
-    
-    // Update the state with new sorted records
-    setEmployeeRecords(sortedRecords);
+    // Update the state with new records
+    setEmployeeRecords(updatedRecords);
     
     // Update totals if necessary
     if (employeeIndex === employeeRecords.length) {
@@ -582,7 +573,7 @@ function HrPage() {
     setHasUploadedFile(true);
     
     // Save to Supabase
-    await saveToSupabase(currentFileName || 'Employee Shift Approvals', sortedRecords);
+    await saveToSupabase(currentFileName || 'Employee Shift Approvals', updatedRecords);
     
     // FIXED: Refresh manual records - Get fresh data from database instead of manually updating state
     await refreshData();
@@ -599,11 +590,8 @@ function HrPage() {
       // Add the manual entry to the displayed records
       const { updatedRecords, employeeIndex, isNewEmployee } = addManualEntryToRecords(recordData, employeeRecords);
       
-      // Sort records alphabetically by name
-      const sortedRecords = [...updatedRecords].sort((a, b) => a.name.localeCompare(b.name));
-      
-      // Update state with the modified and sorted records
-      setEmployeeRecords(sortedRecords);
+      // Update state with the modified records
+      setEmployeeRecords(updatedRecords);
       
       // Update totals
       setTotalEmployees(prev => isNewEmployee ? prev + 1 : prev);
@@ -611,7 +599,7 @@ function HrPage() {
       setHasUploadedFile(true);
       
       // Save to Supabase
-      await saveToSupabase(currentFileName || 'Manual Entries', sortedRecords);
+      await saveToSupabase(currentFileName || 'Manual Entries', updatedRecords);
       
       // Store the recent manual entry for highlighting
       const empNumber = String(recordData.employee.employee_number || recordData.employee.employeeNumber || "").trim();
