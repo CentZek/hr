@@ -37,14 +37,14 @@ export const exportToExcel = (employeeRecords: EmployeeRecord[]) => {
       'Employee Number': employee.employeeNumber,
       'Name': employee.name,
       'Total Days': workingDays + offDays,
-      'Total Working Days': workingDays,
-      'Off-Days': offDays, // Moved next to Total Working Days
+      'Total Working Days': workingDays, // Add Total Working Days column
       'Regular Hours': totalHours,
       'Double-Time Hours': 0, // Placeholder for double-time hours
       'Fridays Worked': fridaysWorked,
       'Over Time (Hours)': overtimeHours.toFixed(2),
       'Over Time (Days)': overtimeDays,
-      'Total Payable Hours': totalHours
+      'Total Payable Hours': totalHours,
+      'Off-Days': offDays // Add Off-Days column
     };
   });
   
@@ -141,11 +141,11 @@ export const exportApprovedHoursToExcel = (data: any) => {
       'Employee Number': employee.employee_number,
       'Name': employee.name,
       'Total Days': employee.total_days,
-      'Total Working Days': workingDays,
-      'Off-Days': offDays, // Moved next to Total Working Days
+      'Total Working Days': workingDays, // Add Total Working Days column
       'Regular Hours': regularHours.toFixed(2),
       'Double-Time Hours': doubleTimeHours.toFixed(2),
-      'Total Payable Hours': totalPayableHours.toFixed(2)
+      'Total Payable Hours': totalPayableHours.toFixed(2),
+      'Off-Days': offDays // Add Off-Days column
     };
   });
   
