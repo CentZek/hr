@@ -391,9 +391,6 @@ export const exportToExcel = (employeeRecords: EmployeeRecord[]): void => {
       // Calculate WORKING days (days with hours > 0)
       const workingDays = employee.days.filter(day => day.hoursWorked > 0).length;
       
-      // Calculate OFF days (days with hours = 0)
-      const offDays = employee.days.filter(day => day.hoursWorked === 0).length;
-      
       // Calculate days with issues
       const lateDays = employee.days.filter(day => day.isLate).length;
       const earlyLeaveDays = employee.days.filter(day => day.earlyLeave).length;
@@ -408,7 +405,6 @@ export const exportToExcel = (employeeRecords: EmployeeRecord[]): void => {
         'Department': employee.department,
         'Total Days': employee.totalDays,
         'Working Days': workingDays,
-        'Off Days': offDays,
         'Hours Worked': totalHours.toFixed(2),
         'Late Days': lateDays,
         'Early Leave Days': earlyLeaveDays,
@@ -477,20 +473,13 @@ export const exportApprovedHoursToExcel = (data: any): void => {
       dateRangeStr = `_${filterMonth}`;
     }
     
-    // Calculate summary data with working days and off days
+    // Calculate summary data with working days
     const summaryData = summary.map((employee: any) => {
       // Calculate working days (days with hours > 0)
       const workingDays = employee.working_week_dates 
         ? employee.working_week_dates.filter((date: string) => 
             (employee.hours_by_date?.[date] || 0) > 0
           ).length 
-        : 0;
-      
-      // Calculate off days (days with hours = 0)
-      const offDays = employee.working_week_dates
-        ? employee.working_week_dates.filter((date: string) => 
-            (employee.hours_by_date?.[date] || 0) === 0
-          ).length
         : 0;
       
       // Calculate double-time hours
@@ -519,7 +508,6 @@ export const exportApprovedHoursToExcel = (data: any): void => {
         'Name': employee.name,
         'Total Days': employee.total_days || 0,
         'Working Days': workingDays,
-        'Off Days': offDays,
         'Regular Hours': employee.total_hours.toFixed(2),
         'Double-Time Hours': doubleTimeHours.toFixed(2),
         'Fridays Worked': fridaysWorked,
