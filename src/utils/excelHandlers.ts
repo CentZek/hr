@@ -37,6 +37,7 @@ export const exportToExcel = (employeeRecords: EmployeeRecord[]) => {
       'Employee Number': employee.employeeNumber,
       'Name': employee.name,
       'Total Days': workingDays + offDays,
+      'Total Working Days': workingDays, // Add Total Working Days column
       'Regular Hours': totalHours,
       'Double-Time Hours': 0, // Placeholder for double-time hours
       'Fridays Worked': fridaysWorked,
@@ -119,20 +120,28 @@ export const exportApprovedHoursToExcel = (data: any) => {
     
     // Calculate off days if we have working_week_dates
     let offDays = 0;
+    let workingDays = 0;
+    
     if (employee.working_week_dates) {
-      // Count days with 0 hours as off days
+      // Count days with 0 hours as off days, and days with >0 hours as working days
       employee.working_week_dates.forEach((date: string) => {
         const hours = employee.hours_by_date?.[date] || 0;
         if (hours === 0) {
           offDays++;
+        } else {
+          workingDays++;
         }
       });
+    } else {
+      // Fallback if we don't have detailed data
+      workingDays = employee.total_days - offDays;
     }
     
     return {
       'Employee Number': employee.employee_number,
       'Name': employee.name,
       'Total Days': employee.total_days,
+      'Total Working Days': workingDays, // Add Total Working Days column
       'Regular Hours': regularHours.toFixed(2),
       'Double-Time Hours': doubleTimeHours.toFixed(2),
       'Total Payable Hours': totalPayableHours.toFixed(2),
