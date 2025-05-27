@@ -1,6 +1,6 @@
 import React from 'react';
 import { format } from 'date-fns';
-import { Calendar, Clock, Calendar as Calendar2 } from 'lucide-react';
+import { Calendar, Clock, Calendar as Calendar2, ChevronDown, ChevronRight } from 'lucide-react';
 
 interface EmployeeHoursSummaryProps {
   employee: {
