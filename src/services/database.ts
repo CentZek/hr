@@ -94,38 +94,53 @@ export const fetchApprovedHours = async (dateFilter: string = ''): Promise<{
           total_days: new Set(),
           total_hours: 0,
           working_week_dates: new Set(), // Track all working week dates for double-time calculations
-          hours_by_date: {} // Track hours by date for double-time calculations
+          hours_by_date: {}, // Track hours by date for double-time calculations
+          off_days: new Set(), // Track OFF-DAY dates
         });
       }
       
       const employee = employeeSummary.get(employeeId);
-      employee.total_hours += hours;
       
-      // Add date to set of days - Only if timestamp is valid
-      if (record.timestamp && isValid(new Date(record.timestamp))) {
-        // Use working_week_start if available, otherwise use timestamp date
+      if (record.status === 'off_day') {
+        // For OFF-DAY records, add to off_days set
         if (record.working_week_start) {
+          employee.off_days.add(record.working_week_start);
           employee.total_days.add(record.working_week_start);
-          employee.working_week_dates.add(record.working_week_start);
-          
-          // Store hours by date
-          if (!employee.hours_by_date[record.working_week_start]) {
-            employee.hours_by_date[record.working_week_start] = hours;
-          } else {
-            employee.hours_by_date[record.working_week_start] += hours;
-          }
-        } else {
-          // Use the UTC date portion so nothing shifts under local timezones
-          const utc = parseISO(record.timestamp);
-          const date = utc.toISOString().slice(0,10); // "YYYY-MM-DD"
+        } else if (record.timestamp && isValid(new Date(record.timestamp))) {
+          const date = parseISO(record.timestamp).toISOString().slice(0,10);
+          employee.off_days.add(date);
           employee.total_days.add(date);
-          employee.working_week_dates.add(date);
-          
-          // Store hours by date
-          if (!employee.hours_by_date[date]) {
-            employee.hours_by_date[date] = hours;
+        }
+      } else {
+        // For regular records, add hours and date
+        employee.total_hours += hours;
+        
+        // Add date to set of days - Only if timestamp is valid
+        if (record.timestamp && isValid(new Date(record.timestamp))) {
+          // Use working_week_start if available, otherwise use timestamp date
+          if (record.working_week_start) {
+            employee.total_days.add(record.working_week_start);
+            employee.working_week_dates.add(record.working_week_start);
+            
+            // Store hours by date
+            if (!employee.hours_by_date[record.working_week_start]) {
+              employee.hours_by_date[record.working_week_start] = hours;
+            } else {
+              employee.hours_by_date[record.working_week_start] += hours;
+            }
           } else {
-            employee.hours_by_date[date] += hours;
+            // Use the UTC date portion so nothing shifts under local timezones
+            const utc = parseISO(record.timestamp);
+            const date = utc.toISOString().slice(0,10); // "YYYY-MM-DD"
+            employee.total_days.add(date);
+            employee.working_week_dates.add(date);
+            
+            // Store hours by date
+            if (!employee.hours_by_date[date]) {
+              employee.hours_by_date[date] = hours;
+            } else {
+              employee.hours_by_date[date] += hours;
+            }
           }
         }
       }
@@ -199,20 +214,23 @@ export const fetchApprovedHours = async (dateFilter: string = ''): Promise<{
           total_days: new Set(),
           total_hours: 0,
           working_week_dates: new Set(),
-          hours_by_date: {}
+          hours_by_date: {},
+          off_days: new Set()
         });
       }
       
       const employee = employeeSummary.get(employeeId);
       
-      // Add date to set of days for OFF-DAY
+      // Add date to off_days set
       if (record.working_week_start) {
+        employee.off_days.add(record.working_week_start);
         employee.total_days.add(record.working_week_start);
         employee.working_week_dates.add(record.working_week_start);
       } else if (record.timestamp && isValid(new Date(record.timestamp))) {
         // Use the UTC date portion so nothing shifts under local timezones
         const utc = parseISO(record.timestamp);
         const date = utc.toISOString().slice(0,10); // "YYYY-MM-DD"
+        employee.off_days.add(date);
         employee.total_days.add(date);
         employee.working_week_dates.add(date);
       }
@@ -267,10 +285,18 @@ export const fetchApprovedHours = async (dateFilter: string = ''): Promise<{
           doubleTimeHours += dateHours;
         }
       });
+
+      // Get the count of off days
+      const offDaysCount = emp.off_days ? emp.off_days.size : 0;
+      
+      // Calculate working days (total_days - off_days)
+      const workingDays = emp.total_days.size - offDaysCount;
       
       return {
         ...emp,
         total_days: emp.total_days.size,
+        working_days: workingDays,
+        off_days_count: offDaysCount,
         total_hours: parseFloat(emp.total_hours.toFixed(2)),
         double_time_hours: parseFloat(doubleTimeHours.toFixed(2)),
         working_week_dates: Array.from(emp.working_week_dates)
