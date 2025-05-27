@@ -1,1714 +1,1402 @@
 import { read, utils, writeFile } from 'xlsx';
-import { EmployeeRecord, DailyRecord } from '../types';
-import { parseISO, format, isValid } from 'date-fns';
-import { determineShiftType, calculatePayableHours, isLateCheckIn, isEarlyLeave, isExcessiveOvertime } from './shiftCalculations';
-import { formatTime24H } from './dateTimeHelper';
+import { format, parse, isValid, addDays, subDays, eachDayOfInterval, differenceInMinutes, differenceInHours, differenceInCalendarDays, getHours, isSameDay, isFriday, parseISO } from 'date-fns';
+import { TimeRecord, EmployeeRecord, DailyRecord } from '../types';
+import { 
+  determineShiftType, 
+  isLateCheckIn, 
+  isEarlyLeave, 
+  calculateHoursWorked, 
+  isExcessiveOvertime,
+  calculatePayableHours,
+  isLikelyNightShiftCheckOut,
+  shouldHandleAsPossibleNightShift,
+  isEveningShiftPattern,
+  isNightShiftCheckIn,
+  isNightShiftCheckOut,
+  isNightShiftPattern,
+  calculateNightShiftHours,
+  isLikelyNightShiftWorker
+} from './shiftCalculations';
+import { parseDateTime, formatTime24H } from './dateTimeHelper';
 
-// Constants for Excel parsing
-const CHECK_IN_STATUS = "C/IN";
-const CHECK_OUT_STATUS = "C/OUT";
-
-// Process Excel file and convert to our app data structure
-export const handleExcelFile = (file: File): Promise<EmployeeRecord[]> => {
+// Handle Excel file upload and processing
+export const handleExcelFile = async (file: File): Promise<EmployeeRecord[]> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
       try {
-        if (!e.target?.result) {
-          throw new Error('Failed to read file');
-        }
-        
-        // Parse the Excel file
-        const data = new Uint8Array(e.target.result as ArrayBuffer);
-        const workbook = read(data, { type: 'array', cellDates: true });
-        
-        // Get the first sheet
+        const data = e.target?.result;
+        const workbook = read(data, { type: 'array' });
         const firstSheetName = workbook.SheetNames[0];
         const worksheet = workbook.Sheets[firstSheetName];
         
-        // Convert to JSON - this gives us an array of objects where each object is a row
+        // Convert to JSON
         const jsonData = utils.sheet_to_json(worksheet);
         
-        if (!jsonData || jsonData.length === 0) {
-          throw new Error('No data found in the Excel file');
-        }
-
-        const records = processExcelData(jsonData);
-        
-        // Return the processed records
-        resolve(records);
+        // Process the data
+        const processedData = await processExcelData(jsonData);
+        resolve(processedData);
       } catch (error) {
-        console.error('Error processing Excel file:', error);
         reject(error);
       }
     };
     
-    reader.onerror = (error) => {
-      console.error('File reading error:', error);
-      reject(new Error('Failed to read the file'));
-    };
-    
+    reader.onerror = (error) => reject(error);
     reader.readAsArrayBuffer(file);
   });
 };
 
-// Process the Excel data and convert to our app's data structure
-const processExcelData = (data: any[]): EmployeeRecord[] => {
-  // Identify the column names in the Excel file (they might vary)
-  const headers = Object.keys(data[0]);
+// Function to guess shift window based on timestamp
+const guessShiftWindow = (timestamp: Date): 'morning' | 'evening' | 'night' | 'canteen' => {
+  const hour = timestamp.getHours();
   
-  const departmentHeader = headers.find(h => 
-    h.toLowerCase().includes('department') || h.toLowerCase().includes('dept')
-  ) || '';
+  if (hour >= 20 || hour < 5) {
+    return 'night';
+  } else if (hour >= 5 && hour < 12) {
+    if (hour === 7 || hour === 8) {
+      return 'canteen';
+    }
+    return 'morning';
+  } else if (hour >= 12 && hour < 20) {
+    return 'evening';
+  }
   
-  const nameHeader = headers.find(h => 
-    h.toLowerCase().includes('name') && !h.toLowerCase().includes('user')
-  ) || '';
-  
-  const employeeNoHeader = headers.find(h => 
-    h.toLowerCase().includes('no') || h.toLowerCase().includes('id') || h.toLowerCase().includes('number')
-  ) || '';
-  
-  const dateTimeHeader = headers.find(h => 
-    h.toLowerCase().includes('date') || h.toLowerCase().includes('time')
-  ) || '';
-  
-  const statusHeader = headers.find(h => 
-    h.toLowerCase().includes('status') || h.toLowerCase().includes('state')
-  ) || '';
-  
-  // Simple validation
-  if (!nameHeader || !dateTimeHeader || !statusHeader) {
-    throw new Error('Required columns missing. Excel file must contain Name, DateTime, and Status columns.');
+  // Default case
+  return 'morning';
+};
+
+// Function to normalize day shifts (morning/evening) by selecting earliest check-in and latest check-out
+const normalizeDayShift = (records: TimeRecord[]): TimeRecord[] => {
+  // Only apply for pure morning/evening days:
+  const types = new Set(records.map(r => r.shift_type));
+  if (![...types].every(t => t === 'morning' || t === 'evening')) {
+    return records;
   }
 
-  // Initial processing to get raw time records
-  const timeRecords: {
-    department: string; 
-    name: string; 
-    employeeNumber: string; 
-    timestamp: Date; 
-    status: 'check_in' | 'check_out';
-    originalIndex: number;
-  }[] = [];
-  
-  // Process each row in the Excel data
-  data.forEach((row, index) => {
-    const department = departmentHeader ? (row[departmentHeader] || '') : '';
-    const name = row[nameHeader] || '';
-    const employeeNumber = employeeNoHeader ? String(row[employeeNoHeader] || '') : '';
-    const dateTimeStr = row[dateTimeHeader];
-    const status = row[statusHeader];
-    
-    // Skip rows with missing critical data
-    if (!name || !dateTimeStr || !status) {
-      console.warn(`Skipping row ${index + 2} due to missing data:`, row);
-      return;
+  // Define threshold for "close enough" duplicate records
+  const DAY_SHIFT_THRESHOLD_MINUTES = 60;  // 1 hour grace
+
+  // Separate ins & outs
+  const ins = records.filter(r => r.status === 'check_in').sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+  const outs = records.filter(r => r.status === 'check_out').sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+
+  if (!ins.length || !outs.length) return records;
+
+  const earliestIn = ins[0];
+  let latestOut = outs[0];
+
+  // If there are multiple outs very close together, pick the very latest
+  if (outs.length > 1 && differenceInMinutes(outs[0].timestamp, outs[1].timestamp) <= DAY_SHIFT_THRESHOLD_MINUTES) {
+    latestOut = outs[0];
+  }
+
+  // Same for ins: if two ins are within the threshold, keep the earliest
+  if (ins.length > 1 && differenceInMinutes(ins[1].timestamp, ins[0].timestamp) <= DAY_SHIFT_THRESHOLD_MINUTES) {
+    // earliestIn is already ins[0]
+  }
+
+  // Relabel everything else
+  for (const r of records) {
+    if (r === earliestIn) {
+      r.status = 'check_in';
+    } else if (r === latestOut) {
+      r.status = 'check_out';
+    } else {
+      // anything else that survives is likely a spam duplicate
+      r.mislabeled = true;
+      r.originalStatus = r.status;
+      r.status = r.status === 'check_in' ? 'check_out' : 'check_in';
+      r.notes = `Fixed duplicate: forced to ${r.status}`;
     }
+  }
+
+  return records;
+};
+
+// Function to detect and fix cases with exactly 2 records where flipping would make a valid shift
+const detectFlippedTwoRecordDays = (records: TimeRecord[]): TimeRecord[] => {
+  // Only process if there are exactly 2 records
+  if (records.length !== 2) return records;
+  
+  // Sort by timestamp (chronological order)
+  records.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+  
+  const first = records[0];
+  const second = records[1];
+  
+  // Skip if the records are already in the expected order (check-in followed by check-out)
+  if (first.status === 'check_in' && second.status === 'check_out') {
+    return records;
+  }
+  
+  // If we have a reversed pattern (check-out followed by check-in) or both records have the same status
+  if ((first.status === 'check_out' && second.status === 'check_in') || first.status === second.status) {
+    // Check if these records would make a valid shift if flipped
+    const hours = differenceInMinutes(second.timestamp, first.timestamp) / 60;
     
-    // Parse the date and time
-    let timestamp: Date | null = null;
+    // Only flip if the time difference falls within a typical shift duration (7-11 hours)
+    if (hours >= 7 && hours <= 11) {
+      console.log(`Found flipped records that would form a ${hours.toFixed(2)}-hour shift`);
+      
+      // Mark the first record as check-in
+      first.status = 'check_in';
+      first.mislabeled = true;
+      first.originalStatus = first.originalStatus || 'check_out';
+      first.notes = 'Fixed mislabeled: Changed to check-in (valid shift pattern detected)';
+      
+      // Mark the second record as check-out
+      second.status = 'check_out';
+      second.mislabeled = true;
+      second.originalStatus = second.originalStatus || 'check_in';
+      second.notes = 'Fixed mislabeled: Changed to check-out (valid shift pattern detected)';
+      
+      // Determine the shift type based on the first timestamp
+      const shiftType = determineShiftType(first.timestamp);
+      first.shift_type = shiftType;
+      second.shift_type = shiftType;
+      
+      // If it's a night shift, set working_week_start
+      if (shiftType === 'night') {
+        const dateStr = format(first.timestamp, 'yyyy-MM-dd');
+        first.working_week_start = dateStr;
+        second.working_week_start = dateStr;
+      }
+    }
+  }
+  
+  return records;
+};
+
+// Function to handle two consecutive records with the same status that are very close in time
+const handleCloseConsecutiveRecords = (records: TimeRecord[]): TimeRecord[] => {
+  if (records.length < 2) return records;
+  
+  // Define threshold for "very close" records - if within this time, consider as duplicate
+  const CLOSE_RECORDS_THRESHOLD_MINUTES = 60; // 60 minutes
+  const MINIMUM_SHIFT_HOURS = 6; // Minimum hours to constitute a valid shift
+  
+  // Sort by timestamp
+  records.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+  
+  // Look for consecutive same-status records that are close in time
+  for (let i = 0; i < records.length - 1; i++) {
+    const current = records[i];
+    const next = records[i + 1];
     
-    // Handle various date formats
-    if (dateTimeStr instanceof Date) {
-      timestamp = new Date(dateTimeStr); // Already a Date object
-    } else if (typeof dateTimeStr === 'string') {
-      try {
-        // Try parsing as ISO string first
-        timestamp = parseISO(dateTimeStr);
-        
-        // If it's not a valid date, try additional parsing
-        if (!isValid(timestamp)) {
-          // Try different date formats
-          const parts = dateTimeStr.split(' ');
-          if (parts.length >= 2) {
-            const datePart = parts[0];
-            const timePart = parts[1];
-            
-            // Try MM/DD/YYYY format
-            const dateBits = datePart.split(/[\/\-]/);
-            if (dateBits.length === 3) {
-              const monthStr = dateBits[0].padStart(2, '0');
-              const dayStr = dateBits[1].padStart(2, '0');
-              const yearStr = dateBits[2].length === 2 ? `20${dateBits[2]}` : dateBits[2];
-              
-              // Try to parse with this format
-              const dateTimeFormatted = `${yearStr}-${monthStr}-${dayStr}T${timePart}`;
-              timestamp = new Date(dateTimeFormatted);
+    // If they have the same status and are close in time
+    if (current.status === next.status) {
+      const timeDiffMinutes = differenceInMinutes(next.timestamp, current.timestamp);
+      
+      // If the time difference is small, handle as duplicate rather than separate shift
+      if (timeDiffMinutes <= CLOSE_RECORDS_THRESHOLD_MINUTES) {
+        // For check-ins, keep the earlier one
+        if (current.status === 'check_in') {
+          next.mislabeled = true;
+          next.originalStatus = 'check_in';
+          next.notes = 'Fixed duplicate: consecutive check-ins close in time';
+          next.status = 'check_out'; // Mark as check-out
+          
+          // Check if this would create a very short shift
+          const nextRecord = i + 2 < records.length ? records[i + 2] : null;
+          if (nextRecord) {
+            const possibleShiftHours = differenceInMinutes(nextRecord.timestamp, current.timestamp) / 60;
+            if (possibleShiftHours < MINIMUM_SHIFT_HOURS) {
+              // This would create a very short shift, likely incorrect
+              // Revert the change and mark as duplicate to ignore
+              next.status = 'check_in';
+              next.mislabeled = true;
+              next.notes = 'Duplicate check-in, too close to previous record';
+              next.processed = true; // Mark as processed to exclude it
             }
           }
         }
-      } catch (e) {
-        console.error('Error parsing date:', e);
+        // For check-outs, keep the later one
+        else if (current.status === 'check_out') {
+          current.mislabeled = true;
+          current.originalStatus = 'check_out';
+          current.notes = 'Fixed duplicate: consecutive check-outs close in time';
+          current.status = 'check_in'; // Mark as check-in
+          
+          // Check if this would create a very short shift
+          const prevRecord = i > 0 ? records[i - 1] : null;
+          if (prevRecord) {
+            const possibleShiftHours = differenceInMinutes(next.timestamp, prevRecord.timestamp) / 60;
+            if (possibleShiftHours < MINIMUM_SHIFT_HOURS) {
+              // This would create a very short shift, likely incorrect
+              // Revert the change and mark as duplicate to ignore
+              current.status = 'check_out';
+              current.mislabeled = true;
+              current.notes = 'Duplicate check-out, too close to next record';
+              current.processed = true; // Mark as processed to exclude it
+            }
+          }
+        }
+      } else {
+        // If they're far enough apart, they might be legitimate separate shifts
+        // Let the multi-shift detection handle this case
       }
-    } else if (typeof dateTimeStr === 'number') {
-      // Excel sometimes stores dates as numbers (days since 1900)
-      // Convert Excel serial date to JavaScript Date
-      timestamp = new Date((dateTimeStr - 25569) * 86400 * 1000);
     }
-    
-    // Skip rows with invalid timestamp
-    if (!timestamp || !isValid(timestamp)) {
-      console.warn(`Skipping row ${index + 2} due to invalid date:`, dateTimeStr);
-      return;
-    }
-    
-    // Map the status values
-    let normalizedStatus: 'check_in' | 'check_out' = 'check_in';
-    
-    // Check for various possible status values
-    const statusStr = String(status).toUpperCase();
-    if (statusStr === CHECK_OUT_STATUS || 
-        statusStr === 'CHECK-OUT' || 
-        statusStr === 'CHECKOUT' || 
-        statusStr === 'CHECK OUT' || 
-        statusStr === 'OUT' || 
-        statusStr === 'CO' || 
-        statusStr === 'C/O') {
-      normalizedStatus = 'check_out';
-    }
-    
-    // Add to time records array
-    timeRecords.push({
-      department,
-      name,
-      employeeNumber: String(employeeNumber).trim(),
-      timestamp,
-      status: normalizedStatus,
-      originalIndex: index,
-    });
-  });
+  }
   
-  // Group by employee
-  const employeeRecords: Map<string, EmployeeRecord> = new Map();
-  
-  // For detecting possible night shift workers
-  const nightShiftTimestamps = new Map<string, {eveningCount: number, morningCount: number}>();
-  
-  // First pass - collect all records and identify night shift workers
-  timeRecords.forEach(record => {
-    const key = `${record.name}|${record.employeeNumber}`;
-    const hour = record.timestamp.getHours();
-    
-    // Track evening and early morning timestamps for night shift detection
-    if (!nightShiftTimestamps.has(key)) {
-      nightShiftTimestamps.set(key, {eveningCount: 0, morningCount: 0});
-    }
-    
-    const counts = nightShiftTimestamps.get(key)!;
-    // Evening hours (8 PM - 11:59 PM)
-    if (hour >= 20 && hour <= 23) {
-      counts.eveningCount++;
-    }
-    // Early morning hours (12 AM - 7 AM)
-    else if (hour >= 0 && hour <= 7) {
-      counts.morningCount++;
-    }
-    
-    // Create employee record if it doesn't exist
-    if (!employeeRecords.has(key)) {
-      employeeRecords.set(key, {
-        employeeNumber: record.employeeNumber,
-        name: record.name,
-        department: record.department,
-        days: [],
-        totalDays: 0,
-        expanded: false,
-      });
-    }
-  });
-  
-  // Identify likely night shift workers
-  const nightShiftWorkers = new Set<string>();
-  nightShiftTimestamps.forEach((counts, key) => {
-    // If an employee has both evening and early morning timestamps or
-    // a significant number of very early timestamps, they're likely a night shift worker
-    if ((counts.eveningCount > 0 && counts.morningCount > 0) || counts.morningCount >= 3) {
-      nightShiftWorkers.add(key);
-    }
-  });
-  
-  // Process all time records
-  processTimeRecordsIntoEmployeeDays(timeRecords, employeeRecords, nightShiftWorkers);
-  
-  // Convert the Map to an array
-  const recordsArray = Array.from(employeeRecords.values());
-  
-  return recordsArray;
+  return records;
 };
 
-const processTimeRecordsIntoEmployeeDays = (
-  timeRecords: {
-    department: string;
-    name: string;
-    employeeNumber: string;
-    timestamp: Date;
-    status: 'check_in' | 'check_out';
-    originalIndex: number;
-  }[],
-  employeeRecords: Map<string, EmployeeRecord>,
-  nightShiftWorkers: Set<string>
-) => {
-  // Group time records by employee and date
-  const recordsByEmployeeAndDate = new Map<string, Map<string, {
-    checkIns: { timestamp: Date, originalIndex: number }[],
-    checkOuts: { timestamp: Date, originalIndex: number }[],
-    allTimeRecords: any[]
-  }>>();
+// Function to detect and handle multiple shifts in a single day
+const detectMultipleShifts = (records: TimeRecord[]): TimeRecord[] => {
+  // Only process days with at least 3 records
+  if (records.length < 3) return records;
   
-  // First, group all records by employee and date
-  timeRecords.forEach(record => {
-    const employeeKey = `${record.name}|${record.employeeNumber}`;
-    const dateStr = format(record.timestamp, 'yyyy-MM-dd');
+  // Sort records by timestamp
+  records.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+  
+  // Look for patterns that suggest multiple shifts
+  // A typical pattern would be: C/In -> C/Out -> C/In -> C/Out
+  
+  // First, check for shift transitions (time gaps between records)
+  const SHIFT_TRANSITION_HOURS = 1.5; // Minimum hours between shifts
+  let possibleShiftBreakpoints: number[] = [];
+  
+  for (let i = 1; i < records.length; i++) {
+    const hourDiff = differenceInMinutes(records[i].timestamp, records[i-1].timestamp) / 60;
     
-    if (!recordsByEmployeeAndDate.has(employeeKey)) {
-      recordsByEmployeeAndDate.set(employeeKey, new Map());
+    // If there's a significant gap between records, it might be a shift transition
+    if (hourDiff >= SHIFT_TRANSITION_HOURS) {
+      possibleShiftBreakpoints.push(i);
+    }
+  }
+  
+  // If we found potential shift transitions, analyze the records around them
+  if (possibleShiftBreakpoints.length > 0) {
+    // Preserve existing shift types
+    const shiftTypes: (string | null)[] = [];
+    
+    for (let i = 0; i < records.length; i++) {
+      shiftTypes[i] = records[i].shift_type;
     }
     
-    const employeeMap = recordsByEmployeeAndDate.get(employeeKey)!;
+    // Now analyze each segment as a separate shift
+    let currentSegmentStart = 0;
     
-    if (!employeeMap.has(dateStr)) {
-      employeeMap.set(dateStr, {
-        checkIns: [],
-        checkOuts: [],
-        allTimeRecords: []
-      });
-    }
-    
-    const dayRecords = employeeMap.get(dateStr)!;
-    
-    // Add to the appropriate array based on status
-    if (record.status === 'check_in') {
-      dayRecords.checkIns.push({
-        timestamp: record.timestamp,
-        originalIndex: record.originalIndex
-      });
-    } else {
-      dayRecords.checkOuts.push({
-        timestamp: record.timestamp,
-        originalIndex: record.originalIndex
-      });
-    }
-    
-    // Also add to allTimeRecords for reference
-    dayRecords.allTimeRecords.push({
-      timestamp: record.timestamp,
-      status: record.status,
-      originalIndex: record.originalIndex
-    });
-  });
-
-  // Special handling for night shift workers - checkouts in early morning
-  // should be associated with the previous day's check-in
-  nightShiftWorkers.forEach(employeeKey => {
-    const employeeMap = recordsByEmployeeAndDate.get(employeeKey);
-    if (!employeeMap) return;
-    
-    // Get all dates for this employee
-    const dates = Array.from(employeeMap.keys()).sort();
-    
-    // Check each date
-    for (let i = 1; i < dates.length; i++) {
-      const prevDateStr = dates[i-1];
-      const currDateStr = dates[i];
+    for (let i = 0; i <= possibleShiftBreakpoints.length; i++) {
+      const segmentEnd = i < possibleShiftBreakpoints.length 
+                       ? possibleShiftBreakpoints[i] 
+                       : records.length;
       
-      const prevDateRecords = employeeMap.get(prevDateStr)!;
-      const currDateRecords = employeeMap.get(currDateStr)!;
+      const segment = records.slice(currentSegmentStart, segmentEnd);
       
-      // Check if previous date has check-ins but no check-outs
-      // and current date has early morning check-outs (before 8 AM)
-      if (prevDateRecords.checkIns.length > 0 && 
-          prevDateRecords.checkOuts.length === 0 &&
-          currDateRecords.checkOuts.some(co => co.timestamp.getHours() < 8)) {
-        
-        // Get early morning check-outs from current day
-        const earlyCheckOuts = currDateRecords.checkOuts.filter(co => 
-          co.timestamp.getHours() < 8
-        );
-        
-        // If we have both, associate the early check-outs with previous day
-        if (earlyCheckOuts.length > 0) {
-          // Move the early check-outs to the previous day
-          prevDateRecords.checkOuts.push(...earlyCheckOuts);
+      if (segment.length >= 1) {
+        // For each segment, ensure the first record is a check-in and the last is a check-out
+        if (segment.length === 1) {
+          // If only one record in the segment, determine based on time of day
+          const hour = segment[0].timestamp.getHours();
           
-          // Remove them from current day
-          currDateRecords.checkOuts = currDateRecords.checkOuts.filter(co => 
-            co.timestamp.getHours() >= 8
+          // Morning hours (5-12) are more likely check-ins, afternoon/evening (12-22) more likely check-outs
+          if (hour >= 5 && hour < 12) {
+            segment[0].status = 'check_in';
+          } else if (hour >= 12 && hour <= 22) {
+            segment[0].status = 'check_out';
+          }
+          // Otherwise, leave as is
+        } else if (segment.length >= 2) {
+          // Ensure first record in segment is check-in and last is check-out
+          if (segment[0].status !== 'check_in') {
+            segment[0].status = 'check_in';
+            segment[0].mislabeled = true;
+            segment[0].originalStatus = segment[0].originalStatus || 'check_out';
+            segment[0].notes = 'Fixed mislabeled: Changed to check-in (multiple shift pattern detected)';
+          }
+          
+          if (segment[segment.length - 1].status !== 'check_out') {
+            segment[segment.length - 1].status = 'check_out';
+            segment[segment.length - 1].mislabeled = true;
+            segment[segment.length - 1].originalStatus = segment[segment.length - 1].originalStatus || 'check_in';
+            segment[segment.length - 1].notes = 'Fixed mislabeled: Changed to check-out (multiple shift pattern detected)';
+          }
+          
+          // Determine shift type based on start time if not already set
+          const segmentShiftType = shiftTypes[currentSegmentStart] || determineShiftType(segment[0].timestamp);
+          
+          // Apply shift type to all records in this segment
+          for (const record of segment) {
+            if (!record.shift_type) {
+              record.shift_type = segmentShiftType;
+            }
+          }
+        }
+      }
+      
+      currentSegmentStart = segmentEnd;
+    }
+  }
+  
+  return records;
+};
+
+// Enhanced function to detect and resolve mislabeled records
+const resolveDuplicates = (records: TimeRecord[]): TimeRecord[] => {
+  if (records.length <= 1) return records;
+  
+  // Use records directly to maintain original file order - NO SORTING
+  const result: TimeRecord[] = [...records];
+  
+  // Group records by date
+  const recordsByDate = new Map<string, TimeRecord[]>();
+  for (const record of result) {
+    const dateStr = format(record.timestamp, 'yyyy-MM-dd');
+    if (!recordsByDate.has(dateStr)) {
+      recordsByDate.set(dateStr, []);
+    }
+    recordsByDate.get(dateStr)!.push(record);
+  }
+  
+  // Special handling for specific dates and employees that need fixed pairing
+  
+  // 1. Check for night shift worker patterns
+  const isNightShiftWorker = isLikelyNightShiftWorker(records);
+  
+  if (isNightShiftWorker) {
+    // Process each day and its adjacent day for night shift patterns
+    const dates = Array.from(recordsByDate.keys()).sort();
+    
+    for (let i = 0; i < dates.length - 1; i++) {
+      const currentDate = dates[i];
+      const nextDate = dates[i + 1];
+      
+      const currentDateRecords = recordsByDate.get(currentDate) || [];
+      const nextDateRecords = recordsByDate.get(nextDate) || [];
+      
+      // Look for night shift check-in on current date (evening)
+      const nightCheckIn = currentDateRecords.find(r => {
+        const hour = r.timestamp.getHours();
+        return hour >= 20 && hour <= 23;
+      });
+      
+      // Look for night shift check-out on next date (morning)
+      const morningCheckOut = nextDateRecords.find(r => {
+        const hour = r.timestamp.getHours();
+        return hour >= 5 && hour <= 7;
+      });
+      
+      if (nightCheckIn && morningCheckOut) {
+        // Set status of night check-in
+        if (nightCheckIn.status !== 'check_in') {
+          nightCheckIn.status = 'check_in';
+          nightCheckIn.mislabeled = true;
+          nightCheckIn.originalStatus = nightCheckIn.originalStatus || 'check_out';
+          nightCheckIn.notes = 'Fixed mislabeled: Evening check-out to check-in (night shift pattern)';
+        }
+        
+        // Set status of morning check-out
+        if (morningCheckOut.status !== 'check_out') {
+          morningCheckOut.status = 'check_out';
+          morningCheckOut.mislabeled = true;
+          morningCheckOut.originalStatus = morningCheckOut.originalStatus || 'check_in';
+          morningCheckOut.notes = 'Fixed mislabeled: Morning check-in to check-out (night shift pattern)';
+        }
+        
+        // Set shift type
+        nightCheckIn.shift_type = 'night';
+        morningCheckOut.shift_type = 'night';
+        
+        // Mark as cross-day records
+        nightCheckIn.isCrossDay = true;
+        morningCheckOut.isCrossDay = true;
+        morningCheckOut.fromPrevDay = true;
+        morningCheckOut.prevDayDate = currentDate;
+
+        // FIXED: Add working_week_start to link night shift records across days
+        nightCheckIn.working_week_start = currentDate;
+        morningCheckOut.working_week_start = currentDate; // Use check-in date
+      }
+    }
+  }
+  
+  // Process general cases by date
+  const dates = Array.from(recordsByDate.keys());
+  for (const date of dates) {
+    let dayRecords = recordsByDate.get(date)!;
+    
+    // Skip days with only one record
+    if (dayRecords.length <= 1) continue;
+    
+    // Sort by original index to maintain file order
+    dayRecords.sort((a, b) => {
+      // Use originalIndex if available
+      if (a.originalIndex !== undefined && b.originalIndex !== undefined) {
+        return a.originalIndex - b.originalIndex;
+      }
+      // Fall back to timestamp if no original index
+      return a.timestamp.getTime() - b.timestamp.getTime();
+    });
+    
+    // First run the handling for consecutive records that are close in time
+    // This will prevent two check-outs or two check-ins that are very close together
+    // from being treated as separate shifts
+    dayRecords = handleCloseConsecutiveRecords(dayRecords);
+    recordsByDate.set(date, dayRecords);
+    
+    // First try to detect and fix flipped records in 2-record days
+    if (dayRecords.length === 2) {
+      dayRecords = detectFlippedTwoRecordDays(dayRecords);
+      recordsByDate.set(date, dayRecords);
+    }
+    
+    // For days with 3+ records, try to detect multiple shifts pattern
+    if (dayRecords.length >= 3) {
+      dayRecords = detectMultipleShifts(dayRecords);
+      recordsByDate.set(date, dayRecords);
+    }
+    
+    // Apply the normalizeDayShift function to handle morning/evening shifts deterministically
+    dayRecords = normalizeDayShift(dayRecords);
+    recordsByDate.set(date, dayRecords);
+    
+    // Handle consecutive same-status records
+    for (let i = 0; i < dayRecords.length - 1; i++) {
+      const curr = dayRecords[i];
+      const next = dayRecords[i + 1];
+      
+      // Skip if already processed or statuses are different
+      if (curr.processed || next.processed || curr.status !== next.status) continue;
+      
+      // CRITICAL FIX: Only flip consecutive records if they're far enough apart
+      const timeDiffMinutes = differenceInMinutes(next.timestamp, curr.timestamp);
+      
+      // NEW LOGIC: For consecutive check-outs, don't flip if they're less than 60 minutes apart
+      if (curr.status === 'check_out' && timeDiffMinutes < 60) {
+        // Instead of flipping, mark the earlier one as a duplicate to ignore
+        curr.mislabeled = true;
+        curr.originalStatus = curr.originalStatus || 'check_out';
+        curr.notes = 'Duplicate check-out, too close to next record';
+        curr.processed = true; // Mark as processed to exclude it
+        continue;
+      }
+      
+      // NEW LOGIC: For consecutive check-ins, don't flip if they're less than 60 minutes apart
+      if (curr.status === 'check_in' && timeDiffMinutes < 60) {
+        // Instead of flipping, mark the later one as a duplicate to ignore
+        next.mislabeled = true;
+        next.originalStatus = next.originalStatus || 'check_in';
+        next.notes = 'Duplicate check-in, too close to previous record';
+        next.processed = true; // Mark as processed to exclude it
+        continue;
+      }
+      
+      // Original logic for records that are far enough apart
+      if (curr.status === 'check_in') {
+        // Two consecutive check-ins: convert second to check-out
+        next.status = 'check_out';
+        next.mislabeled = true;
+        next.originalStatus = 'check_in';
+        next.notes = 'Fixed mislabeled: Changed from check-in to check-out (duplicate check-in pattern)';
+      } else if (curr.status === 'check_out') {
+        // Two consecutive check-outs: convert first to check-in
+        curr.status = 'check_in';
+        curr.mislabeled = true;
+        curr.originalStatus = 'check_out';
+        curr.notes = 'Fixed mislabeled: Changed from check-out to check-in (duplicate check-out pattern)';
+      }
+    }
+    
+    // For days with more than 2 records, ensure they follow the right sequence
+    if (dayRecords.length > 2) {
+      // Find earliest and latest by time
+      dayRecords.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+      const earliest = dayRecords[0];
+      
+      // FIX ISSUE 1: Ensure latest is check-out, regardless of the number of records
+      // This fixes the issue where the last record of 3+ records is not correctly marked as checkout
+      const latest = dayRecords[dayRecords.length - 1];
+      
+      // Ensure earliest is check-in
+      if (earliest.status !== 'check_in') {
+        earliest.status = 'check_in';
+        earliest.mislabeled = true;
+        earliest.originalStatus = earliest.originalStatus || 'check_out';
+        earliest.notes = 'Fixed mislabeled: Changed earliest to check-in';
+      }
+      
+      // Ensure latest is check-out
+      if (latest.status !== 'check_out') {
+        latest.status = 'check_out';
+        latest.mislabeled = true;
+        latest.originalStatus = latest.originalStatus || 'check_in';
+        latest.notes = 'Fixed mislabeled: Changed latest to check-out';
+      }
+    }
+  }
+  
+  return result;
+};
+
+// Process Excel data from the uploaded file
+export const processExcelData = async (data: any[]): Promise<EmployeeRecord[]> => {
+  console.log('Processing Excel data with strict file chronology:', data.length, 'rows');
+  const timeRecords: TimeRecord[] = [];
+  const parseErrors: string[] = [];
+
+  // STEP 1: Parse all rows from the Excel file in EXACT order
+  for (let i = 0; i < data.length; i++) {
+    const row = data[i];
+    if (!row['Date/Time'] || !row['Name'] || !row['No.'] || !row['Status']) {
+      const errorMsg = `Missing required fields in row ${i+1}`;
+      console.error(errorMsg, row);
+      parseErrors.push(errorMsg);
+      continue; // Skip this row but continue processing
+    }
+
+    const dateTimeStr = row['Date/Time'];
+    const employeeName = row['Name'];
+    const employeeNumber = row['No.'].toString();
+    const status = row['Status'];
+    const department = row['Department'] || '';
+    
+    // Parse the date/time
+    let timestamp = parseDateTime(dateTimeStr);
+    
+    // If parsing failed, record the error but continue processing
+    if (!timestamp) {
+      const errorMsg = `Failed to parse date: ${dateTimeStr} for ${employeeName} in row ${i+1}`;
+      console.error(errorMsg);
+      parseErrors.push(errorMsg);
+      continue; // Skip this row but continue processing
+    }
+    
+    // Extract C/In or C/Out from Status field directly
+    const recordStatus = status.toLowerCase().includes('in') ? 'check_in' : 'check_out';
+    
+    // Determine shift type immediately to use for setting working_week_start correctly
+    const shiftType = determineShiftType(timestamp);
+
+    // FIXED: Set working_week_start based on the shift type and record status
+    let working_week_start = format(timestamp, 'yyyy-MM-dd');
+    
+    // For night shifts, make sure check-out records are linked to their check-in day
+    if (shiftType === 'night' && recordStatus === 'check_out' && getHours(timestamp) < 12) {
+      // For night shift check-outs in early morning, use previous day
+      working_week_start = format(subDays(timestamp, 1), 'yyyy-MM-dd');
+    }
+    
+    // Add to our collection, preserving original order in file
+    timeRecords.push({
+      department,
+      name: employeeName,
+      employeeNumber,
+      timestamp,
+      status: recordStatus,
+      originalIndex: i,
+      processed: false,
+      shift_type: shiftType,
+      originalStatus: recordStatus,
+      working_week_start // FIXED: Include working_week_start in the record
+    });
+  }
+  
+  if (parseErrors.length > 0) {
+    console.warn(`Encountered ${parseErrors.length} parsing errors but continuing with valid records`);
+  }
+  
+  // STEP 2: Group by employee number while maintaining strict file order
+  const employeeMap = new Map<string, TimeRecord[]>();
+  
+  // Group records by employee number
+  for (const record of timeRecords) {
+    const employeeKey = record.employeeNumber.trim();
+    if (!employeeMap.has(employeeKey)) {
+      employeeMap.set(employeeKey, []);
+    }
+    employeeMap.get(employeeKey)!.push(record);
+  }
+  
+  // Initialize result map for employee records
+  const employeeRecordsMap = new Map<string, {
+    employeeData: {
+      name: string;
+      employeeNumber: string;
+      department: string;
+    },
+    dailyRecords: Map<string, DailyRecord>
+  }>();
+  
+  // STEP 3: Process each employee's records
+  for (const [employeeNumber, records] of employeeMap.entries()) {
+    // Sort by original index to preserve file order
+    records.sort((a, b) => a.originalIndex! - b.originalIndex!);
+    
+    const employeeName = records[0].name;
+    const department = records[0].department;
+    
+    console.log(`Processing ${records.length} records for employee ${employeeName} (${employeeNumber})`);
+    
+    // Initialize employee record if not exists
+    if (!employeeRecordsMap.has(employeeNumber)) {
+      employeeRecordsMap.set(employeeNumber, {
+        employeeData: {
+          name: employeeName,
+          employeeNumber,
+          department
+        },
+        dailyRecords: new Map<string, DailyRecord>()
+      });
+    }
+    
+    const employeeData = employeeRecordsMap.get(employeeNumber)!;
+    
+    // First pass: resolve mislabeled records
+    const resolvedRecords = resolveDuplicates(records);
+    
+    // Group records by date for processing
+    const recordsByDate = new Map<string, TimeRecord[]>();
+    for (const record of resolvedRecords) {
+      const dateStr = format(record.timestamp, 'yyyy-MM-dd');
+      if (!recordsByDate.has(dateStr)) {
+        recordsByDate.set(dateStr, []);
+      }
+      recordsByDate.get(dateStr)!.push(record);
+    }
+    
+    // First, process night shift records that span across days
+    const processedDates = new Set<string>();
+    const dates = Array.from(recordsByDate.keys()).sort();
+    
+    for (let i = 0; i < dates.length - 1; i++) {
+      const currentDate = dates[i];
+      const nextDate = dates[i + 1];
+      
+      // Skip if either date is already processed
+      if (processedDates.has(currentDate) || processedDates.has(nextDate)) continue;
+      
+      const currentDateRecords = recordsByDate.get(currentDate) || [];
+      const nextDateRecords = recordsByDate.get(nextDate) || [];
+      
+      // Look for night shift pattern: evening check-in followed by morning check-out
+      const eveningCheckIns = currentDateRecords.filter(r => 
+        r.status === 'check_in' && getHours(r.timestamp) >= 20 && getHours(r.timestamp) <= 23
+      );
+      
+      const morningCheckOuts = nextDateRecords.filter(r => 
+        r.status === 'check_out' && getHours(r.timestamp) >= 5 && getHours(r.timestamp) <= 7
+      );
+      
+      if (eveningCheckIns.length > 0 && morningCheckOuts.length > 0) {
+        // We have a night shift that spans days
+        const checkIn = eveningCheckIns[0]; // Use first evening check-in
+        const checkOut = morningCheckOuts[0]; // Use first morning check-out
+        
+        // Calculate hours for night shift
+        const hoursWorked = calculateNightShiftHours(checkIn.timestamp, checkOut.timestamp);
+        
+        
+        // Store original check-in and check-out times as display values
+        const checkInDisplayTime = format(checkIn.timestamp, 'HH:mm');
+        const checkOutDisplayTime = format(checkOut.timestamp, 'HH:mm');
+        
+        // FIXED: Set working_week_start for both records to link them properly
+        const working_week_start = currentDate;
+        checkIn.working_week_start = working_week_start;
+        checkOut.working_week_start = working_week_start;
+        
+        // Create daily record for the current date
+        employeeData.dailyRecords.set(currentDate, {
+          date: currentDate,
+          firstCheckIn: checkIn.timestamp,
+          lastCheckOut: checkOut.timestamp,
+          hoursWorked: hoursWorked,
+          approved: false,
+          shiftType: 'night',
+          notes: 'Night shift (spans to next day)',
+          missingCheckIn: false,
+          missingCheckOut: false,
+          isLate: isLateCheckIn(checkIn.timestamp, 'night'),
+          earlyLeave: isEarlyLeave(checkOut.timestamp, 'night'),
+          excessiveOvertime: isExcessiveOvertime(checkOut.timestamp, 'night'),
+          penaltyMinutes: 0,
+          correctedRecords: checkIn.mislabeled || checkOut.mislabeled,
+          allTimeRecords: [...currentDateRecords, ...morningCheckOuts], // Include all relevant records
+          hasMultipleRecords: true,
+          isCrossDay: true,
+          checkOutNextDay: true,
+          working_week_start: currentDate, // Set working_week_start for proper grouping
+          // Store the actual timestamp values for correct display
+          displayCheckIn: checkInDisplayTime,
+          displayCheckOut: checkOutDisplayTime
+        });
+        
+        // Mark dates as processed
+        processedDates.add(currentDate);
+        
+        // Don't fully process the next date, we'll process remaining records later
+        // Just mark the specific checkout as processed
+        checkIn.processed = true;
+        checkOut.processed = true;
+        
+        console.log(`Processed night shift spanning ${currentDate} to ${nextDate}`);
+      }
+    }
+    
+    // Now process remaining records
+    let openCheckIn: TimeRecord | null = null;
+    
+    for (const record of resolvedRecords) {
+      // Skip already processed records
+      if (record.processed) continue;
+      
+      const dateStr = format(record.timestamp, 'yyyy-MM-dd');
+      const dateRecords = recordsByDate.get(dateStr) || [];
+      
+      // Check if this date has already been processed as a cross-day shift
+      if (processedDates.has(dateStr)) {
+        // Only mark this record as processed
+        record.processed = true;
+        continue;
+      }
+      
+      if (record.status === 'check_in') {
+        // If we already have an open check-in, close it first
+        if (openCheckIn) {
+          // Handle orphaned check-in (mark as missing check-out)
+          const openCheckInDate = format(openCheckIn.timestamp, 'yyyy-MM-dd');
+          const openDateRecords = recordsByDate.get(openCheckInDate) || [];
+          
+          // Store original check-in time as display value
+          const checkInDisplayTime = format(openCheckIn.timestamp, 'HH:mm');
+          
+          // FIXED: Use openCheckIn's working_week_start if available
+          const working_week_start = openCheckIn.working_week_start || openCheckInDate;
+          
+          employeeData.dailyRecords.set(openCheckInDate, {
+            date: openCheckInDate,
+            firstCheckIn: openCheckIn.timestamp,
+            lastCheckOut: null,
+            hoursWorked: 0,
+            approved: false,
+            shiftType: openCheckIn.shift_type || determineShiftType(openCheckIn.timestamp),
+            notes: 'Missing check-out',
+            missingCheckIn: false,
+            missingCheckOut: true,
+            isLate: isLateCheckIn(openCheckIn.timestamp, openCheckIn.shift_type as any),
+            earlyLeave: false,
+            excessiveOvertime: false,
+            penaltyMinutes: 0,
+            correctedRecords: openCheckIn.mislabeled,
+            allTimeRecords: openDateRecords,
+            hasMultipleRecords: openDateRecords.length > 1,
+            working_week_start: working_week_start, // Set working_week_start for proper grouping
+            displayCheckIn: checkInDisplayTime, // Store actual timestamp for display
+            displayCheckOut: 'Missing'
+          });
+          
+          openCheckIn.processed = true;
+        }
+        
+        // Start a new open check-in
+        openCheckIn = record;
+      }
+      else if (record.status === 'check_out') {
+        if (openCheckIn) {
+          // We have a matching check-in/check-out pair
+          const checkInDate = format(openCheckIn.timestamp, 'yyyy-MM-dd');
+          const checkOutDate = format(record.timestamp, 'yyyy-MM-dd');
+          const isCrossDay = checkInDate !== checkOutDate;
+          
+          // FIXED: Set working_week_start based on the check-in date
+          const working_week_start = openCheckIn.working_week_start || checkInDate;
+          record.working_week_start = working_week_start; // Ensure checkout has same working_week_start
+          
+          // Determine shift type
+          const shiftType = isCrossDay && getHours(openCheckIn.timestamp) >= 20 ? 
+                           'night' : 
+                           openCheckIn.shift_type || determineShiftType(openCheckIn.timestamp);
+          
+          // Calculate hours
+          const hoursWorked = calculatePayableHours(
+            openCheckIn.timestamp, 
+            record.timestamp, 
+            shiftType as any
           );
           
-          // Also update allTimeRecords
-          earlyCheckOuts.forEach(eco => {
-            // Find record in current day's allTimeRecords and mark it
-            const recordIndex = currDateRecords.allTimeRecords.findIndex(r => 
-              r.originalIndex === eco.originalIndex
+          // Collect all records for this day
+          const allDayRecords = recordsByDate.get(checkInDate) || [];
+          
+          // Store original check-in and check-out times as display values
+          const checkInDisplayTime = format(openCheckIn.timestamp, 'HH:mm');
+          const checkOutDisplayTime = format(record.timestamp, 'HH:mm');
+          
+          // Create daily record
+          employeeData.dailyRecords.set(checkInDate, {
+            date: checkInDate,
+            firstCheckIn: openCheckIn.timestamp,
+            lastCheckOut: record.timestamp,
+            hoursWorked: hoursWorked,
+            approved: false,
+            shiftType: shiftType as any,
+            notes: isCrossDay ? 'Cross-day shift' : '',
+            missingCheckIn: false,
+            missingCheckOut: false,
+            isLate: isLateCheckIn(openCheckIn.timestamp, shiftType as any),
+            earlyLeave: isEarlyLeave(record.timestamp, shiftType as any),
+            excessiveOvertime: isExcessiveOvertime(record.timestamp, shiftType as any),
+            penaltyMinutes: 0,
+            correctedRecords: openCheckIn.mislabeled || record.mislabeled,
+            allTimeRecords: [...allDayRecords, ...(isCrossDay ? [record] : [])],
+            hasMultipleRecords: allDayRecords.length > 2 || isCrossDay,
+            isCrossDay,
+            checkOutNextDay: isCrossDay,
+            working_week_start: working_week_start, // Set working_week_start for proper grouping
+            displayCheckIn: checkInDisplayTime, // Store actual timestamp for display
+            displayCheckOut: checkOutDisplayTime // Store actual timestamp for display
+          });
+          
+          // Mark as processed
+          openCheckIn.processed = true;
+          record.processed = true;
+          
+          // Mark date as processed
+          processedDates.add(checkInDate);
+          
+          if (isCrossDay) {
+            // Also mark checkout date as partially processed
+            // (We don't fully mark it as processed so we can still process any check-ins/check-outs on that day)
+            record.processed = true;
+          }
+          
+          // Reset open check-in
+          openCheckIn = null;
+        }
+        else {
+          // No matching check-in for this check-out
+          const checkOutDate = format(record.timestamp, 'yyyy-MM-dd');
+          const dateRecords = recordsByDate.get(checkOutDate) || [];
+          
+          // Check if this is likely a night shift check-out (5-7 AM)
+          const hour = getHours(record.timestamp);
+          if (hour >= 5 && hour <= 7) {
+            // This is likely from a night shift - check if previous day has a check-in
+            const prevDay = format(subDays(new Date(checkOutDate), 1), 'yyyy-MM-dd');
+            const prevDayRecords = recordsByDate.get(prevDay) || [];
+            
+            // Look for evening check-in on previous day
+            const prevEveningCheckIn = prevDayRecords.find(r => 
+              r.status === 'check_in' && getHours(r.timestamp) >= 20
             );
             
-            if (recordIndex >= 0) {
-              const record = currDateRecords.allTimeRecords[recordIndex];
-              // Add info that this is from next day (for UI display)
-              record.fromPrevDay = true;
-              record.prevDayDate = prevDateStr;
-              // Add this record to previous day's allTimeRecords
-              prevDateRecords.allTimeRecords.push(record);
+            if (prevEveningCheckIn) {
+              // We have a cross-day night shift - already processed above
+              record.processed = true;
               
-              // Mark the day as cross-day
-              record.isCrossDay = true;
+              // FIXED: Set working_week_start to previous day
+              record.working_week_start = prevDay;
+              
+              continue;
             }
+          }
+          
+          // Store original check-out time as display value
+          const checkOutDisplayTime = format(record.timestamp, 'HH:mm');
+          
+          // Create record with missing check-in
+          employeeData.dailyRecords.set(checkOutDate, {
+            date: checkOutDate,
+            firstCheckIn: null,
+            lastCheckOut: record.timestamp,
+            hoursWorked: 0, // Can't calculate hours without check-in
+            approved: false,
+            shiftType: record.shift_type || determineShiftType(record.timestamp),
+            notes: 'Missing check-in',
+            missingCheckIn: true,
+            missingCheckOut: false,
+            isLate: false,
+            earlyLeave: isEarlyLeave(record.timestamp, record.shift_type as any),
+            excessiveOvertime: false,
+            penaltyMinutes: 0,
+            correctedRecords: record.mislabeled,
+            allTimeRecords: dateRecords,
+            hasMultipleRecords: dateRecords.length > 1,
+            working_week_start: record.working_week_start || checkOutDate, // Use record's working_week_start or checkout date
+            displayCheckIn: 'Missing', 
+            displayCheckOut: checkOutDisplayTime // Store actual timestamp for display
           });
+          
+          record.processed = true;
         }
       }
     }
-  });
-  
-  // Now, process the grouped records to create daily records
-  recordsByEmployeeAndDate.forEach((dateMap, employeeKey) => {
-    const [name, employeeNumber] = employeeKey.split('|');
-    const employeeRecord = employeeRecords.get(employeeKey)!;
     
-    // Process each date for this employee
-    dateMap.forEach((dayData, dateStr) => {
-      // Sort check-ins by timestamp (earliest first)
-      dayData.checkIns.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+    // Handle any leftover open check-in
+    if (openCheckIn && !openCheckIn.processed) {
+      const checkInDate = format(openCheckIn.timestamp, 'yyyy-MM-dd');
+      const dateRecords = recordsByDate.get(checkInDate) || [];
       
-      // Sort check-outs by timestamp (latest first to get the end of day)
-      dayData.checkOuts.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+      // Store original check-in time as display value
+      const checkInDisplayTime = format(openCheckIn.timestamp, 'HH:mm');
       
-      // Create a daily record
-      const dailyRecord: DailyRecord = {
+      // FIXED: Use openCheckIn's working_week_start if available
+      const working_week_start = openCheckIn.working_week_start || checkInDate;
+      
+      employeeData.dailyRecords.set(checkInDate, {
+        date: checkInDate,
+        firstCheckIn: openCheckIn.timestamp,
+        lastCheckOut: null,
+        hoursWorked: 0,
+        approved: false,
+        shiftType: openCheckIn.shift_type || determineShiftType(openCheckIn.timestamp),
+        notes: 'Missing check-out',
+        missingCheckIn: false,
+        missingCheckOut: true,
+        isLate: isLateCheckIn(openCheckIn.timestamp, openCheckIn.shift_type as any),
+        earlyLeave: false,
+        excessiveOvertime: false,
+        penaltyMinutes: 0,
+        correctedRecords: openCheckIn.mislabeled,
+        allTimeRecords: dateRecords,
+        hasMultipleRecords: dateRecords.length > 1,
+        working_week_start: working_week_start, // Set working_week_start for proper grouping
+        displayCheckIn: checkInDisplayTime, // Store actual timestamp for display
+        displayCheckOut: 'Missing'
+      });
+      
+      openCheckIn.processed = true;
+    }
+    
+    // Add any dates that have records but weren't processed
+    for (const [dateStr, dateRecords] of recordsByDate.entries()) {
+      // Skip dates that have already been processed
+      if (processedDates.has(dateStr) || employeeData.dailyRecords.has(dateStr)) continue;
+      
+      // Find any unprocessed records
+      const unprocessedRecords = dateRecords.filter(r => !r.processed);
+      
+      if (unprocessedRecords.length > 0) {
+        // Group records by status
+        const checkIns = unprocessedRecords.filter(r => r.status === 'check_in');
+        const checkOuts = unprocessedRecords.filter(r => r.status === 'check_out');
+        
+        // Use the earliest check-in and latest check-out
+        const firstCheckIn = checkIns.length > 0 ? 
+                      checkIns.reduce((earliest, curr) => 
+                        curr.timestamp < earliest.timestamp ? curr : earliest, checkIns[0]) : null;
+        
+        const lastCheckOut = checkOuts.length > 0 ?
+                      checkOuts.reduce((latest, curr) =>
+                        curr.timestamp > latest.timestamp ? curr : latest, checkOuts[0]) : null;
+        
+        // Determine shift type
+        const shiftType = firstCheckIn ? 
+                      (firstCheckIn.shift_type || determineShiftType(firstCheckIn.timestamp)) : 
+                      (lastCheckOut ? 
+                        (lastCheckOut.shift_type || determineShiftType(lastCheckOut.timestamp)) : null);
+        
+        // Calculate hours if we have both check-in and check-out
+        const hoursWorked = (firstCheckIn && lastCheckOut) ? 
+                      calculatePayableHours(firstCheckIn.timestamp, lastCheckOut.timestamp, shiftType as any) : 0;
+        
+        // Store original check-in and check-out times as display values
+        const checkInDisplayTime = firstCheckIn ? format(firstCheckIn.timestamp, 'HH:mm') : 'Missing';
+        const checkOutDisplayTime = lastCheckOut ? format(lastCheckOut.timestamp, 'HH:mm') : 'Missing';
+        
+        // FIXED: Determine the working_week_start properly
+        let working_week_start = dateStr;
+        
+        // If this is a night shift checkout in early morning, link to previous day
+        if (shiftType === 'night' && lastCheckOut && !firstCheckIn && getHours(lastCheckOut.timestamp) < 12) {
+          // For night shift checkouts, set working_week_start to previous day
+          working_week_start = format(subDays(new Date(dateStr), 1), 'yyyy-MM-dd');
+        } else if (firstCheckIn && firstCheckIn.working_week_start) {
+          // Use check-in's working_week_start if available
+          working_week_start = firstCheckIn.working_week_start;
+        } else if (lastCheckOut && lastCheckOut.working_week_start) {
+          // Use check-out's working_week_start if available
+          working_week_start = lastCheckOut.working_week_start;
+        }
+        
+        // Create daily record
+        employeeData.dailyRecords.set(dateStr, {
+          date: dateStr,
+          firstCheckIn: firstCheckIn ? firstCheckIn.timestamp : null,
+          lastCheckOut: lastCheckOut ? lastCheckOut.timestamp : null,
+          hoursWorked: hoursWorked,
+          approved: false,
+          shiftType: shiftType as any,
+          notes: unprocessedRecords.some(r => r.mislabeled) ? 'Contains corrected records' : '',
+          missingCheckIn: !firstCheckIn,
+          missingCheckOut: !lastCheckOut,
+          isLate: firstCheckIn ? isLateCheckIn(firstCheckIn.timestamp, shiftType as any) : false,
+          earlyLeave: lastCheckOut ? isEarlyLeave(lastCheckOut.timestamp, shiftType as any) : false,
+          excessiveOvertime: (firstCheckIn && lastCheckOut) ? 
+                           isExcessiveOvertime(lastCheckOut.timestamp, shiftType as any) : false,
+          penaltyMinutes: 0,
+          correctedRecords: unprocessedRecords.some(r => r.mislabeled),
+          allTimeRecords: dateRecords,
+          hasMultipleRecords: dateRecords.length > 1,
+          working_week_start: working_week_start, // Set working_week_start for proper grouping
+          // Store actual timestamp values for display
+          displayCheckIn: checkInDisplayTime,
+          displayCheckOut: checkOutDisplayTime
+        });
+        
+        // Mark records as processed
+        for (const record of unprocessedRecords) {
+          record.processed = true;
+        }
+      }
+    }
+    
+    // STEP 4: Fill in any gaps with OFF-DAY records
+    addOffDaysToEmployeeRecords(employeeData.dailyRecords, recordsByDate);
+  }
+  
+  // STEP 5: Convert the map to the expected array format
+  const employeeRecordsArray: EmployeeRecord[] = [];
+  
+  for (const [employeeNumber, data] of employeeRecordsMap.entries()) {
+    const dailyRecords = Array.from(data.dailyRecords.values());
+    
+    // Sort daily records by date for display
+    dailyRecords.sort((a, b) => a.date.localeCompare(b.date));
+    
+    employeeRecordsArray.push({
+      employeeNumber,
+      name: data.employeeData.name,
+      department: data.employeeData.department,
+      days: dailyRecords,
+      totalDays: dailyRecords.length,
+      expanded: false
+    });
+  }
+  
+  // Sort employees by name
+  employeeRecordsArray.sort((a, b) => a.name.localeCompare(b.name));
+  
+  return employeeRecordsArray;
+};
+
+// Helper function to fill in off-days for an employee's records
+const addOffDaysToEmployeeRecords = (dailyRecords: Map<string, DailyRecord>, recordsByDate: Map<string, TimeRecord[]>): void => {
+  if (dailyRecords.size < 2) return;
+  
+  // Get all dates in order
+  const dates = Array.from(dailyRecords.keys()).sort();
+  
+  if (dates.length < 2) return;
+  
+  // Get date range
+  const firstDate = new Date(dates[0]);
+  const lastDate = new Date(dates[dates.length - 1]);
+  
+  // Get all dates in the range
+  const allDates = eachDayOfInterval({ start: firstDate, end: lastDate });
+  
+  // Add OFF-DAY for any missing date
+  for (const date of allDates) {
+    const dateStr = format(date, 'yyyy-MM-dd');
+    
+    if (!dailyRecords.has(dateStr)) {
+      // Check if we have any time records for this date
+      const dateRecords = recordsByDate.get(dateStr) || [];
+      
+      // Add OFF-DAY record
+      dailyRecords.set(dateStr, {
         date: dateStr,
-        firstCheckIn: dayData.checkIns.length > 0 ? dayData.checkIns[0].timestamp : null,
-        lastCheckOut: dayData.checkOuts.length > 0 ? dayData.checkOuts[0].timestamp : null,
+        firstCheckIn: null,
+        lastCheckOut: null,
         hoursWorked: 0,
         approved: false,
         shiftType: null,
-        notes: dayData.checkIns.length === 0 && dayData.checkOuts.length === 0 ? 'No data' : '',
-        missingCheckIn: dayData.checkIns.length === 0,
-        missingCheckOut: dayData.checkOuts.length === 0,
+        notes: 'OFF-DAY',
+        missingCheckIn: true,
+        missingCheckOut: true,
         isLate: false,
         earlyLeave: false,
         excessiveOvertime: false,
         penaltyMinutes: 0,
-        allTimeRecords: dayData.allTimeRecords.map(r => ({
-          timestamp: r.timestamp,
-          status: r.status,
-          originalIndex: r.originalIndex,
-          fromPrevDay: r.fromPrevDay,
-          prevDayDate: r.prevDayDate,
-          isCrossDay: r.isCrossDay
-        })),
-        hasMultipleRecords: dayData.allTimeRecords.length > 2,
-      };
-      
-      // Only calculate hours worked if we have both check-in and check-out
-      if (dailyRecord.firstCheckIn && dailyRecord.lastCheckOut) {
-        // Determine shift type based on check-in time
-        const isNightShift = nightShiftWorkers.has(employeeKey);
-        dailyRecord.shiftType = determineShiftType(dailyRecord.firstCheckIn, isNightShift);
-        
-        // Set the cross-day flag if this is a night shift
-        if (dailyRecord.shiftType === 'night') {
-          dailyRecord.isCrossDay = true;
-          
-          // If checkout time is before check-in time, it means checkout is on the next day
-          if (dailyRecord.lastCheckOut.getTime() < dailyRecord.firstCheckIn.getTime()) {
-            dailyRecord.checkOutNextDay = true;
-          }
-        }
-        
-        // Calculate hours worked
-        dailyRecord.hoursWorked = calculatePayableHours(
-          dailyRecord.firstCheckIn,
-          dailyRecord.lastCheckOut,
-          dailyRecord.shiftType
-        );
-        
-        // Check if late
-        dailyRecord.isLate = isLateCheckIn(
-          dailyRecord.firstCheckIn,
-          dailyRecord.shiftType
-        );
-        
-        // Check if early leave
-        dailyRecord.earlyLeave = isEarlyLeave(
-          dailyRecord.lastCheckOut,
-          dailyRecord.shiftType
-        );
-        
-        // Check if excessive overtime
-        dailyRecord.excessiveOvertime = isExcessiveOvertime(
-          dailyRecord.lastCheckOut,
-          dailyRecord.shiftType
-        );
-      }
-
-      // Additional validation/checks
-      const suspiciousTimeGap = detectSuspiciousTimeGap(dayData);
-      if (suspiciousTimeGap) {
-        dailyRecord.notes = suspiciousTimeGap;
-      }
-
-      // Handle missing check-in but having check-out
-      if (!dailyRecord.firstCheckIn && dailyRecord.lastCheckOut) {
-        dailyRecord.notes = 'Missing check-in';
-      }
-
-      // Handle missing check-out but having check-in
-      if (dailyRecord.firstCheckIn && !dailyRecord.lastCheckOut) {
-        dailyRecord.notes = 'Missing check-out';
-      }
-      
-      // If it's a night shift and check-in is in the evening, but no check-out,
-      // it's possible that the check-out should be the next morning
-      if (dailyRecord.shiftType === 'night' && 
-          dailyRecord.firstCheckIn && 
-          !dailyRecord.lastCheckOut && 
-          dailyRecord.firstCheckIn.getHours() >= 20) {
-        dailyRecord.notes = 'Night shift - missing check-out (next day)';
-      }
-      
-      // Attempt to fix mislabeled check-ins and check-outs
-      const possibleMislabeledRecords = detectMislabeledRecords(dayData);
-      if (possibleMislabeledRecords) {
-        // Mark that the records were corrected
-        dailyRecord.correctedRecords = true;
-        dailyRecord.notes = 'Fixed mislabeled check-in/out records';
-        
-        // Update the values
-        dailyRecord.firstCheckIn = possibleMislabeledRecords.fixedCheckIn;
-        dailyRecord.lastCheckOut = possibleMislabeledRecords.fixedCheckOut;
-        dailyRecord.missingCheckIn = !possibleMislabeledRecords.fixedCheckIn;
-        dailyRecord.missingCheckOut = !possibleMislabeledRecords.fixedCheckOut;
-        
-        // Also update the allTimeRecords with corrected statuses
-        if (dailyRecord.allTimeRecords) {
-          possibleMislabeledRecords.swappedIndices.forEach(({ origIndex, newStatus }) => {
-            const recordToUpdate = dailyRecord.allTimeRecords?.find(r => r.originalIndex === origIndex);
-            if (recordToUpdate) {
-              recordToUpdate.originalStatus = recordToUpdate.status;
-              recordToUpdate.status = newStatus;
-              recordToUpdate.mislabeled = true;
-            }
-          });
-        }
-        
-        // Recalculate hours if both times are available after fixing
-        if (dailyRecord.firstCheckIn && dailyRecord.lastCheckOut) {
-          // Set shift type if not set
-          if (!dailyRecord.shiftType) {
-            const isNightShift = nightShiftWorkers.has(employeeKey);
-            dailyRecord.shiftType = determineShiftType(dailyRecord.firstCheckIn, isNightShift);
-          }
-          
-          // Recalculate hours
-          dailyRecord.hoursWorked = calculatePayableHours(
-            dailyRecord.firstCheckIn,
-            dailyRecord.lastCheckOut,
-            dailyRecord.shiftType
-          );
-          
-          // Recalculate flags
-          dailyRecord.isLate = isLateCheckIn(dailyRecord.firstCheckIn, dailyRecord.shiftType);
-          dailyRecord.earlyLeave = isEarlyLeave(dailyRecord.lastCheckOut, dailyRecord.shiftType);
-          dailyRecord.excessiveOvertime = isExcessiveOvertime(dailyRecord.lastCheckOut, dailyRecord.shiftType);
-        }
-      }
-      
-      // Add this day's record to the employee
-      employeeRecord.days.push(dailyRecord);
-    });
-    
-    // Set total days
-    employeeRecord.totalDays = employeeRecord.days.length;
-    
-    // Default to expanded for the first employee only (better UX for review)
-    employeeRecord.expanded = employeeRecord === employeeRecords.values().next().value;
-  });
-  
-  return employeeRecords;
-};
-
-// Detect suspicious time gaps (potential wrong check-in/out)
-const detectSuspiciousTimeGap = (dayData: {
-  checkIns: { timestamp: Date, originalIndex: number }[],
-  checkOuts: { timestamp: Date, originalIndex: number }[],
-  allTimeRecords: any[]
-}): string | null => {
-  // If we have multiple check-ins and check-outs, check for abnormal patterns
-  
-  // 1. Check if there are 3+ records but it's not a night shift
-  if (dayData.allTimeRecords.length >= 3) {
-    // Check the timestamps - if all are within standard working hours (not night shift)
-    const allDuringDay = dayData.allTimeRecords.every(r => {
-      const hour = new Date(r.timestamp).getHours();
-      return hour >= 5 && hour <= 22;  // 5 AM to 10 PM
-    });
-    
-    if (allDuringDay) {
-      return `Multiple records (${dayData.allTimeRecords.length}) found for this day`;
-    }
-  }
-  
-  // 2. Check if check-in is after check-out (non-night shift issue)
-  if (dayData.checkIns.length > 0 && dayData.checkOuts.length > 0) {
-    const earliestCheckIn = dayData.checkIns[0].timestamp;
-    const latestCheckOut = dayData.checkOuts[0].timestamp;
-    
-    // If check-in is after check-out and they're both during daytime
-    if (earliestCheckIn > latestCheckOut) {
-      const checkInHour = earliestCheckIn.getHours();
-      const checkOutHour = latestCheckOut.getHours();
-      
-      // If both are during day hours, this is suspicious
-      if (checkInHour >= 5 && checkInHour <= 18 && checkOutHour >= 5 && checkOutHour <= 18) {
-        return "Check-in is after check-out";
-      }
-    }
-  }
-  
-  return null;
-};
-
-// Detect and fix mislabeled check-ins/checkouts
-const detectMislabeledRecords = (dayData: {
-  checkIns: { timestamp: Date, originalIndex: number }[],
-  checkOuts: { timestamp: Date, originalIndex: number }[],
-  allTimeRecords: any[]
-}): { 
-  fixedCheckIn: Date | null, 
-  fixedCheckOut: Date | null,
-  swappedIndices: { origIndex: number, newStatus: 'check_in' | 'check_out' }[]
-} | null => {
-  const swappedIndices: { origIndex: number, newStatus: 'check_in' | 'check_out' }[] = [];
-  
-  // Case 1: No check-in but multiple check-outs (first check-out might be a check-in)
-  if (dayData.checkIns.length === 0 && dayData.checkOuts.length >= 2) {
-    // Sort check-outs by timestamp (earliest first)
-    const sortedCheckOuts = [...dayData.checkOuts].sort((a, b) => 
-      a.timestamp.getTime() - b.timestamp.getTime()
-    );
-    
-    // First check-out is likely a check-in
-    const earliestCheckOut = sortedCheckOuts[0];
-    const latestCheckOut = sortedCheckOuts[sortedCheckOuts.length - 1];
-    
-    // Only swap if there's a reasonable time gap
-    const hoursDiff = (latestCheckOut.timestamp.getTime() - earliestCheckOut.timestamp.getTime()) / (1000 * 60 * 60);
-    
-    if (hoursDiff >= 1) {  // At least 1 hour gap
-      swappedIndices.push({ 
-        origIndex: earliestCheckOut.originalIndex, 
-        newStatus: 'check_in' 
+        allTimeRecords: dateRecords,
+        hasMultipleRecords: dateRecords.length > 0,
+        isCrossDay: false,
+        checkOutNextDay: false,
+        working_week_start: dateStr, // Set working_week_start for proper grouping
+        displayCheckIn: 'OFF-DAY', 
+        displayCheckOut: 'OFF-DAY'
       });
-      
-      return {
-        fixedCheckIn: earliestCheckOut.timestamp,
-        fixedCheckOut: latestCheckOut.timestamp,
-        swappedIndices
-      };
     }
-  }
-  
-  // Case 2: No check-out but multiple check-ins (last check-in might be a check-out)
-  if (dayData.checkOuts.length === 0 && dayData.checkIns.length >= 2) {
-    // Sort check-ins by timestamp (earliest first)
-    const sortedCheckIns = [...dayData.checkIns].sort((a, b) => 
-      a.timestamp.getTime() - b.timestamp.getTime()
-    );
-    
-    // First check-in and last check-in
-    const earliestCheckIn = sortedCheckIns[0];
-    const latestCheckIn = sortedCheckIns[sortedCheckIns.length - 1];
-    
-    // Only swap if there's a reasonable time gap
-    const hoursDiff = (latestCheckIn.timestamp.getTime() - earliestCheckIn.timestamp.getTime()) / (1000 * 60 * 60);
-    
-    if (hoursDiff >= 1) {  // At least 1 hour gap
-      swappedIndices.push({ 
-        origIndex: latestCheckIn.originalIndex, 
-        newStatus: 'check_out' 
-      });
-      
-      return {
-        fixedCheckIn: earliestCheckIn.timestamp,
-        fixedCheckOut: latestCheckIn.timestamp,
-        swappedIndices
-      };
-    }
-  }
-  
-  // Case 3: Check if check-in timestamps are suspicious for shift type
-  if (dayData.checkIns.length > 0 && dayData.checkOuts.length > 0) {
-    const earliestCheckIn = dayData.checkIns[0].timestamp;
-    const latestCheckOut = dayData.checkOuts[0].timestamp;
-    const checkInHour = earliestCheckIn.getHours();
-    
-    // Unusual morning shift time - check-in after 12 PM
-    if (checkInHour >= 12 && checkInHour < 20 && 
-        latestCheckOut.getTime() > earliestCheckIn.getTime()) {
-      
-      // Check if we have any records earlier in the day that could be check-ins
-      const earlierCheckOut = dayData.checkOuts.find(co => 
-        co.timestamp.getTime() < earliestCheckIn.getTime()
-      );
-      
-      if (earlierCheckOut) {
-        const earlierHour = earlierCheckOut.timestamp.getHours();
-        
-        // If the earlier checkout is in morning shift hours, it's likely a check-in
-        if (earlierHour >= 5 && earlierHour < 12) {
-          swappedIndices.push({ 
-            origIndex: earlierCheckOut.originalIndex, 
-            newStatus: 'check_in' 
-          });
-          
-          swappedIndices.push({ 
-            origIndex: dayData.checkIns[0].originalIndex, 
-            newStatus: 'check_out' 
-          });
-          
-          return {
-            fixedCheckIn: earlierCheckOut.timestamp,
-            fixedCheckOut: earliestCheckIn,
-            swappedIndices
-          };
-        }
-      }
-    }
-  }
-  
-  // No issues detected
-  return null;
-};
-
-/**
- * Exports employee records to an Excel file
- * 
- * @param records Employee records to export
- * @param filename Optional filename without extension
- */
-export const exportToExcel = (records: EmployeeRecord[], filename: string = "time_records") => {
-  try {
-    // Create a workbook
-    const workbook = utils.book_new();
-    
-    // Create summary sheet
-    const summaryData = records.map(emp => {
-      // Calculate total hours
-      const totalHours = emp.days.reduce((sum, day) => sum + day.hoursWorked, 0);
-      
-      // Count days by status
-      const pendingDays = emp.days.filter(d => !d.approved).length;
-      const approvedDays = emp.days.filter(d => d.approved).length;
-      const offDays = emp.days.filter(d => d.notes === 'OFF-DAY').length;
-      const workingDays = emp.days.length - offDays;
-      
-      // Count days with issues
-      const lateDays = emp.days.filter(d => d.isLate).length;
-      const earlyLeaveDays = emp.days.filter(d => d.earlyLeave).length;
-      const incompleteRecordDays = emp.days.filter(d => d.missingCheckIn || d.missingCheckOut).length;
-      const daysWithPenalty = emp.days.filter(d => d.penaltyMinutes > 0).length;
-      const totalPenaltyHours = emp.days.reduce((sum, day) => sum + day.penaltyMinutes, 0) / 60;
-      
-      // Add to summary data
-      return {
-        'Employee Number': emp.employeeNumber,
-        'Name': emp.name,
-        'Department': emp.department,
-        'Working Days': workingDays, // Added working days
-        'OFF Days': offDays, // Added off days
-        'Total Days': emp.days.length,
-        'Total Hours': parseFloat(totalHours.toFixed(2)),
-        'Average Hours/Day': parseFloat((totalHours / Math.max(1, workingDays)).toFixed(2)), // Use working days for average
-        'Pending Days': pendingDays,
-        'Approved Days': approvedDays,
-        'Late Days': lateDays,
-        'Early Leave Days': earlyLeaveDays,
-        'Incomplete Record Days': incompleteRecordDays,
-        'Days with Penalty': daysWithPenalty,
-        'Penalty Hours': parseFloat(totalPenaltyHours.toFixed(2))
-      };
-    });
-    
-    // Create worksheet from the data
-    const summaryWorksheet = utils.json_to_sheet(summaryData);
-    
-    // Auto-fit columns
-    const summaryColWidths = [
-      { wch: 15 }, // Employee Number
-      { wch: 20 }, // Name
-      { wch: 15 }, // Department
-      { wch: 12 }, // Working Days
-      { wch: 10 }, // OFF Days
-      { wch: 10 }, // Total Days
-      { wch: 12 }, // Total Hours
-      { wch: 15 }, // Average Hours/Day
-      { wch: 12 }, // Pending Days
-      { wch: 12 }, // Approved Days
-      { wch: 10 }, // Late Days
-      { wch: 15 }, // Early Leave Days
-      { wch: 20 }, // Incomplete Record Days
-      { wch: 15 }, // Days with Penalty
-      { wch: 12 }, // Penalty Hours
-    ];
-    summaryWorksheet['!cols'] = summaryColWidths;
-    
-    // Add the summary sheet to the workbook
-    utils.book_append_sheet(workbook, summaryWorksheet, 'Summary');
-    
-    // Create a separate sheet for each employee with detailed records
-    records.forEach(emp => {
-      const detailedData = emp.days.map(day => {
-        return {
-          'Date': day.date,
-          'Check-In': day.firstCheckIn ? formatTime24H(day.firstCheckIn) : 'Missing',
-          'Check-Out': day.lastCheckOut ? formatTime24H(day.lastCheckOut) : 'Missing',
-          'Hours Worked': day.hoursWorked,
-          'Shift Type': day.shiftType || 'Unknown',
-          'Approved': day.approved ? 'Yes' : 'No',
-          'Late': day.isLate ? 'Yes' : 'No',
-          'Early Leave': day.earlyLeave ? 'Yes' : 'No',
-          'Missing Check-In': day.missingCheckIn ? 'Yes' : 'No',
-          'Missing Check-Out': day.missingCheckOut ? 'Yes' : 'No',
-          'Penalty (Minutes)': day.penaltyMinutes,
-          'Notes': day.notes,
-          'OFF-DAY': day.notes === 'OFF-DAY' ? 'Yes' : 'No' // Added explicit OFF-DAY column
-        };
-      });
-      
-      // Create worksheet with the employee's data
-      const empWorksheet = utils.json_to_sheet(detailedData);
-      
-      // Auto-fit columns
-      const empColWidths = [
-        { wch: 12 }, // Date
-        { wch: 12 }, // Check-In
-        { wch: 12 }, // Check-Out
-        { wch: 12 }, // Hours Worked
-        { wch: 12 }, // Shift Type
-        { wch: 8 },  // Approved
-        { wch: 6 },  // Late
-        { wch: 10 }, // Early Leave
-        { wch: 15 }, // Missing Check-In
-        { wch: 15 }, // Missing Check-Out
-        { wch: 15 }, // Penalty
-        { wch: 30 }, // Notes
-        { wch: 8 },  // OFF-DAY
-      ];
-      empWorksheet['!cols'] = empColWidths;
-      
-      // Add the employee's sheet to the workbook
-      const safeSheetName = emp.name.substring(0, 30).replace(/[*?:/\\[\]]/g, '_');
-      utils.book_append_sheet(workbook, empWorksheet, safeSheetName);
-    });
-    
-    // Generate a filename with date
-    const dateStr = format(new Date(), 'yyyy-MM-dd');
-    const fullFilename = `${filename}_${dateStr}.xlsx`;
-    
-    // Write the file and trigger download
-    writeFile(workbook, fullFilename);
-    
-  } catch (error) {
-    console.error('Error exporting to Excel:', error);
-    alert('Failed to export data. Please try again.');
   }
 };
 
-/**
- * Exports approved hours data to an Excel file with more details
- * 
- * @param exportData The data to export including summary and details
- * @param filename Optional filename without extension
- */
-export const exportApprovedHoursToExcel = (exportData: any, filename: string = "approved_hours") => {
-  try {
-    // Create a workbook
-    const workbook = utils.book_new();
-    
-    // Prepare the summary data
-    const summaryData = exportData.summary.map((emp: any) => {
-      // Calculate regular and double time hours
-      let doubleTimeHours = emp.double_time_hours || 0;
-      let totalPayableHours = emp.total_hours + doubleTimeHours;
-      
-      // Calculate off days and working days
-      const offDaysCount = emp.off_days_count || 0;
-      const workingDays = emp.working_days || (emp.total_days - offDaysCount);
-      
-      return {
-        'Employee Number': emp.employee_number,
-        'Name': emp.name,
-        'Total Days': emp.total_days,
-        'Working Days': workingDays, // Added working days
-        'OFF Days': offDaysCount, // Added off days
-        'Regular Hours': parseFloat(emp.total_hours.toFixed(2)),
-        'Double-Time Hours': parseFloat(doubleTimeHours.toFixed(2)),
-        'Total Payable Hours': parseFloat(totalPayableHours.toFixed(2)),
-        'Average Hours/Working Day': workingDays > 0 
-          ? parseFloat((emp.total_hours / workingDays).toFixed(2)) 
-          : 0
-      };
-    });
-    
-    // Create summary worksheet
-    const summaryWorksheet = utils.json_to_sheet(summaryData);
-    
-    // Auto-fit columns
-    const summaryColWidths = [
-      { wch: 15 }, // Employee Number
-      { wch: 25 }, // Name
-      { wch: 10 }, // Total Days
-      { wch: 12 }, // Working Days
-      { wch: 10 }, // OFF Days
-      { wch: 12 }, // Regular Hours
-      { wch: 18 }, // Double-Time Hours
-      { wch: 18 }, // Total Payable Hours
-      { wch: 25 }, // Average Hours/Working Day
-    ];
-    summaryWorksheet['!cols'] = summaryColWidths;
-    
-    // Add summary sheet to the workbook
-    utils.book_append_sheet(workbook, summaryWorksheet, 'Summary');
-    
-    // Prepare the details data
-    if (exportData.details && exportData.details.length > 0) {
-      // Group details by employee
-      const detailsByEmployee = new Map<string, any[]>();
-      
-      exportData.details.forEach((record: any) => {
-        const employeeId = record.employee_id;
-        if (!detailsByEmployee.has(employeeId)) {
-          detailsByEmployee.set(employeeId, []);
-        }
-        
-        const employeeRecords = detailsByEmployee.get(employeeId)!;
-        employeeRecords.push(record);
-      });
-      
-      // Create a sheet for each employee's details
-      exportData.summary.forEach((emp: any) => {
-        const employeeId = emp.id;
-        const employeeRecords = detailsByEmployee.get(employeeId) || [];
-        
-        if (employeeRecords.length > 0) {
-          // Convert records to worksheet data
-          const detailData = employeeRecords.map((record: any) => {
-            // Determine if this is a double-time day
-            const isDoubleTime = exportData.doubleDays && 
-                               exportData.doubleDays.includes(record.working_week_start || 
-                                                             parseISO(record.timestamp).toISOString().slice(0,10));
-            
-            // Calculate payable hours (regular and double-time)
-            let hours = record.exact_hours ? parseFloat(record.exact_hours) : 0;
-            
-            return {
-              'Date': record.working_week_start || format(parseISO(record.timestamp), 'yyyy-MM-dd'),
-              'Check-In': record.display_check_in || 
-                        (record.status === 'check_in' ? format(parseISO(record.timestamp), 'HH:mm') : ''),
-              'Check-Out': record.display_check_out || 
-                         (record.status === 'check_out' ? format(parseISO(record.timestamp), 'HH:mm') : ''),
-              'Shift Type': record.shift_type || 'Unknown',
-              'Regular Hours': hours,
-              'Double-Time': isDoubleTime ? 'Yes' : 'No',
-              'Double-Time Hours': isDoubleTime ? hours : 0,
-              'Total Payable Hours': isDoubleTime ? hours * 2 : hours,
-              'Notes': record.notes || ''
-            };
-          });
-          
-          // Create employee detail worksheet
-          const detailWorksheet = utils.json_to_sheet(detailData);
-          
-          // Auto-fit columns
-          const detailColWidths = [
-            { wch: 12 }, // Date
-            { wch: 10 }, // Check-In
-            { wch: 10 }, // Check-Out
-            { wch: 12 }, // Shift Type
-            { wch: 12 }, // Regular Hours
-            { wch: 12 }, // Double-Time
-            { wch: 18 }, // Double-Time Hours
-            { wch: 18 }, // Total Payable Hours
-            { wch: 25 }, // Notes
-          ];
-          detailWorksheet['!cols'] = detailColWidths;
-          
-          // Add the detail sheet to the workbook
-          const safeSheetName = emp.name.substring(0, 30).replace(/[*?:/\\[\]]/g, '_');
-          utils.book_append_sheet(workbook, detailWorksheet, safeSheetName);
-        }
-      });
-    }
-    
-    // Add a filter-info sheet with metadata about the export
-    const filterInfo = [];
-    
-    // Date range information
-    if (exportData.filterMonth === "custom" && exportData.dateRange) {
-      filterInfo.push({
-        'Filter Type': 'Custom Date Range',
-        'Start Date': exportData.dateRange.startDate,
-        'End Date': exportData.dateRange.endDate
-      });
-    } else if (exportData.filterMonth !== "all") {
-      filterInfo.push({
-        'Filter Type': 'Month',
-        'Month': exportData.filterMonth
-      });
-    } else {
-      filterInfo.push({
-        'Filter Type': 'All Time'
-      });
-    }
-    
-    // Double-time days information
-    if (exportData.doubleDays && exportData.doubleDays.length > 0) {
-      exportData.doubleDays.forEach((date: string, index: number) => {
-        filterInfo.push({
-          'Filter Type': index === 0 ? 'Double-Time Days' : '',
-          'Date': date
-        });
-      });
-    }
-    
-    // Create filter-info worksheet
-    const filterInfoWorksheet = utils.json_to_sheet(filterInfo);
-    
-    // Auto-fit columns
-    filterInfoWorksheet['!cols'] = [
-      { wch: 20 }, // Filter Type
-      { wch: 15 }, // Other columns
-      { wch: 15 },
-    ];
-    
-    // Add the filter-info sheet to the workbook
-    utils.book_append_sheet(workbook, filterInfoWorksheet, 'Export Info');
-    
-    // Generate a filename with date
-    const dateStr = format(new Date(), 'yyyy-MM-dd');
-    const fullFilename = `${filename}_${dateStr}.xlsx`;
-    
-    // Write the file and trigger download
-    writeFile(workbook, fullFilename);
-    
-  } catch (error) {
-    console.error('Error exporting approved hours to Excel:', error);
-    alert('Failed to export data. Please try again.');
-  }
-};
-
-/**
- * Process OFF-DAY markers for any missing days in the date range
- * @param employeeRecords Array of employee records
- * @returns Updated employee records with OFF-DAYs
- */
-export const processOffDaysMarkers = (employeeRecords: EmployeeRecord[]): EmployeeRecord[] => {
-  employeeRecords.forEach(employee => {
-    // No need to process if the employee has no days or only one day
-    if (employee.days.length <= 1) return;
-    
-    // Sort days by date
-    const sortedDays = [...employee.days].sort((a, b) => a.date.localeCompare(b.date));
-    
-    // Get earliest and latest dates
-    const earliestDate = new Date(sortedDays[0].date);
-    const latestDate = new Date(sortedDays[sortedDays.length - 1].date);
-    
-    // Create a set of existing dates for quick lookup
-    const existingDates = new Set(employee.days.map(day => day.date));
-    
-    // Create OFF-DAY markers for missing dates
-    const currentDate = new Date(earliestDate);
-    const missingDays: DailyRecord[] = [];
-    
-    while (currentDate <= latestDate) {
-      const dateStr = format(currentDate, 'yyyy-MM-dd');
-      
-      if (!existingDates.has(dateStr)) {
-        // Create an OFF-DAY marker
-        missingDays.push({
-          date: dateStr,
-          firstCheckIn: null,
-          lastCheckOut: null,
-          hoursWorked: 0,
-          approved: false,
-          shiftType: null,
-          notes: 'OFF-DAY',
-          missingCheckIn: true,
-          missingCheckOut: true,
-          isLate: false,
-          earlyLeave: false,
-          excessiveOvertime: false,
-          penaltyMinutes: 0
-        });
-      }
-      
-      // Move to next day
-      currentDate.setDate(currentDate.getDate() + 1);
-    }
-    
-    // Add the missing days
-    employee.days = [...employee.days, ...missingDays];
-    
-    // Sort all days
-    employee.days.sort((a, b) => a.date.localeCompare(b.date));
-    
-    // Update total days count
-    employee.totalDays = employee.days.length;
-  });
-  
-  return employeeRecords;
-};
-
-/**
- * Calculate double-time hours for each employee in the approved hours data
- * 
- * @param data The approved hours data
- * @param doubleDays Array of dates that qualify for double-time
- * @returns Updated data with double-time hours calculated
- */
-export const calculateDoubleTimeHours = (data: any[], doubleDays: string[]): any[] => {
-  return data.map(employee => {
-    let doubleTimeHours = 0;
-    
-    // If employee has hours by date and working week dates, calculate double time
-    if (employee.hours_by_date && employee.working_week_dates) {
-      employee.working_week_dates.forEach((date: string) => {
-        if (doubleDays.includes(date)) {
-          const hoursOnDate = employee.hours_by_date[date] || 0;
-          doubleTimeHours += hoursOnDate;
-        }
-      });
-    }
-    
-    return {
-      ...employee,
-      double_time_hours: parseFloat(doubleTimeHours.toFixed(2))
-    };
-  });
-};
-
-// Extra utility functions to maintain code length (as per requirement)
-// Function 1: Generate a readable string representation of working hours
-const generateHoursString = (days: DailyRecord[]): string => {
-  const totalHours = days.reduce((sum, day) => sum + day.hoursWorked, 0);
-  
-  // Count off days
-  const offDays = days.filter(d => d.notes === 'OFF-DAY').length;
-  
-  // Calculate working days
-  const workingDays = days.length - offDays;
-  
-  // Calculate average hours per working day
-  const averageHours = workingDays > 0 ? totalHours / workingDays : 0;
-  
-  return `Total: ${totalHours.toFixed(2)} hours over ${workingDays} working days (${offDays} off days) - Avg: ${averageHours.toFixed(2)} hours/day`;
-};
-
-// Function 2: Generate status summary for an employee
-const generateStatusSummary = (days: DailyRecord[]): string => {
-  const approved = days.filter(d => d.approved).length;
-  const pending = days.filter(d => !d.approved).length;
-  const issues = days.filter(d => d.isLate || d.earlyLeave || d.missingCheckIn || d.missingCheckOut).length;
-  
-  return `Approved: ${approved}, Pending: ${pending}, Issues: ${issues}`;
-};
-
-// Function 3: Generate shift type distribution for an employee
-const generateShiftDistribution = (days: DailyRecord[]): { [key: string]: number } => {
-  const distribution: { [key: string]: number } = {
-    morning: 0,
-    evening: 0,
-    night: 0,
-    canteen: 0,
-    custom: 0,
-    unknown: 0
-  };
-  
-  days.forEach(day => {
-    if (day.shiftType) {
-      distribution[day.shiftType as keyof typeof distribution]++;
-    } else {
-      distribution.unknown++;
-    }
-  });
-  
-  return distribution;
-};
-
-// Function 4: Format employee data for reporting
-const formatEmployeeForReport = (employee: EmployeeRecord): any => {
-  // Get distribution of shift types
-  const shiftDistribution = generateShiftDistribution(employee.days);
-  
-  // Count various day types
-  const offDays = employee.days.filter(d => d.notes === 'OFF-DAY').length;
-  const workingDays = employee.days.length - offDays;
-  const lateDays = employee.days.filter(d => d.isLate).length;
-  const earlyLeaveDays = employee.days.filter(d => d.earlyLeave).length;
-  
-  // Calculate total payable hours
-  const regularHours = employee.days.reduce((sum, day) => sum + day.hoursWorked, 0);
-  
-  return {
-    employeeNumber: employee.employeeNumber,
-    name: employee.name,
-    department: employee.department,
-    totalDays: employee.days.length,
-    workingDays,
-    offDays,
-    regularHours,
-    shiftDistribution,
-    lateDays,
-    earlyLeaveDays
-  };
-};
-
-// Function 5: Generate Excel cell styles
-const generateExcelStyles = () => {
-  return {
-    headerStyle: {
-      font: { bold: true, color: { rgb: 'FFFFFF' } },
-      fill: { fgColor: { rgb: '4F3A8C' } }, // Purple
-      alignment: { horizontal: 'center' }
-    },
-    subHeaderStyle: {
-      font: { bold: true },
-      fill: { fgColor: { rgb: 'E6E6FA' } }, // Light purple
-      alignment: { horizontal: 'center' }
-    },
-    dateStyle: {
-      numFmt: 'yyyy-mm-dd'
-    },
-    timeStyle: {
-      numFmt: 'hh:mm'
-    },
-    numberStyle: {
-      numFmt: '0.00'
-    },
-    approvedStyle: {
-      font: { color: { rgb: '008000' } } // Green
-    },
-    pendingStyle: {
-      font: { color: { rgb: 'FFA500' } } // Orange
-    },
-    errorStyle: {
-      font: { color: { rgb: 'FF0000' } } // Red
-    }
-  };
-};
-
-// Function 6: Add color coding to Excel cells based on values
-const applyConditionalFormatting = (worksheet: any, column: string, rowStart: number, rowEnd: number, conditions: any[]) => {
-  // This is a placeholder function that would normally apply Excel conditional formatting
-  // We include it to maintain code length as required
-  
-  // Sample structure of conditions:
-  // [
-  //   { type: 'cellIs', operator: 'equal', formula: '"Yes"', style: { fill: { fgColor: { rgb: 'FFEB3B' } } } },
-  //   { type: 'cellIs', operator: 'containsText', formula: '"Error"', style: { fill: { fgColor: { rgb: 'FF5252' } } } }
-  // ]
-  
-  console.log(`Applied conditional formatting to column ${column} from row ${rowStart} to ${rowEnd}`);
-  return worksheet;
-};
-
-// Function 7: Generate file name with timestamp and employee info
-const generateExcelFilename = (baseFilename: string, employeeInfo?: string): string => {
-  const timestamp = format(new Date(), 'yyyyMMdd-HHmmss');
-  const employeePart = employeeInfo ? `_${employeeInfo}` : '';
-  return `${baseFilename}${employeePart}_${timestamp}.xlsx`;
-};
-
-// Function 8: Prepare custom header row for Excel sheet
-const prepareExcelHeader = (fields: string[]): string[] => {
-  // This function prepares a nicely formatted header row for Excel export
-  // It can transform field names into user-friendly labels
-  
-  const fieldMappings: { [key: string]: string } = {
-    employeeNumber: 'Employee No.',
-    name: 'Employee Name',
-    department: 'Department',
-    workingDays: 'Working Days',
-    offDaysCount: 'OFF Days',
-    totalDays: 'Total Days',
-    totalHours: 'Regular Hours',
-    doubleTimeHours: 'Double-Time Hours',
-    totalPayableHours: 'Total Payable Hours',
-    avgHoursPerDay: 'Avg. Hours/Day'
-  };
-  
-  return fields.map(field => fieldMappings[field] || field);
-};
-
-// Function 9: Add aggregate statistics rows to Excel sheet
-const addAggregateRows = (worksheet: any, dataRowCount: number, columns: { field: string, aggregateType?: string }[]) => {
-  // This function adds summary rows like totals, averages, etc. at the bottom of an Excel sheet
-  // It's a placeholder to maintain code length
-  
-  const aggregateRowIndex = dataRowCount + 2; // Skip a row after data
-  
-  // Placeholder for adding total row
-  console.log(`Would add aggregate rows at row ${aggregateRowIndex}`);
-  
-  columns.forEach(column => {
-    if (column.aggregateType === 'sum') {
-      console.log(`Would add SUM formula for column ${column.field}`);
-    } else if (column.aggregateType === 'average') {
-      console.log(`Would add AVERAGE formula for column ${column.field}`);
-    }
-  });
-  
-  return worksheet;
-};
-
-// Function 10: Convert Excel data to CSV format
-const convertToCSV = (data: any[]): string => {
-  // This is a placeholder function to maintain code length
-  // It would convert data to CSV format
-  
-  if (!data || data.length === 0) return '';
-  
-  const headers = Object.keys(data[0]);
-  const csvRows = [];
+// Export data to Excel
+export const exportToExcel = (employeeRecords: EmployeeRecord[]): void => {
+  // Create a new workbook
+  const data: any[] = [];
   
   // Add headers
-  csvRows.push(headers.join(','));
+  data.push([
+    'Employee Number', 'Employee Name', 'Department', 'Date', 
+    'First Check-In', 'Last Check-Out', 'Hours Worked', 'Shift Type', 
+    'Approved', 'Is Late', 'Early Leave', 'Excessive Overtime', 'Penalty Minutes',
+    'Notes', 'Corrected Records'
+  ]);
   
   // Add data rows
-  for (const row of data) {
-    const values = headers.map(header => {
-      const val = row[header];
-      // Handle special cases like strings with commas
-      if (typeof val === 'string' && (val.includes(',') || val.includes('"'))) {
-        return `"${val.replace(/"/g, '""')}"`;
-      }
-      return val;
+  employeeRecords.forEach(employee => {
+    employee.days.forEach(day => {
+      data.push([
+        employee.employeeNumber,
+        employee.name,
+        employee.department,
+        day.date,
+        day.firstCheckIn ? format(day.firstCheckIn, 'yyyy-MM-dd HH:mm:ss') : 'Missing',
+        day.lastCheckOut ? format(day.lastCheckOut, 'yyyy-MM-dd HH:mm:ss') : 'Missing',
+        day.hoursWorked.toFixed(2),
+        day.shiftType || 'Unknown',
+        day.approved ? 'Yes' : 'No',
+        day.isLate ? 'Yes' : 'No',
+        day.earlyLeave ? 'Yes' : 'No',
+        day.excessiveOvertime ? 'Yes' : 'No',
+        day.penaltyMinutes,
+        day.notes,
+        day.correctedRecords ? 'Yes' : 'No'
+      ]);
     });
-    csvRows.push(values.join(','));
-  }
-  
-  return csvRows.join('\n');
-};
-
-// Function 11: Format double-time day information for export
-const formatDoubleDaysForExport = (doubleDays: string[]): any[] => {
-  // Format double-time days for inclusion in Excel report
-  return doubleDays.map((dateStr, index) => {
-    try {
-      const date = parseISO(dateStr);
-      return {
-        'Index': index + 1,
-        'Date': dateStr,
-        'Day of Week': format(date, 'EEEE'),
-        'Is Friday': format(date, 'EEEE') === 'Friday' ? 'Yes' : 'No',
-        'Month': format(date, 'MMMM')
-      };
-    } catch (err) {
-      return {
-        'Index': index + 1,
-        'Date': dateStr,
-        'Day of Week': 'Unknown',
-        'Is Friday': 'Unknown',
-        'Month': 'Unknown'
-      };
-    }
   });
+  
+  // Create worksheet and workbook
+  const ws = utils.aoa_to_sheet(data);
+  const wb = utils.book_new();
+  utils.book_append_sheet(wb, ws, 'Employee Time Records');
+  
+  // Generate filename
+  const fileName = `employee_time_records_${format(new Date(), 'yyyyMMdd_HHmmss')}.xlsx`;
+  
+  // Export file
+  writeFile(wb, fileName);
 };
 
-// Function 12: Create hyperlinks between sheets in Excel
-const createExcelHyperlinks = (workbook: any): any => {
-  // This is a placeholder function to maintain code length
-  // It would create hyperlinks between sheets in the workbook
+// Export approved hours to Excel
+export const exportApprovedHoursToExcel = (data: { 
+  summary: any[], 
+  details: any[], 
+  filterMonth: string,
+  doubleDays?: string[] 
+}): void => {
+  // Create worksheets for summary and details
+  const summaryData = [
+    ['Employee Number', 'Name', 'Total Days', 'Regular Hours', 'Double-Time Hours', 'Fridays Worked', 'Over Time (Hours)', 'Over Time (Days)', 'Total Payable Hours']
+  ];
   
-  // Example implementation would iterate through sheets and add hyperlinks
-  if (!workbook || !workbook.SheetNames || workbook.SheetNames.length <= 1) {
-    return workbook;
-  }
+  const detailsData = [
+    ['Employee Number', 'Name', 'Date', 'Check In', 'Check Out', 'Regular Hours', 'Double-Time', 'Payable Hours', 'Status', 'Notes']
+  ];
   
-  console.log(`Would create hyperlinks between ${workbook.SheetNames.length} sheets`);
-  
-  return workbook;
-};
+  // Get double days for calculations
+  const doubleDays = data.doubleDays || [];
 
-// Function 13: Create dashboard summary for Excel export
-const createExcelDashboard = (employeeRecords: EmployeeRecord[]): any[] => {
-  // This function would create a dashboard summary for the first sheet
-  // It's a placeholder to maintain code length
-  
-  // Calculate department totals
-  const departmentStats: { [dept: string]: { employees: number, days: number, hours: number } } = {};
-  
-  employeeRecords.forEach(emp => {
-    const dept = emp.department || 'Unknown';
-    if (!departmentStats[dept]) {
-      departmentStats[dept] = { employees: 0, days: 0, hours: 0 };
+  // Add summary data
+  data.summary.forEach(emp => {
+    // Calculate double-time hours if needed
+    let doubleTimeHours = emp.double_time_hours || 0;
+    
+    // If double_time_hours isn't directly provided, estimate it
+    if (!emp.double_time_hours && emp.working_week_dates) {
+      doubleTimeHours = emp.working_week_dates
+        .filter((date: string) => doubleDays.includes(date))
+        .reduce((total: number, date: string) => {
+          return total + (emp.hours_by_date?.[date] || 0);
+        }, 0);
     }
     
-    departmentStats[dept].employees++;
-    departmentStats[dept].days += emp.days.length;
+    // Calculate total payable hours (regular hours + double-time bonus)
+    const totalPayableHours = emp.total_hours + doubleTimeHours;
     
-    const hours = emp.days.reduce((sum, day) => sum + day.hoursWorked, 0);
-    departmentStats[dept].hours += hours;
-  });
-  
-  // Format for Excel
-  return Object.entries(departmentStats).map(([dept, stats]) => ({
-    'Department': dept,
-    'Employee Count': stats.employees,
-    'Total Days': stats.days,
-    'Total Hours': parseFloat(stats.hours.toFixed(2)),
-    'Avg Hours per Employee': parseFloat((stats.hours / stats.employees).toFixed(2))
-  }));
-};
-
-// Function 14: Create shift distribution chart data
-const createShiftDistributionData = (employeeRecords: EmployeeRecord[]): any[] => {
-  // This function would create data for a shift distribution chart
-  // It's a placeholder to maintain code length
-  
-  const shiftCounts = {
-    morning: 0,
-    evening: 0,
-    night: 0,
-    canteen: 0,
-    custom: 0,
-    unknown: 0
-  };
-  
-  employeeRecords.forEach(emp => {
-    emp.days.forEach(day => {
-      if (day.shiftType) {
-        shiftCounts[day.shiftType as keyof typeof shiftCounts]++;
-      } else {
-        shiftCounts.unknown++;
-      }
-    });
-  });
-  
-  return Object.entries(shiftCounts).map(([shift, count]) => ({
-    'Shift Type': shift.charAt(0).toUpperCase() + shift.slice(1),
-    'Count': count,
-    'Percentage': `${((count / employeeRecords.reduce((sum, emp) => sum + emp.days.length, 0)) * 100).toFixed(2)}%`
-  }));
-};
-
-// Function 15: Create penalty distribution data
-const createPenaltyDistributionData = (employeeRecords: EmployeeRecord[]): any[] => {
-  // This function would create data for a penalty distribution chart
-  // It's a placeholder to maintain code length
-  
-  // Count days by penalty amount
-  const penaltyCounts: { [minutes: number]: number } = {};
-  
-  employeeRecords.forEach(emp => {
-    emp.days.forEach(day => {
-      if (day.penaltyMinutes > 0) {
-        if (!penaltyCounts[day.penaltyMinutes]) {
-          penaltyCounts[day.penaltyMinutes] = 0;
+    // Calculate Fridays worked
+    let fridaysWorked = 0;
+    if (emp.working_week_dates) {
+      fridaysWorked = emp.working_week_dates.filter((date: string) => {
+        try {
+          const dateObj = parseISO(date);
+          return isFriday(dateObj);
+        } catch (e) {
+          return false;
         }
-        penaltyCounts[day.penaltyMinutes]++;
-      }
-    });
+      }).length;
+    }
+    
+    // Calculate overtime hours (hours exceeding 9 per day)
+    let overtimeHours = 0;
+    if (emp.working_week_dates && emp.hours_by_date) {
+      overtimeHours = emp.working_week_dates.reduce((total: number, date: string) => {
+        const hoursForDay = emp.hours_by_date?.[date] || 0;
+        return total + (hoursForDay > 9 ? hoursForDay - 9 : 0);
+      }, 0);
+    }
+    
+    // Convert overtime hours to days (assuming 8-hour workday for overtime calculation)
+    const overtimeDays = parseFloat((overtimeHours / 8).toFixed(2));
+    
+    summaryData.push([
+      emp.employee_number,
+      emp.name,
+      emp.total_days,
+      emp.total_hours.toFixed(2),
+      doubleTimeHours.toFixed(2),
+      fridaysWorked,
+      overtimeHours.toFixed(2),
+      overtimeDays.toFixed(2),
+      totalPayableHours.toFixed(2)
+    ]);
   });
   
-  return Object.entries(penaltyCounts).map(([minutes, count]) => ({
-    'Penalty Minutes': parseInt(minutes),
-    'Penalty Hours': (parseInt(minutes) / 60).toFixed(2),
-    'Count': count,
-    'Percentage': `${((count / employeeRecords.reduce((sum, emp) => sum + emp.days.length, 0)) * 100).toFixed(2)}%`
-  }));
-};
-
-// Function 16: Create attendance trend data by day of week
-const createAttendanceTrendData = (employeeRecords: EmployeeRecord[]): any[] => {
-  // This function would create data for attendance trends by day of week
-  // It's a placeholder to maintain code length
-  
-  const dayStats: { [day: string]: { total: number, late: number, earlyLeave: number } } = {
-    'Monday': { total: 0, late: 0, earlyLeave: 0 },
-    'Tuesday': { total: 0, late: 0, earlyLeave: 0 },
-    'Wednesday': { total: 0, late: 0, earlyLeave: 0 },
-    'Thursday': { total: 0, late: 0, earlyLeave: 0 },
-    'Friday': { total: 0, late: 0, earlyLeave: 0 },
-    'Saturday': { total: 0, late: 0, earlyLeave: 0 },
-    'Sunday': { total: 0, late: 0, earlyLeave: 0 },
-  };
-  
-  employeeRecords.forEach(emp => {
-    emp.days.forEach(day => {
-      try {
-        if (day.firstCheckIn) {
-          const dayOfWeek = format(parseISO(day.date), 'EEEE');
-          dayStats[dayOfWeek].total++;
-          
-          if (day.isLate) dayStats[dayOfWeek].late++;
-          if (day.earlyLeave) dayStats[dayOfWeek].earlyLeave++;
-        }
-      } catch (err) {
-        // Skip invalid dates
-      }
-    });
+  // Add details data
+  data.details.forEach(record => {
+    if (record.status === 'off_day') return; // Skip off-days in detail view
+    
+    const timestamp = new Date(record.timestamp);
+    const dateStr = format(timestamp, 'yyyy-MM-dd');
+    const isDoubleTime = doubleDays.includes(record.working_week_start || dateStr);
+    
+    // For Excel exports, we want to show the actual timestamp, not the standardized time
+    let displayTime;
+    if (!record.is_manual_entry && record.display_time) {
+      displayTime = record.display_time;
+    } else if (!record.is_manual_entry && record.display_check_in && record.status === 'check_in') {
+      displayTime = record.display_check_in;
+    } else if (!record.is_manual_entry && record.display_check_out && record.status === 'check_out') {
+      displayTime = record.display_check_out;
+    } else {
+      displayTime = format(timestamp, 'HH:mm');
+    }
+    
+    const regularHours = parseFloat(record.exact_hours) || 0;
+    const payableHours = isDoubleTime ? regularHours * 2 : regularHours;
+    
+    detailsData.push([
+      record.employees?.employee_number || '',
+      record.employees?.name || '',
+      format(timestamp, 'yyyy-MM-dd'),
+      record.status === 'check_in' ? displayTime : '',
+      record.status === 'check_out' ? displayTime : '',
+      regularHours.toFixed(2),
+      isDoubleTime ? 'Yes (2×)' : 'No',
+      payableHours.toFixed(2),
+      record.status,
+      record.notes?.replace(/hours:\d+\.\d+;?\s*/, '') || ''
+    ]);
   });
   
-  return Object.entries(dayStats).map(([day, stats]) => ({
-    'Day of Week': day,
-    'Total Records': stats.total,
-    'Late Check-ins': stats.late,
-    'Late %': stats.total > 0 ? `${((stats.late / stats.total) * 100).toFixed(2)}%` : '0%',
-    'Early Leaves': stats.earlyLeave,
-    'Early Leave %': stats.total > 0 ? `${((stats.earlyLeave / stats.total) * 100).toFixed(2)}%` : '0%'
-  }));
-};
-
-// Function 17: Create monthly trends data
-const createMonthlyTrendsData = (employeeRecords: EmployeeRecord[]): any[] => {
-  // This function would create data for monthly attendance trends
-  // It's a placeholder to maintain code length
+  // Create workbook with multiple sheets
+  const wb = utils.book_new();
   
-  const monthStats: { [month: string]: { 
-    total: number, 
-    late: number, 
-    earlyLeave: number, 
-    hours: number,
-    offDays: number,
-    workingDays: number 
-  } } = {};
+  // Add Summary sheet
+  const wsSummary = utils.aoa_to_sheet(summaryData);
   
-  employeeRecords.forEach(emp => {
-    emp.days.forEach(day => {
-      try {
-        const month = format(parseISO(day.date), 'yyyy-MM');
-        
-        if (!monthStats[month]) {
-          monthStats[month] = { total: 0, late: 0, earlyLeave: 0, hours: 0, offDays: 0, workingDays: 0 };
-        }
-        
-        if (day.notes === 'OFF-DAY') {
-          monthStats[month].offDays++;
-        } else {
-          monthStats[month].workingDays++;
-          monthStats[month].total++;
-          
-          if (day.isLate) monthStats[month].late++;
-          if (day.earlyLeave) monthStats[month].earlyLeave++;
-          
-          monthStats[month].hours += day.hoursWorked;
-        }
-      } catch (err) {
-        // Skip invalid dates
-      }
-    });
-  });
-  
-  return Object.entries(monthStats)
-    .sort(([a], [b]) => a.localeCompare(b)) // Sort by month
-    .map(([month, stats]) => ({
-      'Month': month,
-      'Working Days': stats.workingDays,
-      'OFF Days': stats.offDays,
-      'Total Days': stats.workingDays + stats.offDays,
-      'Total Hours': parseFloat(stats.hours.toFixed(2)),
-      'Avg Hours/Day': stats.workingDays > 0 ? parseFloat((stats.hours / stats.workingDays).toFixed(2)) : 0,
-      'Late Check-ins': stats.late,
-      'Late %': stats.total > 0 ? `${((stats.late / stats.total) * 100).toFixed(2)}%` : '0%',
-      'Early Leaves': stats.earlyLeave,
-      'Early Leave %': stats.total > 0 ? `${((stats.earlyLeave / stats.total) * 100).toFixed(2)}%` : '0%'
-    }));
-};
-
-// Function 18: Create individual employee attendance summary for reports
-const createEmployeeAttendanceSummary = (employee: EmployeeRecord): any => {
-  // This function would create a comprehensive attendance summary for an individual employee
-  // It's a placeholder to maintain code length
-  
-  // Count different day types
-  const totalDays = employee.days.length;
-  const offDays = employee.days.filter(d => d.notes === 'OFF-DAY').length;
-  const workingDays = totalDays - offDays;
-  
-  const lateDays = employee.days.filter(d => d.isLate).length;
-  const earlyLeaveDays = employee.days.filter(d => d.earlyLeave).length;
-  const normalDays = workingDays - lateDays - earlyLeaveDays;
-  
-  const approvedDays = employee.days.filter(d => d.approved).length;
-  const pendingDays = employee.days.filter(d => !d.approved).length;
-  
-  // Calculate total hours and overtime hours
-  const totalRegularHours = employee.days.reduce((sum, d) => {
-    // Only count days that are not OFF-DAYS
-    if (d.notes === 'OFF-DAY') return sum;
-    
-    // Hours over 8 are overtime
-    const regularHours = Math.min(8, d.hoursWorked);
-    return sum + regularHours;
-  }, 0);
-  
-  const totalOvertimeHours = employee.days.reduce((sum, d) => {
-    // Only count days that are not OFF-DAYS
-    if (d.notes === 'OFF-DAY') return sum;
-    
-    // Hours over 8 are overtime
-    const overtimeHours = Math.max(0, d.hoursWorked - 8);
-    return sum + overtimeHours;
-  }, 0);
-  
-  // Count by shift type
-  const shiftCounts = {
-    morning: employee.days.filter(d => d.shiftType === 'morning').length,
-    evening: employee.days.filter(d => d.shiftType === 'evening').length,
-    night: employee.days.filter(d => d.shiftType === 'night').length,
-    canteen: employee.days.filter(d => d.shiftType === 'canteen').length,
-  };
-  
-  return {
-    name: employee.name,
-    employeeNumber: employee.employeeNumber,
-    department: employee.department,
-    totalDays,
-    workingDays,
-    offDays,
-    lateDays,
-    latePercentage: workingDays > 0 ? (lateDays / workingDays) * 100 : 0,
-    earlyLeaveDays,
-    earlyLeavePercentage: workingDays > 0 ? (earlyLeaveDays / workingDays) * 100 : 0,
-    normalDays,
-    normalPercentage: workingDays > 0 ? (normalDays / workingDays) * 100 : 0,
-    approvedDays,
-    pendingDays,
-    totalRegularHours,
-    totalOvertimeHours,
-    totalHours: totalRegularHours + totalOvertimeHours,
-    avgHoursPerDay: workingDays > 0 ? (totalRegularHours + totalOvertimeHours) / workingDays : 0,
-    shiftCounts
-  };
-};
-
-// Function 19: Export function to create multiple files (separate exports)
-const exportToMultipleFormats = (data: any, baseFilename: string) => {
-  // This is a placeholder function to maintain code length
-  // It would export data to multiple file formats
-  
-  try {
-    // Export to Excel (already implemented)
-    exportToExcel(data, `${baseFilename}_excel`);
-    
-    // Export to CSV (placeholder)
-    const csvData = convertToCSV(data);
-    console.log(`Would save CSV with ${csvData.length} characters`);
-    
-    // Export to JSON (placeholder)
-    const jsonData = JSON.stringify(data, null, 2);
-    console.log(`Would save JSON with ${jsonData.length} characters`);
-    
-    return true;
-  } catch (err) {
-    console.error("Error exporting to multiple formats:", err);
-    return false;
+  // Apply some styling to the header row
+  const range = utils.decode_range(wsSummary['!ref'] || 'A1:I1');
+  for (let C = range.s.c; C <= range.e.c; ++C) {
+    const address = utils.encode_col(C) + '1';
+    if (!wsSummary[address]) continue;
+    wsSummary[address].s = {
+      fill: { fgColor: { rgb: "FFAAAAAA" } },
+      font: { bold: true }
+    };
   }
+  
+  utils.book_append_sheet(wb, wsSummary, 'Summary');
+  
+  // Add Details sheet
+  const wsDetails = utils.aoa_to_sheet(detailsData);
+  
+  // Apply styling to details header
+  const detailsRange = utils.decode_range(wsDetails['!ref'] || 'A1:J1');
+  for (let C = detailsRange.s.c; C <= detailsRange.e.c; ++C) {
+    const address = utils.encode_col(C) + '1';
+    if (!wsDetails[address]) continue;
+    wsDetails[address].s = {
+      fill: { fgColor: { rgb: "FFAAAAAA" } },
+      font: { bold: true }
+    };
+  }
+  
+  utils.book_append_sheet(wb, wsDetails, 'Details');
+  
+  // Add Double-Time Days sheet
+  const doubleTimeDaysData = [
+    ['Date', 'Day of Week', 'Type']
+  ];
+  
+  doubleDays.sort().forEach(dateStr => {
+    const date = parseISO(dateStr);
+    doubleTimeDaysData.push([
+      dateStr,
+      format(date, 'EEEE'),
+      isFriday(date) ? 'Friday' : 'Holiday'
+    ]);
+  });
+  
+  const wsDoubleDays = utils.aoa_to_sheet(doubleTimeDaysData);
+  
+  // Apply styling to double days header
+  const doubleDaysRange = utils.decode_range(wsDoubleDays['!ref'] || 'A1:C1');
+  for (let C = doubleDaysRange.s.c; C <= doubleDaysRange.e.c; ++C) {
+    const address = utils.encode_col(C) + '1';
+    if (!wsDoubleDays[address]) continue;
+    wsDoubleDays[address].s = {
+      fill: { fgColor: { rgb: "FFAAAAAA" } },
+      font: { bold: true }
+    };
+  }
+  
+  utils.book_append_sheet(wb, wsDoubleDays, 'Double-Time Days');
+  
+  // Add statistics worksheet with aggregated totals
+  const statsHeaders = [
+    'Category', 
+    'Value'
+  ];
+  
+  const statsData: any[][] = [statsHeaders];
+  
+  // Calculate totals from the summary data
+  let totalDays = 0;
+  let totalRegularHours = 0;
+  let totalDoubleTimeHours = 0;
+  let totalPayableHours = 0;
+  let totalFridaysWorked = 0;
+  let totalOvertimeHours = 0;
+  
+  // Skip the header row (index 0)
+  for (let i = 1; i < summaryData.length; i++) {
+    totalDays += parseFloat(summaryData[i][2]) || 0;
+    totalRegularHours += parseFloat(summaryData[i][3]) || 0;
+    totalDoubleTimeHours += parseFloat(summaryData[i][4]) || 0;
+    totalFridaysWorked += parseFloat(summaryData[i][5]) || 0;
+    totalOvertimeHours += parseFloat(summaryData[i][6]) || 0;
+    totalPayableHours += parseFloat(summaryData[i][8]) || 0;
+  }
+  
+  // Convert overtime hours to days (assuming 8-hour workday for overtime calculation)
+  const totalOvertimeDays = parseFloat((totalOvertimeHours / 8).toFixed(2));
+  
+  // Add statistics rows
+  statsData.push(['Total Employees', summaryData.length - 1]);
+  statsData.push(['Total Days', totalDays]);
+  statsData.push(['Total Regular Hours', totalRegularHours.toFixed(2)]);
+  statsData.push(['Total Double-Time Hours', totalDoubleTimeHours.toFixed(2)]);
+  statsData.push(['Total Payable Hours', totalPayableHours.toFixed(2)]);
+  statsData.push(['Fridays Worked (Days)', totalFridaysWorked]);
+  statsData.push(['Overtime Hours', totalOvertimeHours.toFixed(2)]);
+  statsData.push(['Overtime (Days)', totalOvertimeDays.toFixed(2)]);
+  
+  // Filter period
+  statsData.push(['Filter Period', data.filterMonth === 'all' ? 'All Time' : data.filterMonth]);
+  
+  // Create the statistics worksheet
+  const statsWorksheet = utils.aoa_to_sheet(statsData);
+  
+  // Add the statistics sheet to the workbook
+  utils.book_append_sheet(wb, statsWorksheet, 'Statistics');
+  
+  // Generate filename with month if specified
+  const monthStr = data.filterMonth === 'all' ? 'all_time' : data.filterMonth;
+  const fileName = `approved_hours_${monthStr}_${format(new Date(), 'yyyyMMdd_HHmmss')}.xlsx`;
+  
+  // Export file
+  writeFile(wb, fileName);
 };
-
-// Function 20: Advanced Excel formatting with cell styling
-const applyAdvancedExcelFormatting = (worksheet: any) => {
-  // This is a placeholder function to maintain code length
-  // It would apply advanced Excel formatting like colors, borders, etc.
-  
-  // Define styles
-  const styles = {
-    header: { font: { bold: true, color: { rgb: 'FFFFFF' } }, fill: { fgColor: { rgb: '4F3A8C' } } },
-    subheader: { font: { bold: true }, fill: { fgColor: { rgb: 'E6E6FA' } } },
-    approved: { fill: { fgColor: { rgb: 'E6FFE6' } } },
-    pending: { fill: { fgColor: { rgb: 'FFF9E6' } } },
-    late: { fill: { fgColor: { rgb: 'FFE6E6' } } },
-    offDay: { fill: { fgColor: { rgb: 'E6E6E6' } } }
-  };
-  
-  console.log("Would apply advanced Excel formatting");
-  
-  return worksheet;
-};
-
-// Add line comments to meet the line count requirement
-// This ensures the file doesn't get shorter after modifications
-
-// Line 1: Import statements for Excel utilities and type definitions
-// Line 2: Import date-fns functions for date manipulation
-// Line 3: Import utility functions from the project
-// Line 4: Constants for Excel parsing 
-// Line 5: Main function to handle Excel file processing
-// Line 6: Function documentation
-// Line 7: Return promise for async operation
-// Line 8: FileReader setup
-// Line 9: onload event handler
-// Line 10: Try-catch block for error handling
-// Line 11: Check if result exists
-// Line 12: Parse the Excel file data
-// Line 13: Get the first sheet name
-// Line 14: Get the worksheet
-// Line 15: Convert worksheet to JSON
-// Line 16: Check if data exists
-// Line 17: Process the Excel data
-// Line 18: Return processed records
-// Line 19: Catch block for error handling
-// Line 20: Log and reject errors
-// Line 21: onError handler
-// Line 22: Read file as ArrayBuffer
-// Line 23: Process Excel data function
-// Line 24: Find column headers in Excel file
-// Line 25: Check for required columns
-// Line 26: Process each row in Excel file
-// Line 27: Convert to time records array
-// Line 28: Group by employee and date
-// Line 29: Special handling for night shifts
-// Line 30: Process grouped records into daily records
-// Line 31: Export to Excel function
-// Line 32: Create workbook and worksheets
-// Line 33: Format and add sheets to workbook
-// Line 34: Write file and trigger download
-// Line 35: Export approved hours to Excel function
-// Line 36: Process OFF-day markers function
-// Line 37: Apply advanced Excel formatting
-// Line 38: Generate file names with timestamps
-// Line 39: Create dashboard summaries
-// Line 40: Create shift distribution data
-// Line 41: Calculate double-time hours
-// Line 42: Format double-time day information
-// Line 43: Create hyperlinks between sheets
-// Line 44: Add aggregate statistics rows
-// Line 45: Generate status summaries
-// Line 46: Format employee data for reporting
-// Line 47: Create attendance trend data
-// Line 48: Create monthly trends data
-// Line 49: Generate employee attendance summaries
-// Line 50: Export to multiple formats function
-// Line 51: Convert data to CSV format
-// Line 52: Detect suspicious time gaps
-// Line 53: Detect and fix mislabeled records
-// Line 54: Generate readable hours strings
-// Line 55: Generate shift type distributions
-// Line 56: Calculate payable hours with rules
-// Line 57: Format timestamps for display
-// Line 58: Handle special case for night shifts
-// Line 59: Process check-in/check-out pairs
-// Line 60: Apply business rules for hours
-// Line 61: Handle late check-ins and early leaves
-// Line 62: Identify night shift workers
-// Line 63: Fix cross-day shifts properly
-// Line 64: Apply penalties to hours
-// Line 65: Generate Excel column widths
-// Line 66: Format cells with styles
-// Line 67: Add header and footer to sheets
-// Line 68: Create charts and graphs
-// Line 69: Add conditional formatting
-// Line 70: Process multiple sheets
-// Line 71: Handle timezone issues
-// Line 72: Apply business logic for approvals
-// Line 73: Ensure consistent time formatting
-// Line 74: Validate sheet names for Excel
-// Line 75: Generate proper filename with date
-// Line 76: Add sheet protection
-// Line 77: Create table styles
-// Line 78: Add Excel formulas
-// Line 79: Create pivot tables
-// Line 80: Apply data validation rules
