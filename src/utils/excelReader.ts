@@ -24,18 +24,11 @@ export const handleExcelFile = async (file: File): Promise<EmployeeRecord[]> => 
         
         console.log('File read successfully, parsing Excel data...');
         const workbook = XLSX.read(data, { type: 'array' }); // Changed from 'binary' to 'array'
-        
-        // Check if workbook has sheets
-        if (!workbook.SheetNames || workbook.SheetNames.length === 0) {
-          reject(new Error('Excel file contains no sheets'));
-          return;
-        }
-        
         const firstSheetName = workbook.SheetNames[0];
         const worksheet = workbook.Sheets[firstSheetName];
         
         // Convert to JSON
-        const jsonData = XLSX.utils.sheet_to_json(worksheet, { raw: false, defval: '' });
+        const jsonData = XLSX.utils.sheet_to_json(worksheet, { raw: false });
         
         console.log('Excel data parsed successfully:', jsonData.length, 'rows');
         
@@ -46,8 +39,6 @@ export const handleExcelFile = async (file: File): Promise<EmployeeRecord[]> => 
 
         // Log a sample row for debugging
         console.log('Sample row:', jsonData[0]);
-        // Debug the Excel data structure
-        debugExcelData(jsonData);
         
         // Process data
         const result = processExcelData(jsonData);
@@ -84,8 +75,6 @@ export const processExcelData = (data: any[]): EmployeeRecord[] => {
   // Normalize the column names
   const sampleRow = data[0];
   const keys = Object.keys(sampleRow);
-  
-  console.log('Available columns:', keys);
 
   // Required columns
   let departmentColumn = '';
@@ -94,89 +83,38 @@ export const processExcelData = (data: any[]): EmployeeRecord[] => {
   let timestampColumn = '';
   let statusColumn = '';
   
-  // Find the matching columns with more flexible matching (case-insensitive)
+  // Find the matching columns (case-insensitive)
   for (const key of keys) {
-    const lowerKey = key.toLowerCase().trim();
-    
-    // Department column patterns
-    if (
-      lowerKey.includes('department') || 
-      lowerKey.includes('dept') || 
-      lowerKey === 'dept' || 
-      lowerKey === 'dep' || 
-      lowerKey.includes('division') ||
-      lowerKey.includes('section')
-    ) {
+    const lowerKey = key.toLowerCase();
+    if (lowerKey.includes('department') || lowerKey.includes('dept')) {
       departmentColumn = key;
-      console.log('Found department column:', key);
-    } 
-    // Name column patterns
-    else if (
-      lowerKey.includes('name') || 
-      lowerKey.includes('employee name') || 
-      lowerKey === 'name' || 
-      lowerKey === 'emp name' || 
-      lowerKey.includes('person') ||
-      lowerKey.includes('staff')
-    ) {
+    } else if (lowerKey.includes('name') || lowerKey.includes('employee name')) {
       nameColumn = key;
-      console.log('Found name column:', key);
-    } 
-    // Employee number column patterns
-    else if (
+    } else if (
       lowerKey.includes('employee no') || 
       lowerKey.includes('employee number') || 
       lowerKey.includes('number') || 
       lowerKey.includes('emp no') || 
-      lowerKey.includes('emp #') || 
-      lowerKey.includes('employee id') || 
-      lowerKey.includes('emp id') || 
-      lowerKey.includes('id') || 
-      lowerKey.includes('code') || 
-      lowerKey.includes('staff id') ||
-      lowerKey === 'no.' || 
-      lowerKey === 'no' || 
-      lowerKey === '#'
+      lowerKey.includes('employee id')
     ) {
       employeeNumberColumn = key;
-      console.log('Found employee number column:', key);
-    } 
-    // Timestamp column patterns
-    else if (
+    } else if (
       lowerKey.includes('date') || 
       lowerKey.includes('time') || 
       lowerKey.includes('timestamp') || 
-      lowerKey.includes('check time') || 
-      lowerKey.includes('clock') || 
-      lowerKey.includes('punch') || 
-      lowerKey === 'date' || 
-      lowerKey === 'time' ||
-      lowerKey === 'clock in' ||
-      lowerKey === 'clock out' ||
-      lowerKey === 'datetime'
+      lowerKey.includes('check time')
     ) {
       timestampColumn = key;
-      console.log('Found timestamp column:', key);
-    } 
-    // Status column patterns
-    else if (
+    } else if (
       lowerKey.includes('status') || 
       lowerKey.includes('type') || 
       lowerKey.includes('check type') ||
       lowerKey.includes('c/type') ||
       lowerKey.includes('c/in c/out') ||
       lowerKey.includes('in/out') ||
-      lowerKey.includes('event') ||
-      lowerKey.includes('action') ||
-      lowerKey.includes('direction') ||
-      lowerKey.includes('io') ||
-      lowerKey === 'in' ||
-      lowerKey === 'out' ||
-      lowerKey === 'io type' ||
-      lowerKey === 'i/o'
+      lowerKey.includes('event')
     ) {
       statusColumn = key;
-      console.log('Found status column:', key);
     }
   }
   
@@ -188,74 +126,9 @@ export const processExcelData = (data: any[]): EmployeeRecord[] => {
     statusColumn
   });
   
-  // If we're missing required columns, try to infer from data patterns
+  // Validate that we found all required columns
   if (!nameColumn || !employeeNumberColumn || !timestampColumn || !statusColumn) {
-    console.log('Missing required columns, attempting to infer from data...');
-    
-    // Attempt to infer columns based on content patterns
-    for (const key of keys) {
-      const sampleValue = String(sampleRow[key]).trim();
-      
-      // If we're missing employee number and this looks like an ID
-      if (!employeeNumberColumn && /^[A-Z0-9]{3,10}$/i.test(sampleValue)) {
-        employeeNumberColumn = key;
-        console.log('Inferred employee number column from pattern:', key);
-      }
-      
-      // If we're missing name and this looks like a name
-      if (!nameColumn && sampleValue.length > 2 && sampleValue.includes(' ') && !/^\d/.test(sampleValue)) {
-        nameColumn = key;
-        console.log('Inferred name column from pattern:', key);
-      }
-      
-      // If we're missing timestamp and this looks like a date/time
-      if (!timestampColumn && (
-        sampleValue.includes('/') || 
-        sampleValue.includes('-') || 
-        sampleValue.includes(':') ||
-        /\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}/.test(sampleValue)
-      )) {
-        timestampColumn = key;
-        console.log('Inferred timestamp column from pattern:', key);
-      }
-      
-      // If we're missing status and this looks like a status
-      if (!statusColumn && (
-        sampleValue.toUpperCase() === 'IN' || 
-        sampleValue.toUpperCase() === 'OUT' ||
-        sampleValue.toUpperCase() === 'CI' ||
-        sampleValue.toUpperCase() === 'CO'
-      )) {
-        statusColumn = key;
-        console.log('Inferred status column from pattern:', key);
-      }
-    }
-  }
-  
-  // Build detailed error message if still missing columns
-  if (!nameColumn || !employeeNumberColumn || !timestampColumn || !statusColumn) {
-    let errorMsg = 'Missing required columns in Excel file.\n\n';
-    
-    if (!nameColumn) {
-      errorMsg += '• Employee Name column not found. Expected headers like: "Name", "Employee Name", etc.\n';
-    }
-    
-    if (!employeeNumberColumn) {
-      errorMsg += '• Employee Number/ID column not found. Expected headers like: "Employee No", "ID", "Code", etc.\n';
-    }
-    
-    if (!timestampColumn) {
-      errorMsg += '• Timestamp/DateTime column not found. Expected headers like: "Date", "Time", "Check Time", etc.\n';
-    }
-    
-    if (!statusColumn) {
-      errorMsg += '• Status/Check Type column not found. Expected headers like: "Status", "Type", "In/Out", etc.\n';
-    }
-    
-    errorMsg += '\nAvailable columns: ' + keys.join(', ') + '\n';
-    errorMsg += '\nPlease ensure your Excel file has the required columns with appropriate headers.';
-    
-    throw new Error(errorMsg);
+    throw new Error(`Missing required columns. Found: Name=${nameColumn}, Employee Number=${employeeNumberColumn}, Timestamp=${timestampColumn}, Status=${statusColumn}`);
   }
   
   // Extract time records
@@ -267,7 +140,6 @@ export const processExcelData = (data: any[]): EmployeeRecord[] => {
     
     // Skip if missing required fields
     if (!row[nameColumn] || !row[employeeNumberColumn] || !row[timestampColumn] || !row[statusColumn]) {
-      console.log('Skipping row due to missing required fields:', row);
       skipCount++;
       continue;
     }
@@ -276,7 +148,7 @@ export const processExcelData = (data: any[]): EmployeeRecord[] => {
     const rawStatus = String(row[statusColumn]).trim().toUpperCase();
     let status: 'check_in' | 'check_out';
     
-    // Parse status with expanded patterns
+    // Parse status
     if (
       rawStatus === 'CI' || 
       rawStatus === 'C/I' || 
@@ -286,107 +158,44 @@ export const processExcelData = (data: any[]): EmployeeRecord[] => {
       rawStatus === 'IN' ||
       rawStatus === 'F1' ||
       rawStatus === 'CHECKIN' ||
-      rawStatus === 'C I' ||
-      rawStatus === 'I' ||
-      rawStatus === '1' ||
-      rawStatus === 'CLOCK IN' ||
-      rawStatus === 'ENTER' ||
-      rawStatus === 'ARRIVAL'
+      rawStatus === 'C I'
     ) {
       status = 'check_in';
     } else {
       status = 'check_out';
     }
     
-    // Parse timestamp with multiple approaches
-    let timestamp: Date | null = null;
-    const rawTimestamp = String(row[timestampColumn]).trim();
-    
+    // Parse timestamp
+    let timestamp: Date;
     try {
-      // Try standard Date constructor first
-      timestamp = new Date(rawTimestamp);
-      
-      // If invalid, try various parsing approaches
+      // Attempt to parse various date/time formats
+      timestamp = new Date(row[timestampColumn]);
       if (isNaN(timestamp.getTime())) {
-        console.log('Standard date parsing failed for:', rawTimestamp);
+        console.warn('Invalid date format, trying alternative parsing:', row[timestampColumn]);
         
-        // Try Excel serial date format
-        const serialDate = parseFloat(rawTimestamp);
+        // Try to handle Excel serial date format
+        const serialDate = parseFloat(row[timestampColumn]);
         if (!isNaN(serialDate)) {
           // Convert Excel serial date to JS Date
+          // Excel dates start from Jan 1, 1900
+          // Jan 1, 1900 in Excel is serial number 1
           const millisecondsPerDay = 24 * 60 * 60 * 1000;
-          timestamp = new Date((serialDate - 25569) * millisecondsPerDay);
-          console.log('Parsed as Excel serial date:', serialDate, 'to', timestamp);
-        } 
-        // Try common date formats
-        else {
-          // Try common date formats with date-fns
-          const dateFormats = [
-            'MM/dd/yyyy HH:mm:ss',
-            'MM/dd/yyyy HH:mm',
-            'dd/MM/yyyy HH:mm:ss',
-            'dd/MM/yyyy HH:mm',
-            'yyyy-MM-dd HH:mm:ss',
-            'yyyy-MM-dd HH:mm',
-            'MM-dd-yyyy HH:mm:ss',
-            'MM-dd-yyyy HH:mm',
-            'dd-MM-yyyy HH:mm:ss',
-            'dd-MM-yyyy HH:mm',
-            'MM/dd/yy HH:mm:ss',
-            'MM/dd/yy HH:mm',
-            'dd/MM/yy HH:mm:ss',
-            'dd/MM/yy HH:mm',
-          ];
-          
-          for (const format of dateFormats) {
-            try {
-              timestamp = parse(rawTimestamp, format, new Date());
-              if (!isNaN(timestamp.getTime())) {
-                console.log('Parsed with format:', format, timestamp);
-                break;
-              }
-            } catch (err) {
-              // Continue to next format
-            }
-          }
-        }
-      }
-      
-      // If still invalid, try parsing components
-      if (timestamp === null || isNaN(timestamp.getTime())) {
-        // Handle special case where date and time might be in separate columns
-        const dateTimePattern = /(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})(?:[\sT]+(\d{1,2}:\d{1,2}(?::\d{1,2})?(?:\s*[AP]M)?)?)?/i;
-        const match = rawTimestamp.match(dateTimePattern);
-        
-        if (match) {
-          const datePart = match[1];
-          const timePart = match[2] || '00:00:00';
-          
-          // Try to parse the combined date and time
-          try {
-            const dateTimeStr = `${datePart} ${timePart}`;
-            timestamp = new Date(dateTimeStr);
-            console.log('Parsed from components:', dateTimeStr, timestamp);
-          } catch (err) {
-            console.error('Failed to parse from components:', err);
-          }
+          const jsDate = new Date((serialDate - 25569) * millisecondsPerDay);
+          timestamp = jsDate;
+        } else {
+          throw new Error('Invalid date format');
         }
       }
     } catch (e) {
-      console.warn('Failed to parse timestamp:', rawTimestamp, e);
-    }
-    
-    // Skip if we couldn't parse the timestamp
-    if (timestamp === null || isNaN(timestamp.getTime())) {
-      console.warn('Skipping row due to invalid timestamp:', rawTimestamp);
+      console.warn('Failed to parse timestamp:', row[timestampColumn]);
       skipCount++;
-      continue;
+      continue;  // Skip this row
     }
     
     // Add to time records
     timeRecords.push({
       department: row[departmentColumn] || '',
-      name: String(row[nameColumn]).trim(),
+      name: row[nameColumn],
       employeeNumber: String(row[employeeNumberColumn]).trim(),
       timestamp,
       status,
@@ -396,35 +205,8 @@ export const processExcelData = (data: any[]): EmployeeRecord[] => {
   
   console.log(`Processed ${timeRecords.length} time records (skipped ${skipCount} rows)`);
   
-  // Verify we have at least some valid records
-  if (timeRecords.length === 0) {
-    throw new Error(
-      "No valid time records found in the file. Please check that:\n\n" +
-      "• Your Excel file has the correct column headers\n" +
-      "• There are valid check-in and check-out records\n" +
-      "• Date/time values are in a recognized format\n" +
-      "• Employee names and numbers are properly formatted\n\n" +
-      "Detected columns: " + 
-      `Name: ${nameColumn || 'Not found'}, ` +
-      `Employee Number: ${employeeNumberColumn || 'Not found'}, ` +
-      `Timestamp: ${timestampColumn || 'Not found'}, ` +
-      `Status: ${statusColumn || 'Not found'}`
-    );
-  }
-  
   // Group time records by employee
   const employeeRecords = processTimeRecords(timeRecords);
-  
-  // Final validation - ensure we have employee records with days
-  if (employeeRecords.length === 0) {
-    throw new Error(
-      "Could not generate employee records from the time data. Please check that:\n\n" +
-      "• Each employee has at least one check-in or check-out record\n" +
-      "• The timestamp values are correctly formatted\n" +
-      "• The in/out status values are correctly identified\n\n" +
-      `Found ${timeRecords.length} time records but could not group them by employee.`
-    );
-  }
   
   console.log(`Final result: ${employeeRecords.length} employee records with data`);
   return employeeRecords;
@@ -719,52 +501,6 @@ export const debugExcelData = (data: any[]): void => {
   console.log('Total rows:', data.length);
   console.log('Columns:', columns);
   console.log('Sample row:', sampleRow);
-  
-  // Log value types for debugging
-  const valueTypes: Record<string, string> = {};
-  for (const key of columns) {
-    const value = sampleRow[key];
-    valueTypes[key] = typeof value === 'object' ? 
-      (value === null ? 'null' : Object.prototype.toString.call(value)) : 
-      typeof value;
-  }
-  console.log('Column value types:', valueTypes);
-  
-  // Log a few sample values for timestamp and status columns
-  const timestampCandidates = columns.filter(col => 
-    col.toLowerCase().includes('time') || 
-    col.toLowerCase().includes('date') || 
-    col.toLowerCase().includes('clock')
-  );
-  
-  const statusCandidates = columns.filter(col => 
-    col.toLowerCase().includes('type') || 
-    col.toLowerCase().includes('status') || 
-    col.toLowerCase().includes('in') || 
-    col.toLowerCase().includes('out')
-  );
-  
-  console.log('Potential timestamp columns:', timestampCandidates);
-  console.log('Potential status columns:', statusCandidates);
-  
-  // Show sample values
-  if (timestampCandidates.length > 0) {
-    console.log('Sample timestamp values:');
-    for (let i = 0; i < Math.min(3, data.length); i++) {
-      const row = data[i];
-      const values = timestampCandidates.map(col => `${col}: ${row[col]}`);
-      console.log(`Row ${i}:`, values.join(', '));
-    }
-  }
-  
-  if (statusCandidates.length > 0) {
-    console.log('Sample status values:');
-    for (let i = 0; i < Math.min(3, data.length); i++) {
-      const row = data[i];
-      const values = statusCandidates.map(col => `${col}: ${row[col]}`);
-      console.log(`Row ${i}:`, values.join(', '));
-    }
-  }
 };
 
 /**

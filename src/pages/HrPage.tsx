@@ -243,7 +243,7 @@ function HrPage() {
       setCurrentFileName('');
     } finally {
       setIsUploading(false);
-      // IMPORTANT: Always reset the file input value to allow re-uploading the same file
+      // Reset the file input
       event.target.value = '';
     }
   };
