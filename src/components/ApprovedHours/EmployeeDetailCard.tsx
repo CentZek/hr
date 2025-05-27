@@ -43,8 +43,8 @@ const EmployeeDetailCard: React.FC<EmployeeDetailCardProps> = ({ employee, doubl
           </div>
           
           <div className="bg-blue-50 p-3 rounded-md">
-            <p className="text-xs text-blue-500">Regular Hours</p>
-            <p className="text-lg font-bold text-blue-700">{regularHours.toFixed(2)}</p>
+            <p className="text-xs text-blue-600 font-medium">Regular Hours</p>
+            <p className="text-lg font-bold text-blue-900">{regularHours.toFixed(2)}</p>
           </div>
           
           <div className="bg-amber-50 p-3 rounded-md">
