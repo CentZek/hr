@@ -11,6 +11,10 @@ export const fetchApprovedHours = async (dateFilter: string = ''): Promise<{
   totalHoursSum: number;
 }> => {
   try {
+    // Initialize variables before using them
+    let startDate = '';
+    let endDate = '';
+    
     // First, select only check-in records (to avoid double-counting hours)
     let query = supabase
       .from('time_records')
@@ -33,9 +37,11 @@ export const fetchApprovedHours = async (dateFilter: string = ''): Promise<{
     if (dateFilter) {
       if (dateFilter.includes('|')) {
         // Custom date range: startDate|endDate
-        const [startDate, endDate] = dateFilter.split('|');
+        const [filterStart, filterEnd] = dateFilter.split('|');
         
-        if (startDate && endDate && isValid(parseISO(startDate)) && isValid(parseISO(endDate))) {
+        if (filterStart && filterEnd && isValid(parseISO(filterStart)) && isValid(parseISO(filterEnd))) {
+          startDate = filterStart;
+          endDate = filterEnd;
           // Fix: Use AND filtering instead of OR filtering
           query = query
             .gte('working_week_start', startDate)
@@ -48,17 +54,14 @@ export const fetchApprovedHours = async (dateFilter: string = ''): Promise<{
           if (year && month) {
             const monthDate = new Date(parseInt(year), parseInt(month) - 1, 1);
             if (isValid(monthDate)) {
-              const startDate = startOfMonth(monthDate);
-              const endDate = endOfMonth(monthDate);
+              startDate = format(startOfMonth(monthDate), 'yyyy-MM-dd');
+              endDate = format(endOfMonth(monthDate), 'yyyy-MM-dd');
               
-              if (isValid(startDate) && isValid(endDate)) {
-                const startStr = format(startDate, 'yyyy-MM-dd');
-                const endStr = format(endDate, 'yyyy-MM-dd');
-                
+              if (isValid(parseISO(startDate)) && isValid(parseISO(endDate))) {
                 // Fix: Use AND filtering instead of OR filtering
                 query = query
-                  .gte('working_week_start', startStr)
-                  .lte('working_week_start', endStr);
+                  .gte('working_week_start', startDate)
+                  .lte('working_week_start', endDate);
               }
             }
           }
@@ -155,13 +158,13 @@ export const fetchApprovedHours = async (dateFilter: string = ''): Promise<{
     if (dateFilter) {
       if (dateFilter.includes('|')) {
         // Custom date range: startDate|endDate
-        const [startDate, endDate] = dateFilter.split('|');
+        const [filterStart, filterEnd] = dateFilter.split('|');
         
-        if (startDate && endDate && isValid(parseISO(startDate)) && isValid(parseISO(endDate))) {
+        if (filterStart && filterEnd && isValid(parseISO(filterStart)) && isValid(parseISO(filterEnd))) {
           // Fix: Use AND filtering instead of OR filtering
           offDayQuery = offDayQuery
-            .gte('working_week_start', startDate)
-            .lte('working_week_start', endDate);
+            .gte('working_week_start', filterStart)
+            .lte('working_week_start', filterEnd);
         }
       } else {
         // Month filter: YYYY-MM
@@ -222,40 +225,6 @@ export const fetchApprovedHours = async (dateFilter: string = ''): Promise<{
         employee.working_week_dates.add(date);
       }
     });
-    
-    // Calculate double-time hours for each employee
-    let startDate, endDate;
-    
-    if (dateFilter) {
-      if (dateFilter.includes('|')) {
-        // Custom date range
-        [startDate, endDate] = dateFilter.split('|');
-      } else {
-        // Month filter
-        try {
-          const [year, month] = dateFilter.split('-');
-          if (year && month) {
-            const monthDate = new Date(parseInt(year), parseInt(month) - 1, 1);
-            if (isValid(monthDate)) {
-              startDate = format(startOfMonth(monthDate), 'yyyy-MM-dd');
-              endDate = format(endOfMonth(monthDate), 'yyyy-MM-dd');
-            } else {
-              // Default to recent month if dates are invalid
-              startDate = format(subDays(new Date(), 30), 'yyyy-MM-dd');
-              endDate = format(new Date(), 'yyyy-MM-dd');
-            }
-          }
-        } catch (err) {
-          console.error('Error parsing month filter:', err);
-          startDate = format(subDays(new Date(), 30), 'yyyy-MM-dd');
-          endDate = format(new Date(), 'yyyy-MM-dd');
-        }
-      }
-    } else {
-      // Default to last 365 days
-      startDate = format(subDays(new Date(), 365), 'yyyy-MM-dd');
-      endDate = format(addDays(new Date(), 30), 'yyyy-MM-dd');
-    }
     
     // Get all double-time days in the date range
     const doubleDays = await getDoubleTimeDays(startDate, endDate);
@@ -360,13 +329,13 @@ export const fetchEmployeeDetails = async (employeeId: string, dateFilter: strin
     if (dateFilter) {
       if (dateFilter.includes('|')) {
         // Custom date range: startDate|endDate
-        const [startDate, endDate] = dateFilter.split('|');
+        const [filterStart, filterEnd] = dateFilter.split('|');
         
-        if (startDate && endDate && isValid(parseISO(startDate)) && isValid(parseISO(endDate))) {
+        if (filterStart && filterEnd && isValid(parseISO(filterStart)) && isValid(parseISO(filterEnd))) {
           // Fix: Use AND filtering instead of OR filtering
           query = query
-            .gte('working_week_start', startDate)
-            .lte('working_week_start', endDate);
+            .gte('working_week_start', filterStart)
+            .lte('working_week_start', filterEnd);
         }
       } else {
         // Month filter: YYYY-MM
@@ -851,13 +820,13 @@ export const deleteAllTimeRecords = async (dateFilter: string = '', employeeFilt
     if (dateFilter) {
       if (dateFilter.includes('|')) {
         // Custom date range: startDate|endDate
-        const [startDate, endDate] = dateFilter.split('|');
+        const [filterStart, filterEnd] = dateFilter.split('|');
         
-        if (startDate && endDate && isValid(parseISO(startDate)) && isValid(parseISO(endDate))) {
+        if (filterStart && filterEnd && isValid(parseISO(filterStart)) && isValid(parseISO(filterEnd))) {
           // Fix: Use AND filtering instead of OR filtering
           query = query
-            .gte('working_week_start', startDate)
-            .lte('working_week_start', endDate);
+            .gte('working_week_start', filterStart)
+            .lte('working_week_start', filterEnd);
         } else {
           throw new Error('Invalid date range specified');
         }
