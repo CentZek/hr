@@ -836,7 +836,8 @@ export const processExcelData = async (data: any[]): Promise<EmployeeRecord[]> =
             missingCheckOut: false,
             isLate: isLateCheckIn(openCheckIn.timestamp, shiftType as any),
             earlyLeave: isEarlyLeave(record.timestamp, shiftType as any),
-            excessiveOvertime: isExcessiveOvertime(record.timestamp, shiftType as any),
+            excessiveOvertime: (openCheckIn && record) ? 
+                           isExcessiveOvertime(record.timestamp, shiftType as any) : false,
             penaltyMinutes: 0,
             correctedRecords: openCheckIn.mislabeled || record.mislabeled,
             allTimeRecords: [...allDayRecords, ...(isCrossDay ? [record] : [])],
@@ -1175,11 +1176,12 @@ export const exportApprovedHoursToExcel = (data: {
   summary: any[], 
   details: any[], 
   filterMonth: string,
+  dateRange?: { startDate: string, endDate: string },
   doubleDays?: string[] 
 }): void => {
   // Create worksheets for summary and details
   const summaryData = [
-    ['Employee Number', 'Name', 'Total Days', 'Regular Hours', 'Double-Time Hours', 'Fridays Worked', 'Over Time (Hours)', 'Over Time (Days)', 'Total Payable Hours']
+    ['Employee Number', 'Name', 'Total Days', 'Working Days', 'Off Days', 'Regular Hours', 'Double-Time Hours', 'Fridays Worked', 'Over Time (Hours)', 'Over Time (Days)', 'Total Payable Hours']
   ];
   
   const detailsData = [
@@ -1205,6 +1207,11 @@ export const exportApprovedHoursToExcel = (data: {
     
     // Calculate total payable hours (regular hours + double-time bonus)
     const totalPayableHours = emp.total_hours + doubleTimeHours;
+    
+    // Get working days and off days counts
+    const totalDays = emp.total_days || 0;
+    const offDaysCount = emp.off_days_count || 0;
+    const workingDays = emp.working_days !== undefined ? emp.working_days : (totalDays - offDaysCount);
     
     // Calculate Fridays worked
     let fridaysWorked = 0;
@@ -1235,6 +1242,8 @@ export const exportApprovedHoursToExcel = (data: {
       emp.employee_number,
       emp.name,
       emp.total_days,
+      workingDays,
+      offDaysCount,
       emp.total_hours.toFixed(2),
       doubleTimeHours.toFixed(2),
       fridaysWorked,
@@ -1288,7 +1297,7 @@ export const exportApprovedHoursToExcel = (data: {
   const wsSummary = utils.aoa_to_sheet(summaryData);
   
   // Apply some styling to the header row
-  const range = utils.decode_range(wsSummary['!ref'] || 'A1:I1');
+  const range = utils.decode_range(wsSummary['!ref'] || 'A1:K1');
   for (let C = range.s.c; C <= range.e.c; ++C) {
     const address = utils.encode_col(C) + '1';
     if (!wsSummary[address]) continue;
@@ -1355,6 +1364,8 @@ export const exportApprovedHoursToExcel = (data: {
   
   // Calculate totals from the summary data
   let totalDays = 0;
+  let totalWorkingDays = 0;
+  let totalOffDays = 0;
   let totalRegularHours = 0;
   let totalDoubleTimeHours = 0;
   let totalPayableHours = 0;
@@ -1364,11 +1375,13 @@ export const exportApprovedHoursToExcel = (data: {
   // Skip the header row (index 0)
   for (let i = 1; i < summaryData.length; i++) {
     totalDays += parseFloat(summaryData[i][2]) || 0;
-    totalRegularHours += parseFloat(summaryData[i][3]) || 0;
-    totalDoubleTimeHours += parseFloat(summaryData[i][4]) || 0;
-    totalFridaysWorked += parseFloat(summaryData[i][5]) || 0;
-    totalOvertimeHours += parseFloat(summaryData[i][6]) || 0;
-    totalPayableHours += parseFloat(summaryData[i][8]) || 0;
+    totalWorkingDays += parseFloat(summaryData[i][3]) || 0;
+    totalOffDays += parseFloat(summaryData[i][4]) || 0;
+    totalRegularHours += parseFloat(summaryData[i][5]) || 0;
+    totalDoubleTimeHours += parseFloat(summaryData[i][6]) || 0;
+    totalFridaysWorked += parseFloat(summaryData[i][7]) || 0;
+    totalOvertimeHours += parseFloat(summaryData[i][8]) || 0;
+    totalPayableHours += parseFloat(summaryData[i][10]) || 0;
   }
   
   // Convert overtime hours to days (assuming 8-hour workday for overtime calculation)
@@ -1377,6 +1390,8 @@ export const exportApprovedHoursToExcel = (data: {
   // Add statistics rows
   statsData.push(['Total Employees', summaryData.length - 1]);
   statsData.push(['Total Days', totalDays]);
+  statsData.push(['Working Days', totalWorkingDays]);
+  statsData.push(['Off Days', totalOffDays]);
   statsData.push(['Total Regular Hours', totalRegularHours.toFixed(2)]);
   statsData.push(['Total Double-Time Hours', totalDoubleTimeHours.toFixed(2)]);
   statsData.push(['Total Payable Hours', totalPayableHours.toFixed(2)]);
@@ -1385,7 +1400,13 @@ export const exportApprovedHoursToExcel = (data: {
   statsData.push(['Overtime (Days)', totalOvertimeDays.toFixed(2)]);
   
   // Filter period
-  statsData.push(['Filter Period', data.filterMonth === 'all' ? 'All Time' : data.filterMonth]);
+  const filterPeriod = data.filterMonth === 'custom' && data.dateRange 
+    ? `Custom: ${data.dateRange.startDate} to ${data.dateRange.endDate}`
+    : data.filterMonth === 'all' 
+      ? 'All Time' 
+      : data.filterMonth;
+
+  statsData.push(['Filter Period', filterPeriod]);
   
   // Create the statistics worksheet
   const statsWorksheet = utils.aoa_to_sheet(statsData);
