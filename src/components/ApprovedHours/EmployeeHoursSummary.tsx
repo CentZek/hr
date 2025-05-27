@@ -9,6 +9,9 @@ interface EmployeeHoursSummaryProps {
     total_days: number;
     total_hours: number;
     double_time_hours?: number;
+    fridaysWorked?: number;
+    holidaysWorked?: number;
+    offDays?: number;
   };
   isExpanded: boolean;
   onExpand: () => void;
@@ -69,6 +72,16 @@ const EmployeeHoursSummary: React.FC<EmployeeHoursSummaryProps> = ({
           <div className="px-2 py-1 bg-green-50 text-green-700 rounded text-xs">
             Avg: <span className="font-medium">{avgHoursPerDay.toFixed(2)}/day</span>
           </div>
+          {employee.offDays !== undefined && (
+            <div className="px-2 py-1 bg-gray-50 text-gray-700 rounded text-xs">
+              Off-Days: <span className="font-medium">{employee.offDays}</span>
+            </div>
+          )}
+          {employee.holidaysWorked !== undefined && employee.holidaysWorked > 0 && (
+            <div className="px-2 py-1 bg-red-50 text-red-700 rounded text-xs">
+              Holidays: <span className="font-medium">{employee.holidaysWorked}</span>
+            </div>
+          )}
         </div>
       </div>
       
