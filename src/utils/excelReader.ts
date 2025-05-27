@@ -22,14 +22,12 @@ export const handleExcelFile = async (file: File): Promise<EmployeeRecord[]> => 
           return;
         }
         
-        const workbook = XLSX.read(data, { type: 'array' }); // Changed from 'binary' to 'array'
+        const workbook = XLSX.read(data, { type: 'binary' });
         const firstSheetName = workbook.SheetNames[0];
         const worksheet = workbook.Sheets[firstSheetName];
         
         // Convert to JSON
         const jsonData = XLSX.utils.sheet_to_json(worksheet, { raw: false });
-        
-        console.log('Excel data parsed successfully:', jsonData.length, 'rows');
         
         // Process data
         resolve(processExcelData(jsonData));
@@ -44,7 +42,7 @@ export const handleExcelFile = async (file: File): Promise<EmployeeRecord[]> => 
       reject(new Error('Failed to read file'));
     };
     
-    reader.readAsArrayBuffer(file); // Changed from readAsBinaryString to readAsArrayBuffer
+    reader.readAsBinaryString(file);
   });
 };
 
@@ -57,8 +55,6 @@ export const processExcelData = (data: any[]): EmployeeRecord[] => {
   if (!data || data.length === 0) {
     throw new Error('No data found in the Excel file');
   }
-  
-  console.log('Processing Excel data, sample row:', data[0]);
   
   // Normalize the column names
   const sampleRow = data[0];
@@ -106,14 +102,6 @@ export const processExcelData = (data: any[]): EmployeeRecord[] => {
     }
   }
   
-  console.log('Identified columns:', {
-    departmentColumn,
-    nameColumn,
-    employeeNumberColumn,
-    timestampColumn,
-    statusColumn
-  });
-  
   // Validate that we found all required columns
   if (!nameColumn || !employeeNumberColumn || !timestampColumn || !statusColumn) {
     throw new Error(`Missing required columns. Found: Name=${nameColumn}, Employee Number=${employeeNumberColumn}, Timestamp=${timestampColumn}, Status=${statusColumn}`);
@@ -121,14 +109,11 @@ export const processExcelData = (data: any[]): EmployeeRecord[] => {
   
   // Extract time records
   const timeRecords: TimeRecord[] = [];
-  let skipCount = 0;
-  
   for (let i = 0; i < data.length; i++) {
     const row = data[i];
     
     // Skip if missing required fields
     if (!row[nameColumn] || !row[employeeNumberColumn] || !row[timestampColumn] || !row[statusColumn]) {
-      skipCount++;
       continue;
     }
     
@@ -159,24 +144,10 @@ export const processExcelData = (data: any[]): EmployeeRecord[] => {
       // Attempt to parse various date/time formats
       timestamp = new Date(row[timestampColumn]);
       if (isNaN(timestamp.getTime())) {
-        console.warn('Invalid date format, trying alternative parsing:', row[timestampColumn]);
-        
-        // Try to handle Excel serial date format
-        const serialDate = parseFloat(row[timestampColumn]);
-        if (!isNaN(serialDate)) {
-          // Convert Excel serial date to JS Date
-          // Excel dates start from Jan 1, 1900
-          // Jan 1, 1900 in Excel is serial number 1
-          const millisecondsPerDay = 24 * 60 * 60 * 1000;
-          const jsDate = new Date((serialDate - 25569) * millisecondsPerDay);
-          timestamp = jsDate;
-        } else {
-          throw new Error('Invalid date format');
-        }
+        throw new Error('Invalid date format');
       }
     } catch (e) {
       console.warn('Failed to parse timestamp:', row[timestampColumn]);
-      skipCount++;
       continue;  // Skip this row
     }
     
@@ -190,8 +161,6 @@ export const processExcelData = (data: any[]): EmployeeRecord[] => {
       originalIndex: i,  // Store original index for reference
     });
   }
-  
-  console.log(`Processed ${timeRecords.length} time records (skipped ${skipCount} rows)`);
   
   // Group time records by employee
   const employeeRecords = processTimeRecords(timeRecords);
@@ -241,8 +210,6 @@ export const processTimeRecords = (timeRecords: TimeRecord[]): EmployeeRecord[] 
     employeeData.days.get(date)!.records.push(record);
   });
   
-  console.log(`Found ${employeeMap.size} employees with time records`);
-  
   // Step 3: Process days for each employee
   const employeeRecords: EmployeeRecord[] = [];
   
@@ -268,8 +235,6 @@ export const processTimeRecords = (timeRecords: TimeRecord[]): EmployeeRecord[] 
       expanded: false,
     });
   });
-  
-  console.log(`Processed ${employeeRecords.length} employee records`);
   
   return employeeRecords;
 };

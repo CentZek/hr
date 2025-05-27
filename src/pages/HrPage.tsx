@@ -163,9 +163,7 @@ function HrPage() {
     const loadingToast = toast.loading('Processing file...');
     
     try {
-      console.log('Starting Excel file processing...');
       const records = await handleExcelFile(file);
-      console.log('Excel processing complete, setting records:', records.length);
       setEmployeeRecords(records);
       
       // Calculate statistics
