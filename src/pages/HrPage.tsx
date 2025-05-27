@@ -281,11 +281,6 @@ function HrPage() {
         day.missingCheckOut = false;
       }
       
-      // If changing from OFF-DAY, we need to update the notes and determine shift type
-      if (day.notes === 'OFF-DAY') {
-        day.notes = 'Manual entry';
-      }
-      
       // Determine shift type if not already set
       if (!day.shiftType && day.firstCheckIn) {
         day.shiftType = determineShiftType(day.firstCheckIn);

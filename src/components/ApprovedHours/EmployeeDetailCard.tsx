@@ -12,13 +12,6 @@ const EmployeeDetailCard: React.FC<EmployeeDetailCardProps> = ({ employee, doubl
   const doubleTimeHours = employee.double_time_hours || 0;
   const regularHours = employee.total_hours || 0;
   const totalPayableHours = regularHours + doubleTimeHours;
-  
-  // Calculate working days (days where hours > 0)
-  const workingDays = employee.working_week_dates ? 
-    employee.working_week_dates.filter((date: string) => 
-      (employee.hours_by_date?.[date] || 0) > 0
-    ).length : 
-    0;
 
   return (
     <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200 mb-6">
@@ -32,11 +25,6 @@ const EmployeeDetailCard: React.FC<EmployeeDetailCardProps> = ({ employee, doubl
           <div className="bg-gray-100 p-3 rounded-md">
             <p className="text-xs text-gray-500">Total Days</p>
             <p className="text-lg font-bold text-gray-800">{employee.total_days}</p>
-          </div>
-          
-          <div className="bg-gray-100 p-3 rounded-md">
-            <p className="text-xs text-gray-500">Working Days</p>
-            <p className="text-lg font-bold text-gray-800">{workingDays}</p>
           </div>
           
           <div className="bg-blue-50 p-3 rounded-md">
