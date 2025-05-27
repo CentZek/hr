@@ -12,6 +12,12 @@ const EmployeeDetailCard: React.FC<EmployeeDetailCardProps> = ({ employee, doubl
   const doubleTimeHours = employee.double_time_hours || 0;
   const regularHours = employee.total_hours || 0;
   const totalPayableHours = regularHours + doubleTimeHours;
+  
+  // Get off-days count
+  const offDays = employee.offDays || 0;
+  
+  // Get holidays worked count (excluding Fridays)
+  const holidaysWorked = employee.holidaysWorked || 0;
 
   return (
     <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200 mb-6">
@@ -47,28 +53,68 @@ const EmployeeDetailCard: React.FC<EmployeeDetailCardProps> = ({ employee, doubl
         </div>
       </div>
       
-      <div className="border border-gray-200 rounded-md p-4">
-        <h4 className="text-sm font-medium text-gray-700 mb-3 flex items-center">
-          <Calendar className="w-4 h-4 mr-2 text-amber-500" />
-          Double-Time Days
-          <span className="ml-2 text-xs bg-amber-100 text-amber-800 rounded-full px-1.5 py-0.5 font-bold">2×</span>
-        </h4>
-        <div className="space-y-2 max-h-32 overflow-y-auto">
-          {employee.working_week_dates?.filter((date: string) => doubleDays.includes(date))
-            .sort()
-            .map((date: string) => (
-              <div key={date} className="flex justify-between items-center text-sm">
-                <span className="text-gray-600">
-                  {format(new Date(date), 'EEE, MMM d, yyyy')}
-                </span>
-                <span className="font-medium text-amber-600">
-                  {(employee.hours_by_date?.[date] || 0).toFixed(2)} × 2 = {((employee.hours_by_date?.[date] || 0) * 2).toFixed(2)} hrs
-                </span>
-              </div>
-            ))}
-          {!employee.working_week_dates?.some((date: string) => doubleDays.includes(date)) && (
-            <p className="text-sm text-gray-500 italic">No double-time days in this period</p>
-          )}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="border border-gray-200 rounded-md p-4">
+          <h4 className="text-sm font-medium text-gray-700 mb-3 flex items-center">
+            <Calendar className="w-4 h-4 mr-2 text-amber-500" />
+            Double-Time Days
+            <span className="ml-2 text-xs bg-amber-100 text-amber-800 rounded-full px-1.5 py-0.5 font-bold">2×</span>
+          </h4>
+          <div className="space-y-2 max-h-32 overflow-y-auto">
+            {employee.working_week_dates?.filter((date: string) => doubleDays.includes(date))
+              .sort()
+              .map((date: string) => (
+                <div key={date} className="flex justify-between items-center text-sm">
+                  <span className="text-gray-600">
+                    {format(new Date(date), 'EEE, MMM d, yyyy')}
+                  </span>
+                  <span className="font-medium text-amber-600">
+                    {(employee.hours_by_date?.[date] || 0).toFixed(2)} × 2 = {((employee.hours_by_date?.[date] || 0) * 2).toFixed(2)} hrs
+                  </span>
+                </div>
+              ))}
+            {!employee.working_week_dates?.some((date: string) => doubleDays.includes(date)) && (
+              <p className="text-sm text-gray-500 italic">No double-time days in this period</p>
+            )}
+          </div>
+        </div>
+        
+        <div className="border border-gray-200 rounded-md p-4">
+          <h4 className="text-sm font-medium text-gray-700 mb-3 flex items-center">
+            <Clock className="w-4 h-4 mr-2 text-blue-500" />
+            Additional Statistics
+          </h4>
+          <div className="space-y-3">
+            <div className="flex justify-between items-center">
+              <span className="text-sm text-gray-600">Off-Days:</span>
+              <span className="text-sm font-medium bg-gray-100 px-2 py-0.5 rounded-full">
+                {offDays || 0} days
+              </span>
+            </div>
+            
+            <div className="flex justify-between items-center">
+              <span className="text-sm text-gray-600">Holidays Worked:</span>
+              <span className="text-sm font-medium bg-red-100 text-red-800 px-2 py-0.5 rounded-full">
+                {holidaysWorked || 0} days
+              </span>
+            </div>
+            
+            <div className="flex justify-between items-center">
+              <span className="text-sm text-gray-600">Fridays Worked:</span>
+              <span className="text-sm font-medium bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full">
+                {employee.fridaysWorked || 0} days
+              </span>
+            </div>
+            
+            <div className="flex justify-between items-center">
+              <span className="text-sm text-gray-600">Avg. Hours/Day:</span>
+              <span className="text-sm font-medium text-blue-700">
+                {employee.total_days > 0 
+                  ? (employee.total_hours / employee.total_days).toFixed(2) 
+                  : "0.00"} hrs
+              </span>
+            </div>
+          </div>
         </div>
       </div>
     </div>

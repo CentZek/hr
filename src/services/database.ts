@@ -94,7 +94,9 @@ export const fetchApprovedHours = async (dateFilter: string = ''): Promise<{
           total_days: new Set(),
           total_hours: 0,
           working_week_dates: new Set(), // Track all working week dates for double-time calculations
-          hours_by_date: {} // Track hours by date for double-time calculations
+          hours_by_date: {}, // Track hours by date for double-time calculations
+          off_days: new Set(), // NEW: Track off-days
+          zero_hour_days: new Set() // Track days with 0 hours for off-day calculations
         });
       }
       
@@ -114,6 +116,11 @@ export const fetchApprovedHours = async (dateFilter: string = ''): Promise<{
           } else {
             employee.hours_by_date[record.working_week_start] += hours;
           }
+          
+          // Track days with zero hours
+          if (hours === 0) {
+            employee.zero_hour_days.add(record.working_week_start);
+          }
         } else {
           // Use the UTC date portion so nothing shifts under local timezones
           const utc = parseISO(record.timestamp);
@@ -126,6 +133,11 @@ export const fetchApprovedHours = async (dateFilter: string = ''): Promise<{
             employee.hours_by_date[date] = hours;
           } else {
             employee.hours_by_date[date] += hours;
+          }
+          
+          // Track days with zero hours
+          if (hours === 0) {
+            employee.zero_hour_days.add(date);
           }
         }
       }
@@ -199,7 +211,9 @@ export const fetchApprovedHours = async (dateFilter: string = ''): Promise<{
           total_days: new Set(),
           total_hours: 0,
           working_week_dates: new Set(),
-          hours_by_date: {}
+          hours_by_date: {},
+          off_days: new Set(), // NEW: Track off-days
+          zero_hour_days: new Set() // Track days with 0 hours
         });
       }
       
@@ -209,12 +223,18 @@ export const fetchApprovedHours = async (dateFilter: string = ''): Promise<{
       if (record.working_week_start) {
         employee.total_days.add(record.working_week_start);
         employee.working_week_dates.add(record.working_week_start);
+        // Mark as off-day
+        employee.off_days.add(record.working_week_start);
+        employee.zero_hour_days.add(record.working_week_start);
       } else if (record.timestamp && isValid(new Date(record.timestamp))) {
         // Use the UTC date portion so nothing shifts under local timezones
         const utc = parseISO(record.timestamp);
         const date = utc.toISOString().slice(0,10); // "YYYY-MM-DD"
         employee.total_days.add(date);
         employee.working_week_dates.add(date);
+        // Mark as off-day
+        employee.off_days.add(date);
+        employee.zero_hour_days.add(date);
       }
     });
     
@@ -257,23 +277,49 @@ export const fetchApprovedHours = async (dateFilter: string = ''): Promise<{
     
     // Convert to array and calculate days and double-time hours
     const result = Array.from(employeeSummary.values()).map(emp => {
-      // Calculate double-time hours
+      // Calculate double-time hours and split into Fridays and holidays
       let doubleTimeHours = 0;
+      let fridaysWorked = 0;
+      let holidaysWorked = 0; // NEW: Count holidays worked
       const workingDates = Array.from(emp.working_week_dates);
       
       workingDates.forEach(date => {
         if (doubleDays.includes(date)) {
           const dateHours = emp.hours_by_date[date] || 0;
+          
+          // Skip if hours are 0 (off-day)
+          if (dateHours === 0) return;
+          
           doubleTimeHours += dateHours;
+          
+          // Check if it's a Friday or a holiday
+          const dateObj = parseISO(date);
+          if (isValid(dateObj)) {
+            if (isFriday(dateObj)) {
+              fridaysWorked++;
+            } else {
+              // If it's not a Friday but is in doubleDays, it must be a holiday
+              holidaysWorked++;
+            }
+          }
         }
       });
+      
+      // Calculate actual off-days (days with 0 hours that are not holidays)
+      const offDays = new Set([...emp.zero_hour_days].filter(date => {
+        // An off-day is a day with 0 hours that is not a double-time day
+        return !doubleDays.includes(date);
+      }));
       
       return {
         ...emp,
         total_days: emp.total_days.size,
         total_hours: parseFloat(emp.total_hours.toFixed(2)),
         double_time_hours: parseFloat(doubleTimeHours.toFixed(2)),
-        working_week_dates: Array.from(emp.working_week_dates)
+        working_week_dates: Array.from(emp.working_week_dates),
+        fridaysWorked, // Number of Fridays worked
+        holidaysWorked, // NEW: Number of holidays worked
+        offDays: offDays.size // NEW: Count of actual off-days
       };
     });
     
