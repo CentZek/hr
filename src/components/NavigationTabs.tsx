@@ -33,7 +33,7 @@ const NavigationTabs: React.FC = () => {
               <span className="font-medium text-gray-800">
                 {currentPath === '/' && 'Home'}
                 {currentPath === '/hr' && 'Face ID Data'}
-                {currentPath === '/approved-hours' && 'Approved Hours'}
+                {(currentPath === '/approved-hours' || currentPath === '/approved/approved-hours') && 'Approved Hours'}
                 {currentPath === '/login' && 'Login'}
                 {currentPath === '/employee' && 'Dashboard'}
               </span>
@@ -53,7 +53,10 @@ const NavigationTabs: React.FC = () => {
                     setIsMobileMenuOpen(false);
                   }}
                   className={`w-full flex items-center px-4 py-3 text-sm ${
-                    currentPath === route.path ? 'text-purple-600 font-medium bg-purple-50' : 'text-gray-600 hover:bg-gray-50'
+                    currentPath === route.path || 
+                    (currentPath === '/approved/approved-hours' && route.path === '/approved-hours')
+                      ? 'text-purple-600 font-medium bg-purple-50' 
+                      : 'text-gray-600 hover:bg-gray-50'
                   }`}
                 >
                   {React.cloneElement(route.icon, { className: "w-5 h-5 mr-3" })}
@@ -76,7 +79,10 @@ const NavigationTabs: React.FC = () => {
               key={route.path}
               icon={route.icon} 
               label={route.label} 
-              active={currentPath === route.path} 
+              active={
+                currentPath === route.path || 
+                (currentPath === '/approved/approved-hours' && route.path === '/approved-hours')
+              } 
               onClick={() => navigate(route.path)} 
             />
           ))}

@@ -6,7 +6,7 @@ import { parseShiftTimes } from '../utils/dateTimeHelper';
 import { isDoubleTimeDay, getDoubleTimeDays } from '../services/holidayService';
 
 // Fetch approved hours summary
-export const fetchApprovedHours = async (monthFilter: string = ''): Promise<{
+export const fetchApprovedHours = async (dateFilter: string = ''): Promise<{
   data: any[];
   totalHoursSum: number;
 }> => {
@@ -29,15 +29,43 @@ export const fetchApprovedHours = async (monthFilter: string = ''): Promise<{
       .in('status', ['check_in', 'off_day'])  // Include both check-in and off-day records
       .not('exact_hours', 'is', null);
     
-    // Apply month filter if provided
-    if (monthFilter) {
-      const [year, month] = monthFilter.split('-');
-      const startDate = startOfMonth(new Date(parseInt(year), parseInt(month) - 1, 1));
-      const endDate = endOfMonth(startDate);
-      
-      query = query
-        .gte('timestamp', format(startDate, 'yyyy-MM-dd'))
-        .lte('timestamp', format(endDate, 'yyyy-MM-dd'));
+    // Apply date filter if provided
+    if (dateFilter) {
+      if (dateFilter.includes('|')) {
+        // Custom date range: startDate|endDate
+        const [startDate, endDate] = dateFilter.split('|');
+        
+        if (startDate && endDate && isValid(parseISO(startDate)) && isValid(parseISO(endDate))) {
+          // Fix: Use AND filtering instead of OR filtering
+          query = query
+            .gte('working_week_start', startDate)
+            .lte('working_week_start', endDate);
+        }
+      } else {
+        // Month filter: YYYY-MM
+        try {
+          const [year, month] = dateFilter.split('-');
+          if (year && month) {
+            const monthDate = new Date(parseInt(year), parseInt(month) - 1, 1);
+            if (isValid(monthDate)) {
+              const startDate = startOfMonth(monthDate);
+              const endDate = endOfMonth(monthDate);
+              
+              if (isValid(startDate) && isValid(endDate)) {
+                const startStr = format(startDate, 'yyyy-MM-dd');
+                const endStr = format(endDate, 'yyyy-MM-dd');
+                
+                // Fix: Use AND filtering instead of OR filtering
+                query = query
+                  .gte('working_week_start', startStr)
+                  .lte('working_week_start', endStr);
+              }
+            }
+          }
+        } catch (err) {
+          console.error('Error parsing month filter:', err);
+        }
+      }
     }
     
     const { data, error } = await query;
@@ -104,7 +132,7 @@ export const fetchApprovedHours = async (monthFilter: string = ''): Promise<{
     });
     
     // Add OFF-DAY records separately
-    const { data: offDayData, error: offDayError } = await supabase
+    let offDayQuery = supabase
       .from('time_records')
       .select(`
         employee_id,
@@ -118,6 +146,42 @@ export const fetchApprovedHours = async (monthFilter: string = ''): Promise<{
         )
       `)
       .eq('status', 'off_day');
+    
+    // Apply the same date filter to off-day records
+    if (dateFilter) {
+      if (dateFilter.includes('|')) {
+        // Custom date range: startDate|endDate
+        const [startDate, endDate] = dateFilter.split('|');
+        
+        if (startDate && endDate && isValid(parseISO(startDate)) && isValid(parseISO(endDate))) {
+          // Fix: Use AND filtering instead of OR filtering
+          offDayQuery = offDayQuery
+            .gte('working_week_start', startDate)
+            .lte('working_week_start', endDate);
+        }
+      } else {
+        // Month filter: YYYY-MM
+        try {
+          const [year, month] = dateFilter.split('-');
+          if (year && month) {
+            const monthDate = new Date(parseInt(year), parseInt(month) - 1, 1);
+            if (isValid(monthDate)) {
+              const startDate = format(startOfMonth(monthDate), 'yyyy-MM-dd');
+              const endDate = format(endOfMonth(monthDate), 'yyyy-MM-dd');
+              
+              // Fix: Use AND filtering instead of OR filtering
+              offDayQuery = offDayQuery
+                .gte('working_week_start', startDate)
+                .lte('working_week_start', endDate);
+            }
+          }
+        } catch (err) {
+          console.error('Error parsing month filter for off days:', err);
+        }
+      }
+    }
+    
+    const { data: offDayData, error: offDayError } = await offDayQuery;
     
     if (offDayError) throw offDayError;
     
@@ -155,13 +219,38 @@ export const fetchApprovedHours = async (monthFilter: string = ''): Promise<{
     });
     
     // Calculate double-time hours for each employee
-    const startDate = monthFilter 
-      ? format(startOfMonth(new Date(parseInt(monthFilter.split('-')[0]), parseInt(monthFilter.split('-')[1]) - 1, 1)), 'yyyy-MM-dd')
-      : format(subDays(new Date(), 365), 'yyyy-MM-dd'); // Default to last 365 days
-      
-    const endDate = monthFilter
-      ? format(endOfMonth(new Date(parseInt(monthFilter.split('-')[0]), parseInt(monthFilter.split('-')[1]) - 1, 1)), 'yyyy-MM-dd')
-      : format(addDays(new Date(), 30), 'yyyy-MM-dd'); // Default to 30 days in the future
+    let startDate, endDate;
+    
+    if (dateFilter) {
+      if (dateFilter.includes('|')) {
+        // Custom date range
+        [startDate, endDate] = dateFilter.split('|');
+      } else {
+        // Month filter
+        try {
+          const [year, month] = dateFilter.split('-');
+          if (year && month) {
+            const monthDate = new Date(parseInt(year), parseInt(month) - 1, 1);
+            if (isValid(monthDate)) {
+              startDate = format(startOfMonth(monthDate), 'yyyy-MM-dd');
+              endDate = format(endOfMonth(monthDate), 'yyyy-MM-dd');
+            } else {
+              // Default to recent month if dates are invalid
+              startDate = format(subDays(new Date(), 30), 'yyyy-MM-dd');
+              endDate = format(new Date(), 'yyyy-MM-dd');
+            }
+          }
+        } catch (err) {
+          console.error('Error parsing month filter:', err);
+          startDate = format(subDays(new Date(), 30), 'yyyy-MM-dd');
+          endDate = format(new Date(), 'yyyy-MM-dd');
+        }
+      }
+    } else {
+      // Default to last 365 days
+      startDate = format(subDays(new Date(), 365), 'yyyy-MM-dd');
+      endDate = format(addDays(new Date(), 30), 'yyyy-MM-dd');
+    }
     
     // Get all double-time days in the date range
     const doubleDays = await getDoubleTimeDays(startDate, endDate);
@@ -202,7 +291,7 @@ export const fetchApprovedHours = async (monthFilter: string = ''): Promise<{
 };
 
 // Fetch employee details for approved hours
-export const fetchEmployeeDetails = async (employeeId: string, monthFilter: string = ''): Promise<{
+export const fetchEmployeeDetails = async (employeeId: string, dateFilter: string = ''): Promise<{
   data: any[];
 }> => {
   try {
@@ -233,15 +322,38 @@ export const fetchEmployeeDetails = async (employeeId: string, monthFilter: stri
       .eq('employee_id', employeeId)
       .order('timestamp', { ascending: true });
     
-    // Apply month filter if provided
-    if (monthFilter) {
-      const [year, month] = monthFilter.split('-');
-      const startDate = startOfMonth(new Date(parseInt(year), parseInt(month) - 1, 1));
-      const endDate = endOfMonth(startDate);
-      
-      query = query
-        .gte('timestamp', format(startDate, 'yyyy-MM-dd'))
-        .lte('timestamp', format(endDate, 'yyyy-MM-dd'));
+    // Apply date filter if provided
+    if (dateFilter) {
+      if (dateFilter.includes('|')) {
+        // Custom date range: startDate|endDate
+        const [startDate, endDate] = dateFilter.split('|');
+        
+        if (startDate && endDate && isValid(parseISO(startDate)) && isValid(parseISO(endDate))) {
+          // Fix: Use AND filtering instead of OR filtering
+          query = query
+            .gte('working_week_start', startDate)
+            .lte('working_week_start', endDate);
+        }
+      } else {
+        // Month filter: YYYY-MM
+        try {
+          const [year, month] = dateFilter.split('-');
+          if (year && month) {
+            const monthDate = new Date(parseInt(year), parseInt(month) - 1, 1);
+            if (isValid(monthDate)) {
+              const startDate = format(startOfMonth(monthDate), 'yyyy-MM-dd');
+              const endDate = format(endOfMonth(monthDate), 'yyyy-MM-dd');
+              
+              // Fix: Use AND filtering instead of OR filtering
+              query = query
+                .gte('working_week_start', startDate)
+                .lte('working_week_start', endDate);
+            }
+          }
+        } catch (err) {
+          console.error('Error parsing month filter:', err);
+        }
+      }
     }
     
     const { data, error } = await query;
@@ -693,7 +805,7 @@ export const fetchPendingEmployeeShifts = async (): Promise<any[]> => {
 };
 
 // Delete all time records
-export const deleteAllTimeRecords = async (monthFilter: string = ''): Promise<{
+export const deleteAllTimeRecords = async (dateFilter: string = '', employeeFilter: string = '', preserveApproved: boolean = false): Promise<{
   success: boolean;
   message: string;
   count: number;
@@ -701,63 +813,172 @@ export const deleteAllTimeRecords = async (monthFilter: string = ''): Promise<{
   try {
     let query = supabase.from('time_records').delete();
     
-    // Apply month filter if provided
-    if (monthFilter) {
-      const [year, month] = monthFilter.split('-');
-      const startDate = startOfMonth(new Date(parseInt(year), parseInt(month) - 1, 1));
-      const endDate = endOfMonth(startDate);
-      
-      // Get count first
-      const { count, error: countError } = await supabase
-        .from('time_records')
-        .select('*', { count: 'exact', head: true })
-        .gte('timestamp', format(startDate, 'yyyy-MM-dd'))
-        .lte('timestamp', format(endDate, 'yyyy-MM-dd'));
-      
-      if (countError) throw countError;
-      
-      // Then delete
-      const { error } = await supabase
-        .from('time_records')
-        .delete()
-        .gte('timestamp', format(startDate, 'yyyy-MM-dd'))
-        .lte('timestamp', format(endDate, 'yyyy-MM-dd'));
-      
-      if (error) throw error;
-      
-      return {
-        success: true,
-        message: `Deleted ${count} records for ${format(startDate, 'MMMM yyyy')}`,
-        count: count || 0
-      };
+    // Apply date filter if provided
+    if (dateFilter) {
+      if (dateFilter.includes('|')) {
+        // Custom date range: startDate|endDate
+        const [startDate, endDate] = dateFilter.split('|');
+        
+        if (startDate && endDate && isValid(parseISO(startDate)) && isValid(parseISO(endDate))) {
+          // Fix: Use AND filtering instead of OR filtering
+          query = query
+            .gte('working_week_start', startDate)
+            .lte('working_week_start', endDate);
+        } else {
+          throw new Error('Invalid date range specified');
+        }
+      } else {
+        // Month filter: YYYY-MM
+        try {
+          const [year, month] = dateFilter.split('-');
+          if (year && month) {
+            const monthDate = new Date(parseInt(year), parseInt(month) - 1, 1);
+            if (isValid(monthDate)) {
+              const startDate = format(startOfMonth(monthDate), 'yyyy-MM-dd');
+              const endDate = format(endOfMonth(monthDate), 'yyyy-MM-dd');
+              
+              // Fix: Use AND filtering instead of OR filtering
+              query = query
+                .gte('working_week_start', startDate)
+                .lte('working_week_start', endDate);
+            }
+          }
+        } catch (err) {
+          console.error('Error parsing month filter:', err);
+          throw new Error('Invalid month format');
+        }
+      }
     } else {
-      // Get count first
-      const { count, error: countError } = await supabase
-        .from('time_records')
-        .select('*', { count: 'exact', head: true });
-      
-      if (countError) throw countError;
-      
-      // Then delete all
-      const { error } = await supabase
-        .from('time_records')
-        .delete()
-        .neq('id', '00000000-0000-0000-0000-000000000000'); // Dummy condition to delete all
-      
-      if (error) throw error;
-      
-      return {
-        success: true,
-        message: `Deleted all ${count} time records`,
-        count: count || 0
-      };
+      // If no date filter, we need a WHERE clause to delete all records
+      // Use a condition that will always be true
+      query = query.neq('id', '00000000-0000-0000-0000-000000000000');
     }
+    
+    // Apply employee filter if provided
+    if (employeeFilter) {
+      if (employeeFilter.includes(',')) {
+        // Multiple employees
+        const employeeIds = employeeFilter.split(',');
+        query = query.in('employee_id', employeeIds);
+      } else {
+        // Single employee
+        query = query.eq('employee_id', employeeFilter);
+      }
+    }
+    
+    // If preserveApproved is true, only delete non-approved records
+    if (preserveApproved) {
+      // We need to get all approved record IDs and exclude them
+      const { data: approvedRecords, error: approvedError } = await supabase
+        .from('time_records')
+        .select('id')
+        .ilike('notes', '%approved%');
+        
+      if (approvedError) throw approvedError;
+      
+      if (approvedRecords && approvedRecords.length > 0) {
+        // Extract IDs
+        const approvedIds = approvedRecords.map(record => record.id);
+        
+        // Exclude these IDs from deletion
+        query = query.not('id', 'in', approvedIds);
+      }
+    }
+    
+    // Get count first
+    const { count, error: countError } = await supabase
+      .from('time_records')
+      .select('*', { count: 'exact', head: true });
+    
+    if (countError) throw countError;
+    
+    // Execute the delete
+    const { error } = await query;
+    
+    if (error) throw error;
+    
+    return {
+      success: true,
+      message: `Deleted ${count} records`,
+      count: count || 0
+    };
   } catch (error) {
     console.error('Error deleting time records:', error);
     return {
       success: false,
       message: error instanceof Error ? error.message : 'Unknown error',
       count: 0
+    };
+  }
+};
+
+// Reset all database data
+export const resetAllDatabaseData = async (): Promise<{
+  success: boolean;
+  message: string;
+}> => {
+  try {
+    // Delete from all related tables EXCEPT approved records
+    
+    // First, delete time_records but preserve approved records
+    const { success: timeRecordsDeleted, count: timeRecordsCount, message: timeRecordsMessage } = 
+      await deleteAllTimeRecords('', '', true); // Pass true to preserve approved records
+    
+    if (!timeRecordsDeleted) {
+      return {
+        success: false,
+        message: `Failed to delete time records: ${timeRecordsMessage}`
+      };
+    }
+    
+    // Delete processed_excel_files (this will cascade to processed_employee_data and processed_daily_records)
+    const { data: filesDeleted, error: filesError } = await supabase
+      .from('processed_excel_files')
+      .delete()
+      .neq('id', '00000000-0000-0000-0000-000000000000'); // Delete all
+    
+    if (filesError) {
+      return {
+        success: false,
+        message: `Failed to delete processed files: ${filesError.message}`
+      };
+    }
+    
+    // Delete employee_shifts
+    const { data: shiftsDeleted, error: shiftsError } = await supabase
+      .from('employee_shifts')
+      .delete()
+      .neq('id', '00000000-0000-0000-0000-000000000000'); // Delete all
+    
+    if (shiftsError) {
+      return {
+        success: false,
+        message: `Failed to delete employee shifts: ${shiftsError.message}`
+      };
+    }
+    
+    // Delete employee_shift_patterns
+    const { data: patternsDeleted, error: patternsError } = await supabase
+      .from('employee_shift_patterns')
+      .delete()
+      .neq('id', '00000000-0000-0000-0000-000000000000'); // Delete all
+    
+    if (patternsError) {
+      return {
+        success: false,
+        message: `Failed to delete shift patterns: ${patternsError.message}`
+      };
+    }
+    
+    return {
+      success: true,
+      message: `Reset complete. Deleted ${timeRecordsCount} non-approved time records.`
+    };
+  } catch (error) {
+    console.error('Error resetting database:', error);
+    return {
+      success: false,
+      message: error instanceof Error ? error.message : 'Unknown error during reset'
     };
   }
 };

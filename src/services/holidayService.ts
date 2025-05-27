@@ -1,5 +1,5 @@
 import { supabase } from '../lib/supabase';
-import { format, isFriday, parseISO } from 'date-fns';
+import { format, isFriday, parseISO, isValid } from 'date-fns';
 import { Holiday } from '../types';
 
 // Fetch all holidays from the database
@@ -53,6 +53,12 @@ export const deleteHoliday = async (id: string): Promise<void> => {
 // Check if a date is a double-time day (Friday or holiday)
 export const isDoubleTimeDay = async (dateStr: string): Promise<boolean> => {
   try {
+    // Validate the date before proceeding
+    if (!dateStr || !isValid(parseISO(dateStr))) {
+      console.warn('Invalid date provided to isDoubleTimeDay:', dateStr);
+      return false;
+    }
+    
     const date = parseISO(dateStr);
     
     // First check if it's a Friday
@@ -81,8 +87,19 @@ let doubleTimeDaysCache: Record<string, boolean> = {};
 let lastCacheRefresh: number = 0;
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
-// Get all double-time days (Fridays and holidays) for a given month range
+// Get all double-time days (Fridays and holidays) for a given date range
 export const getDoubleTimeDays = async (startDate: string, endDate: string): Promise<string[]> => {
+  // Validate input dates
+  if (!startDate || !endDate) {
+    console.warn('Missing date range parameters in getDoubleTimeDays:', { startDate, endDate });
+    return [];
+  }
+  
+  if (!isValid(parseISO(startDate)) || !isValid(parseISO(endDate))) {
+    console.warn('Invalid date range provided to getDoubleTimeDays:', { startDate, endDate });
+    return [];
+  }
+  
   // Check if cache needs refresh
   const now = Date.now();
   if (now - lastCacheRefresh > CACHE_TTL) {
@@ -138,19 +155,23 @@ export const getDoubleTimeDays = async (startDate: string, endDate: string): Pro
 export const calculateDoubleTimeHours = (hours: number, dateStr: string, cachedDoubleDays?: string[]): number => {
   // Use cached double days if provided
   if (cachedDoubleDays?.includes(dateStr)) {
-    return hours * 2;
+    return hours;
   }
   
   // Otherwise, check if it's a Friday
+  if (!dateStr || !isValid(parseISO(dateStr))) {
+    return 0; // If invalid date, return 0
+  }
+  
   const date = parseISO(dateStr);
   if (isFriday(date)) {
-    return hours * 2;
+    return hours;
   }
   
   // If no cached days provided, do a direct check in doubleTimeDaysCache
   if (doubleTimeDaysCache[dateStr]) {
-    return hours * 2;
+    return hours;
   }
   
-  return hours; // Return original hours if not double-time
+  return 0; // Return 0 if not double-time
 };

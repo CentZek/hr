@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Upload, Clock, AlertCircle, CheckCircle, Download, RefreshCw, PlusCircle, Database, KeyRound, Home, AlertTriangle } from 'lucide-react';
+import { Upload, Clock, AlertCircle, CheckCircle, Download, RefreshCw, PlusCircle, Database, KeyRound, Home, AlertTriangle, Calendar } from 'lucide-react';
 import toast, { Toaster } from 'react-hot-toast';
 
 // Import types
@@ -10,10 +10,9 @@ import { EmployeeRecord, DailyRecord } from '../types';
 import { handleExcelFile, exportToExcel } from '../utils/excelHandlers';
 import { calculatePayableHours, determineShiftType } from '../utils/shiftCalculations';
 import { addManualEntryToRecords, calculateStats, processRecordsAfterSave } from '../utils/dataHandlers';
-import { detectBrowser, getBrowserVersion, checkBrowserCompatibility } from '../utils/browserDetection';
 
 // Import services
-import { saveRecordsToDatabase, fetchManualTimeRecords, fetchPendingEmployeeShifts } from '../services/database';
+import { saveRecordsToDatabase, fetchManualTimeRecords, fetchPendingEmployeeShifts, resetAllDatabaseData } from '../services/database';
 import { runAllMigrations, checkSupabaseConnection } from '../services/migrationService';
 import { supabase } from '../lib/supabase';
 
@@ -26,6 +25,8 @@ import UserCredentialsModal from '../components/UserCredentialsModal';
 import EmployeeShiftRequest from '../components/EmployeeShiftRequest';
 import TimeRecordsTable from '../components/TimeRecordsTable';
 import ApproveAllConfirmationDialog from '../components/ApproveAllConfirmationDialog';
+import ConfirmDialog from '../components/ConfirmDialog';
+import DateRangePicker from '../components/DateRangePicker';
 
 // Import context
 import { useAppContext } from '../context/AppContext';
@@ -38,29 +39,10 @@ function HrPage() {
     currentFileName, setCurrentFileName,
     totalEmployees, setTotalEmployees,
     totalDays, setTotalDays,
-    clearData
+    saveToSupabase, // Use the new Supabase functions
+    clearData, // Updated clear data function
+    isLoading: isContextLoading
   } = useAppContext();
-
-  // Browser detection
-  const [browserInfo, setBrowserInfo] = useState<Record<string, boolean>>({
-    chrome: false,
-    firefox: false,
-    safari: false,
-    edge: false,
-    ie: false,
-    isModern: true,
-    isLegacy: false
-  });
-  
-  // Browser version info
-  const [browserVersion, setBrowserVersion] = useState<Record<string, string | null>>({
-    name: null,
-    version: null,
-    fullUserAgent: null
-  });
-  
-  // Compatibility issues
-  const [compatibilityIssues, setCompatibilityIssues] = useState<string[]>([]);
   
   const [isUploading, setIsUploading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -71,7 +53,11 @@ function HrPage() {
   const [savingErrors, setSavingErrors] = useState<{employeeName: string, date: string, error: string}[]>([]);
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const [isMobile, setIsMobile] = useState(false);
-  const [pageLoadError, setPageLoadError] = useState<string | null>(null);
+  
+  // Date range state
+  const [showDateRangePicker, setShowDateRangePicker] = useState(false);
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
   
   // Modal states
   const [isManualEntryOpen, setIsManualEntryOpen] = useState(false);
@@ -81,93 +67,56 @@ function HrPage() {
   // Approve All confirmation dialog state
   const [isApproveAllDialogOpen, setIsApproveAllDialogOpen] = useState(false);
   const [isApprovingAll, setIsApprovingAll] = useState(false);
-
-  // Check browser compatibility
-  useEffect(() => {
-    try {
-      // Detect browser
-      const browser = detectBrowser();
-      setBrowserInfo(browser);
-      
-      // Get browser version
-      const versionInfo = getBrowserVersion();
-      setBrowserVersion(versionInfo);
-      
-      // Check for compatibility issues
-      const { isCompatible, issues } = checkBrowserCompatibility();
-      setCompatibilityIssues(issues);
-      
-      if (!isCompatible) {
-        console.warn('Browser compatibility issues detected:', issues);
-      }
-      
-      console.log('Browser detection:', { browser, versionInfo, issues });
-    } catch (error) {
-      console.error('Error during browser detection:', error);
-    }
-  }, []);
+  
+  // Reset confirmation dialog state
+  const [isResetConfirmOpen, setIsResetConfirmOpen] = useState(false);
+  const [isResetting, setIsResetting] = useState(false);
 
   // Check if screen is mobile
   useEffect(() => {
-    try {
-      const checkIfMobile = () => {
-        setIsMobile(window.innerWidth < 640);
-      };
-      
-      checkIfMobile();
-      window.addEventListener('resize', checkIfMobile);
-      
-      return () => {
-        window.removeEventListener('resize', checkIfMobile);
-      };
-    } catch (error) {
-      console.error('Error checking mobile status:', error);
-    }
+    const checkIfMobile = () => {
+      setIsMobile(window.innerWidth < 640);
+    };
+    
+    checkIfMobile();
+    window.addEventListener('resize', checkIfMobile);
+    
+    return () => {
+      window.removeEventListener('resize', checkIfMobile);
+    };
   }, []);
 
   // Check Supabase connection
   const checkConnection = async () => {
-    try {
-      const { connected, error } = await checkSupabaseConnection();
-      if (!connected) {
-        setConnectionError(error || 'Could not connect to Supabase');
-        toast.error(`Database connection error: ${error || 'Unknown error'}`);
-      } else {
-        setConnectionError(null);
-      }
-      return connected;
-    } catch (err) {
-      console.error('Error checking connection:', err);
-      setConnectionError('Failed to check database connection');
-      return false;
+    const { connected, error } = await checkSupabaseConnection();
+    if (!connected) {
+      setConnectionError(error || 'Could not connect to Supabase');
+      toast.error(`Database connection error: ${error || 'Unknown error'}`);
+    } else {
+      setConnectionError(null);
     }
+    return connected;
   };
 
   // Run migrations when component mounts and fetch manual records
   useEffect(() => {
     const initializeSystem = async () => {
-      try {
-        // First check connection
-        const isConnected = await checkConnection();
-        if (!isConnected) {
-          return;
+      // First check connection
+      const isConnected = await checkConnection();
+      if (!isConnected) {
+        return;
+      }
+      
+      setIsMigrating(true);
+      const migrationResult = await runAllMigrations();
+      setIsMigrating(false);
+      
+      if (migrationResult.success) {
+        if (migrationResult.counts.credentials > 0) {
+          toast.success(`Created login credentials for ${migrationResult.counts.credentials} employees`);
         }
-        
-        setIsMigrating(true);
-        const migrationResult = await runAllMigrations();
-        setIsMigrating(false);
-        
-        if (migrationResult.success) {
-          if (migrationResult.counts.credentials > 0) {
-            toast.success(`Created login credentials for ${migrationResult.counts.credentials} employees`);
-          }
-        } else {
-          toast.error('Error initializing system. Some features may not work properly.');
-        }
-      } catch (error) {
-        console.error('Error initializing system:', error);
-        setIsMigrating(false);
-        setPageLoadError('Failed to initialize the system. Please try refreshing the page.');
+      } else {
+        toast.error('Error initializing system. Some features may not work properly.');
       }
     };
     
@@ -184,15 +133,9 @@ function HrPage() {
       }
     };
     
-    // Log browser info to help debug issues
-    console.log('Browser information:', browserInfo);
-    console.log('Browser version:', browserVersion);
-    console.log('Compatibility issues:', compatibilityIssues);
-    
-    // Initialize the system
     initializeSystem();
     fetchManualRecords();
-  }, [browserInfo, browserVersion, compatibilityIssues]);
+  }, []);
 
   // Refresh manual records and pending shifts after changes
   const refreshData = async () => {
@@ -227,6 +170,9 @@ function HrPage() {
       const stats = calculateStats(records);
       setTotalEmployees(stats.totalEmployees);
       setTotalDays(stats.totalDays);
+      
+      // Save to Supabase for persistence
+      await saveToSupabase(file.name, records);
       
       toast.dismiss(loadingToast);
       toast.success('File processed successfully. Review and approve hours before saving.');
@@ -335,6 +281,11 @@ function HrPage() {
         day.missingCheckOut = false;
       }
       
+      // If changing from OFF-DAY, we need to update the notes and determine shift type
+      if (day.notes === 'OFF-DAY') {
+        day.notes = 'Manual entry';
+      }
+      
       // Determine shift type if not already set
       if (!day.shiftType && day.firstCheckIn) {
         day.shiftType = determineShiftType(day.firstCheckIn);
@@ -394,11 +345,34 @@ function HrPage() {
   };
 
   const handleReset = () => {
-    if (confirm('Are you sure you want to reset all data? This cannot be undone.')) {
-      clearData();
-      setRecentManualEntry(null);
-      setSavingErrors([]);
-      toast.success('All data reset');
+    setIsResetConfirmOpen(true);
+  };
+  
+  const confirmReset = async () => {
+    setIsResetting(true);
+    const loadingToast = toast.loading('Resetting database...');
+    
+    try {
+      // Use the new resetAllDatabaseData function
+      const result = await resetAllDatabaseData();
+      
+      if (result.success) {
+        // Clear local state
+        clearData();
+        setManualRecords([]);
+        toast.dismiss(loadingToast);
+        toast.success(`${result.message} All data has been reset.`);
+      } else {
+        toast.dismiss(loadingToast);
+        toast.error(`Reset failed: ${result.message}`);
+      }
+    } catch (error) {
+      console.error('Error during reset:', error);
+      toast.dismiss(loadingToast);
+      toast.error('An unexpected error occurred during reset.');
+    } finally {
+      setIsResetting(false);
+      setIsResetConfirmOpen(false);
     }
   };
 
@@ -448,6 +422,12 @@ function HrPage() {
       const { totalEmployees: updatedEmpCount, totalDays: updatedDaysCount } = calculateStats(updatedRecords);
       setTotalEmployees(updatedEmpCount);
       setTotalDays(updatedDaysCount);
+      
+      // Update in Supabase
+      if (updatedRecords.length > 0) {
+        // Only update Supabase if there are records left
+        await saveToSupabase(currentFileName, updatedRecords);
+      }
 
       // FIXED: Refresh manually approved records from database instead of manually updating state
       await refreshData();
@@ -592,6 +572,9 @@ function HrPage() {
     // Set hasUploadedFile to true to ensure proper display
     setHasUploadedFile(true);
     
+    // Save to Supabase
+    await saveToSupabase(currentFileName || 'Employee Shift Approvals', updatedRecords);
+    
     // FIXED: Refresh manual records - Get fresh data from database instead of manually updating state
     await refreshData();
     
@@ -614,6 +597,9 @@ function HrPage() {
       setTotalEmployees(prev => isNewEmployee ? prev + 1 : prev);
       setTotalDays(prev => prev + 1);
       setHasUploadedFile(true);
+      
+      // Save to Supabase
+      await saveToSupabase(currentFileName || 'Manual Entries', updatedRecords);
       
       // Store the recent manual entry for highlighting
       const empNumber = String(recordData.employee.employee_number || recordData.employee.employeeNumber || "").trim();
@@ -642,36 +628,26 @@ function HrPage() {
       return () => clearTimeout(timer);
     }
   }, [recentManualEntry]);
+  
+  // Toggle date range picker
+  const handleToggleDateRangePicker = () => {
+    setShowDateRangePicker(!showDateRangePicker);
+  };
+  
+  // Handle date range selection
+  const handleDateRangeChange = (start: string, end: string) => {
+    setStartDate(start);
+    setEndDate(end);
+    setShowDateRangePicker(false); // Close the picker after selection
+  };
 
-  // If there's a page load error, show it
-  if (pageLoadError) {
+  // If still loading from context, show loading state
+  if (isContextLoading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-4">
-        <div className="bg-white rounded-lg shadow-lg p-6 max-w-lg w-full">
-          <h2 className="text-xl font-bold text-red-600 mb-4">Failed to load HR page</h2>
-          <p className="text-gray-700 mb-4">{pageLoadError}</p>
-          <p className="text-gray-700 mb-4">
-            This could be due to browser compatibility issues. Please try:
-          </p>
-          <ul className="list-disc pl-5 mb-4 text-gray-700">
-            <li>Using a modern browser like Chrome, Firefox, or Edge</li>
-            <li>Clearing your browser cache</li>
-            <li>Disabling browser extensions</li>
-          </ul>
-          <div className="flex flex-wrap gap-3">
-            <button
-              onClick={() => window.location.reload()}
-              className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
-            >
-              Reload Page
-            </button>
-            <button
-              onClick={() => navigate('/')}
-              className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700 transition-colors"
-            >
-              Return Home
-            </button>
-          </div>
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="bg-white p-8 rounded-lg shadow-md text-center">
+          <div className="animate-spin w-12 h-12 border-4 border-purple-500 border-t-transparent rounded-full mx-auto mb-4"></div>
+          <p className="text-gray-700">Loading your data...</p>
         </div>
       </div>
     );
@@ -739,33 +715,6 @@ function HrPage() {
 
           {/* Card content */}
           <div className="p-6 space-y-6">
-            {/* Browser compatibility warning */}
-            {(browserInfo.ie || compatibilityIssues.length > 0 || browserInfo.isLegacy) && (
-              <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4 flex items-start">
-                <AlertTriangle className="w-5 h-5 text-yellow-500 mr-3 mt-0.5 flex-shrink-0" />
-                <div className="text-sm text-yellow-700">
-                  <p className="font-medium">Browser Compatibility Warning</p>
-                  <p>For the best experience, please use a modern browser like Chrome, Firefox, or Edge. Some features may not work correctly in your current browser ({browserVersion.name || 'Unknown'} {browserVersion.version || ''}).</p>
-                  {compatibilityIssues.length > 0 && (
-                    <div className="mt-2">
-                      <p className="font-medium">Detected issues:</p>
-                      <ul className="list-disc pl-5 mt-1">
-                        {compatibilityIssues.map((issue, index) => (
-                          <li key={index}>{issue}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                  <button 
-                    onClick={() => window.location.reload()}
-                    className="mt-2 px-3 py-1 bg-yellow-100 text-yellow-700 rounded-md hover:bg-yellow-200 text-sm"
-                  >
-                    Reload Page
-                  </button>
-                </div>
-              </div>
-            )}
-            
             {/* Connection error message */}
             {connectionError && (
               <div className="bg-red-50 border border-red-200 rounded-md p-4 flex items-start">
@@ -797,6 +746,29 @@ function HrPage() {
                 <p className="mt-2"><strong>Note:</strong> Check-ins between 4:30 AM and 5:00 AM are considered part of the morning shift.</p>
               </div>
             </div>
+            
+            {/* Date Range Picker (optional) */}
+            {showDateRangePicker && (
+              <div className="bg-white border border-gray-200 rounded-md p-4 shadow-sm">
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-sm font-medium flex items-center text-gray-700">
+                    <Calendar className="w-4 h-4 mr-2 text-purple-600" />
+                    Select Date Range
+                  </h3>
+                  <button 
+                    onClick={() => setShowDateRangePicker(false)}
+                    className="text-gray-400 hover:text-gray-500"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+                <DateRangePicker 
+                  onSelect={handleDateRangeChange} 
+                  initialStartDate={startDate} 
+                  initialEndDate={endDate} 
+                />
+              </div>
+            )}
 
             {/* Employee Shift Requests Section */}
             <EmployeeShiftRequest onShiftApproved={handleEmployeeShiftApproved} />
@@ -1040,6 +1012,19 @@ function HrPage() {
         onConfirm={handleApproveAll}
         totalRecords={totalDays}
         isProcessing={isApprovingAll}
+      />
+      
+      {/* Reset Confirmation Dialog */}
+      <ConfirmDialog 
+        isOpen={isResetConfirmOpen}
+        onClose={() => setIsResetConfirmOpen(false)}
+        onConfirm={confirmReset}
+        title="Reset All Data"
+        message="This will delete ALL data from the database, including all time records, processed files, and employee shifts. This action cannot be undone. Are you sure you want to proceed?"
+        isProcessing={isResetting}
+        confirmButtonText="Yes, Reset Everything"
+        cancelButtonText="Cancel"
+        type="danger"
       />
       
       <Toaster position="top-right" />

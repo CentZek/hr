@@ -79,25 +79,39 @@ export const updateTimeRecords = (
     didUpdate = true;
   }
   
-  // Determine shift type if not already set
-  if (!updatedDay.shiftType && updatedDay.firstCheckIn) {
+  // Determine shift type if not already set or if this was an OFF-DAY
+  if ((!updatedDay.shiftType || updatedDay.notes === 'OFF-DAY') && updatedDay.firstCheckIn) {
     updatedDay.shiftType = determineShiftType(updatedDay.firstCheckIn);
+    // If we're changing from OFF-DAY, we need to update the notes
+    if (updatedDay.notes === 'OFF-DAY') {
+      updatedDay.notes = 'Manual entry';
+    }
+    didUpdate = true;
   }
   
   // Recalculate hours and flags
-  if (updatedDay.firstCheckIn && updatedDay.lastCheckOut && didUpdate) {
-    const shiftType = updatedDay.shiftType || determineShiftType(updatedDay.firstCheckIn);
+  if ((updatedDay.firstCheckIn && updatedDay.lastCheckOut && didUpdate) || 
+      (updatedDay.notes === 'OFF-DAY' && (checkIn || checkOut))) {
+    // If we have check-in and check-out times but this was an OFF-DAY, we need to update it
+    if (updatedDay.notes === 'OFF-DAY' && checkIn && checkOut) {
+      updatedDay.notes = 'Manual entry';
+      updatedDay.shiftType = determineShiftType(checkIn);
+    }
+
+    const shiftType = updatedDay.shiftType || (updatedDay.firstCheckIn ? determineShiftType(updatedDay.firstCheckIn) : null);
     
-    // Always recalculate hours when either check-in or check-out changes
-    updatedDay.hoursWorked = calculatePayableHours(
-      updatedDay.firstCheckIn, 
-      updatedDay.lastCheckOut, 
-      shiftType,
-      updatedDay.penaltyMinutes,
-      true // Mark as manual edit to use exact time calculation
-    );
-    
-    console.log(`Calculated ${updatedDay.hoursWorked.toFixed(2)} hours for edited time records with ${updatedDay.penaltyMinutes} minute penalty`);
+    if (shiftType && updatedDay.firstCheckIn && updatedDay.lastCheckOut) {
+      // Always recalculate hours when either check-in or check-out changes
+      updatedDay.hoursWorked = calculatePayableHours(
+        updatedDay.firstCheckIn, 
+        updatedDay.lastCheckOut, 
+        shiftType,
+        updatedDay.penaltyMinutes,
+        true // Mark as manual edit to use exact time calculation
+      );
+      
+      console.log(`Calculated ${updatedDay.hoursWorked.toFixed(2)} hours for edited time records with ${updatedDay.penaltyMinutes} minute penalty`);
+    }
   }
   
   return updatedDay;

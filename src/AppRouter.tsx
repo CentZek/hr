@@ -30,6 +30,8 @@ const AppRouter: React.FC = () => {
       <Route path="/" element={<LandingPage />} />
       <Route path="/hr" element={<HrPage />} />
       <Route path="/approved-hours" element={<ApprovedHoursPage />} />
+      {/* Legacy route support */}
+      <Route path="/approved/approved-hours" element={<Navigate to="/approved-hours" replace />} />
       <Route path="/login" element={<EmployeeLoginPage />} />
       <Route 
         path="/employee" 
