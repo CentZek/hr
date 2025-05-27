@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Upload, Clock, AlertCircle, CheckCircle, Download, RefreshCw, PlusCircle, Database, KeyRound, Home, AlertTriangle, Calendar } from 'lucide-react';
+import { Upload, Clock, AlertCircle, CheckCircle, Download, RefreshCw, PlusCircle, Database, KeyRound, Home, AlertTriangle, Calendar, X } from 'lucide-react';
 import toast, { Toaster } from 'react-hot-toast';
 
 // Import types
@@ -163,7 +163,26 @@ function HrPage() {
     const loadingToast = toast.loading('Processing file...');
     
     try {
-      const records = await handleExcelFile(file);
+      let records = await handleExcelFile(file);
+      
+      // Fix: Ensure all employee records have a days property initialized to an empty array if missing
+      if (records && Array.isArray(records)) {
+        records = records.map(emp => {
+          // If employee record exists but days property is missing, add it
+          if (emp && !emp.days) {
+            return {
+              ...emp,
+              days: []
+            };
+          }
+          return emp;
+        });
+      } else {
+        // If records is null or not an array, initialize it as an empty array
+        records = [];
+        throw new Error('Invalid file format or no data found');
+      }
+      
       setEmployeeRecords(records);
       
       // Calculate statistics
@@ -316,10 +335,13 @@ function HrPage() {
   const handleApproveAllForEmployee = (employeeIndex: number) => {
     setEmployeeRecords(prev => {
       const newRecords = [...prev];
-      newRecords[employeeIndex].days = newRecords[employeeIndex].days.map(day => ({
-        ...day,
-        approved: true
-      }));
+      // Fix: Check if days property exists before mapping
+      if (newRecords[employeeIndex] && Array.isArray(newRecords[employeeIndex].days)) {
+        newRecords[employeeIndex].days = newRecords[employeeIndex].days.map(day => ({
+          ...day,
+          approved: true
+        }));
+      }
       return newRecords;
     });
     toast.success(`All records approved for ${employeeRecords[employeeIndex].name}`);
@@ -332,10 +354,11 @@ function HrPage() {
     setEmployeeRecords(prev => 
       prev.map(employee => ({
         ...employee,
-        days: employee.days.map(day => ({
+        // Fix: Check if days property exists before mapping
+        days: Array.isArray(employee.days) ? employee.days.map(day => ({
           ...day,
           approved: true
-        }))
+        })) : []
       }))
     );
     
@@ -392,10 +415,13 @@ function HrPage() {
     setSavingErrors([]);
     
     // Count total approved records
+    // Fix: Check if days property exists before iterating
     employeeRecords.forEach(emp => {
-      emp.days.forEach(day => {
-        if (day.approved) approvedCount++;
-      });
+      if (emp && Array.isArray(emp.days)) {
+        emp.days.forEach(day => {
+          if (day.approved) approvedCount++;
+        });
+      }
     });
     
     if (approvedCount === 0) {
@@ -533,6 +559,11 @@ function HrPage() {
     
     if (employeeIndex >= 0) {
       // Employee exists, check if this date already exists
+      // Fix: Ensure days property exists
+      if (!updatedRecords[employeeIndex].days) {
+        updatedRecords[employeeIndex].days = [];
+      }
+      
       const dayIndex = updatedRecords[employeeIndex].days.findIndex(day => day.date === shiftData.date);
       
       if (dayIndex >= 0) {
@@ -921,7 +952,7 @@ function HrPage() {
                     {/* Third row (full-width Save button on mobile) */}
                     <button
                       onClick={handleSaveToDatabase}
-                      disabled={isSaving || !employeeRecords.some(emp => emp.days.some(d => d.approved)) || !!connectionError}
+                      disabled={isSaving || !employeeRecords.some(emp => Array.isArray(emp.days) && emp.days.some(d => d.approved)) || !!connectionError}
                       className="col-span-2 sm:col-span-1 inline-flex items-center justify-center px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white text-sm rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       {isSaving ? (
