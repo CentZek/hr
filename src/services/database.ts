@@ -209,22 +209,12 @@ export const fetchApprovedHours = async (dateFilter: string = ''): Promise<{
       if (record.working_week_start) {
         employee.total_days.add(record.working_week_start);
         employee.working_week_dates.add(record.working_week_start);
-        
-        // For off-days, ensure we have a record with 0 hours
-        if (!employee.hours_by_date[record.working_week_start]) {
-          employee.hours_by_date[record.working_week_start] = 0;
-        }
       } else if (record.timestamp && isValid(new Date(record.timestamp))) {
         // Use the UTC date portion so nothing shifts under local timezones
         const utc = parseISO(record.timestamp);
         const date = utc.toISOString().slice(0,10); // "YYYY-MM-DD"
         employee.total_days.add(date);
         employee.working_week_dates.add(date);
-        
-        // For off-days, ensure we have a record with 0 hours
-        if (!employee.hours_by_date[date]) {
-          employee.hours_by_date[date] = 0;
-        }
       }
     });
     
@@ -532,9 +522,7 @@ export const saveRecordsToDatabase = async (employeeRecords: EmployeeRecord[]): 
             notes: 'OFF-DAY',
             is_manual_entry: false, // Mark as non-manual entry since it's from Excel
             exact_hours: 0,
-            working_week_start: day.date, // Set working_week_start for proper grouping
-            display_check_in: 'OFF-DAY',
-            display_check_out: 'OFF-DAY'
+            working_week_start: day.date // Set working_week_start for proper grouping
           };
 
           // Use the safe upsert function
