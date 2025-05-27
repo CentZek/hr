@@ -74,10 +74,16 @@ function HrPage() {
 
   // Check if screen is mobile
   useEffect(() => {
-    const checkIfMobile = () => setIsMobile(window.innerWidth < 640);
+    const checkIfMobile = () => {
+      setIsMobile(window.innerWidth < 640);
+    };
+    
     checkIfMobile();
     window.addEventListener('resize', checkIfMobile);
-    return () => window.removeEventListener('resize', checkIfMobile);
+    
+    return () => {
+      window.removeEventListener('resize', checkIfMobile);
+    };
   }, []);
 
   // Check Supabase connection
@@ -807,7 +813,7 @@ function HrPage() {
               <div className="bg-white border border-gray-200 rounded-md p-4 shadow-sm">
                 <div className="flex justify-between items-center mb-4">
                   <h3 className="text-sm font-medium flex items-center text-gray-700">
-                    <Calendar className="w-4 h-4 mr-2 text-purple-500" />
+                    <Calendar className="w-4 h-4 mr-2 text-purple-600" />
                     Select Date Range
                   </h3>
                   <button 

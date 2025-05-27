@@ -23,7 +23,7 @@ export const handleExcelFile = async (file: File): Promise<EmployeeRecord[]> => 
         }
         
         console.log('File read successfully, parsing Excel data...');
-        const workbook = XLSX.read(data, { type: 'array' }); // Use 'array' instead of 'binary'
+        const workbook = XLSX.read(data, { type: 'array' }); // Changed from 'binary' to 'array'
         
         // Check if workbook has sheets
         if (!workbook.SheetNames || workbook.SheetNames.length === 0) {
@@ -34,12 +34,8 @@ export const handleExcelFile = async (file: File): Promise<EmployeeRecord[]> => 
         const firstSheetName = workbook.SheetNames[0];
         const worksheet = workbook.Sheets[firstSheetName];
         
-        // Convert to JSON with options to handle different data types
-        const jsonData = XLSX.utils.sheet_to_json(worksheet, { 
-          raw: false, // Convert all data to strings
-          defval: '',  // Default value for empty cells
-          header: 'A'  // Use A,B,C as column headers if no headers exist
-        });
+        // Convert to JSON
+        const jsonData = XLSX.utils.sheet_to_json(worksheet, { raw: false, defval: '' });
         
         console.log('Excel data parsed successfully:', jsonData.length, 'rows');
         
@@ -49,58 +45,14 @@ export const handleExcelFile = async (file: File): Promise<EmployeeRecord[]> => 
         }
 
         // Log a sample row for debugging
-        console.log('First row sample:', jsonData[0]);
+        console.log('Sample row:', jsonData[0]);
+        // Debug the Excel data structure
+        debugExcelData(jsonData);
         
-        // If first row uses A,B,C as headers, the file might not have headers
-        // Check if the first property of the first row is 'A'
-        const firstRow = jsonData[0];
-        const firstProp = Object.keys(firstRow)[0];
-        const useNumericHeaders = firstProp === 'A';
-        
-        console.log('Using numeric headers:', useNumericHeaders);
-        
-        // If using A,B,C headers, check if the first row looks like real headers
-        if (useNumericHeaders) {
-          const potentialHeaderRow = jsonData[0];
-          const rowValues = Object.values(potentialHeaderRow).map(val => String(val).toLowerCase());
-          
-          // Check if any of the values in the first row match expected header names
-          const headerWords = ['name', 'employee', 'department', 'time', 'date', 'check', 'in', 'out'];
-          const hasHeaderRow = headerWords.some(word => 
-            rowValues.some(val => val.includes(word))
-          );
-          
-          if (hasHeaderRow) {
-            console.log('First row appears to be headers, re-parsing with headers');
-            // Re-parse using the first row as headers
-            const jsonDataWithHeaders = XLSX.utils.sheet_to_json(worksheet, {
-              raw: false,
-              defval: ''
-            });
-            
-            // Verify we got data with the new headers
-            if (jsonDataWithHeaders.length === 0) {
-              reject(new Error('Failed to parse Excel data with headers'));
-              return;
-            }
-            
-            console.log('Re-parsed with headers:', jsonDataWithHeaders.length, 'rows');
-            console.log('First row with headers:', jsonDataWithHeaders[0]);
-            
-            // Process data with headers
-            const result = processExcelData(jsonDataWithHeaders);
-            resolve(result);
-          } else {
-            // Process data with A,B,C headers, guessing the columns
-            console.log('Processing without explicit headers, guessing column positions');
-            const result = processExcelDataWithoutHeaders(jsonData);
-            resolve(result);
-          }
-        } else {
-          // Process data with existing headers
-          const result = processExcelData(jsonData);
-          resolve(result);
-        }
+        // Process data
+        const result = processExcelData(jsonData);
+        console.log('Processed data into', result.length, 'employee records');
+        resolve(result);
       } catch (error) {
         console.error('Error processing Excel file:', error);
         reject(error);
@@ -113,160 +65,8 @@ export const handleExcelFile = async (file: File): Promise<EmployeeRecord[]> => 
     };
     
     console.log('Starting to read file as array buffer...');
-    reader.readAsArrayBuffer(file);
+    reader.readAsArrayBuffer(file); // Changed from readAsBinaryString to readAsArrayBuffer
   });
-};
-
-/**
- * Process Excel data when headers are not present (A,B,C format)
- * @param {any[]} data The JSON data from Excel with A,B,C headers
- * @returns {EmployeeRecord[]} Array of employee records
- */
-export const processExcelDataWithoutHeaders = (data: any[]): EmployeeRecord[] => {
-  console.log('Processing Excel data without headers');
-  
-  // Analyze data to guess column positions
-  const columnMapping: {
-    departmentColumn?: string;
-    nameColumn?: string;
-    employeeNumberColumn?: string;
-    timestampColumn?: string;
-    statusColumn?: string;
-  } = {};
-  
-  // Sample several rows to find patterns
-  const sampleSize = Math.min(data.length, 20);
-  const sampleRows = data.slice(0, sampleSize);
-  
-  // Collect all column keys
-  const allColumns = new Set<string>();
-  sampleRows.forEach(row => {
-    Object.keys(row).forEach(key => allColumns.add(key));
-  });
-  
-  const columns = Array.from(allColumns);
-  console.log('Available columns:', columns);
-  
-  // Analyze each column
-  columns.forEach(col => {
-    // Get sample values for this column
-    const values = sampleRows
-      .map(row => String(row[col] || '').trim())
-      .filter(val => val.length > 0);
-      
-    if (values.length === 0) return;
-    
-    // Check value patterns
-    const isDateTimeColumn = values.some(val => 
-      val.includes('/') || 
-      val.includes('-') || 
-      val.includes(':') || 
-      /\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4}/.test(val)
-    );
-    
-    const isPossibleName = values.some(val => 
-      val.includes(' ') && 
-      val.length > 5 && 
-      !/^\d+$/.test(val) && 
-      !isDateTimeColumn
-    );
-    
-    const isPossibleEmployeeNumber = values.some(val => 
-      /^\d+$/.test(val) || 
-      /^[A-Z0-9]+$/.test(val)
-    );
-    
-    const isPossibleStatus = values.some(val => 
-      ['in', 'out', 'check in', 'check out', 'ci', 'co'].includes(val.toLowerCase())
-    );
-    
-    // Assign columns based on patterns
-    if (isDateTimeColumn && !columnMapping.timestampColumn) {
-      columnMapping.timestampColumn = col;
-      console.log(`Guessed timestamp column: ${col}`);
-    }
-    
-    if (isPossibleName && !columnMapping.nameColumn) {
-      columnMapping.nameColumn = col;
-      console.log(`Guessed name column: ${col}`);
-    }
-    
-    if (isPossibleEmployeeNumber && !columnMapping.employeeNumberColumn) {
-      columnMapping.employeeNumberColumn = col;
-      console.log(`Guessed employee number column: ${col}`);
-    }
-    
-    if (isPossibleStatus && !columnMapping.statusColumn) {
-      columnMapping.statusColumn = col;
-      console.log(`Guessed status column: ${col}`);
-    }
-  });
-  
-  // If we couldn't guess all required columns, make some default assumptions
-  if (!columnMapping.nameColumn || !columnMapping.employeeNumberColumn || 
-      !columnMapping.timestampColumn || !columnMapping.statusColumn) {
-    
-    // Default column mapping for common Excel exports from time clock systems
-    // Typically: A=employee number, B=name, C=date/time, D=status
-    if (!columnMapping.employeeNumberColumn) {
-      columnMapping.employeeNumberColumn = 'A';
-      console.log('Using default employee number column: A');
-    }
-    
-    if (!columnMapping.nameColumn) {
-      columnMapping.nameColumn = 'B';
-      console.log('Using default name column: B');
-    }
-    
-    if (!columnMapping.timestampColumn) {
-      columnMapping.timestampColumn = 'C';
-      console.log('Using default timestamp column: C');
-    }
-    
-    if (!columnMapping.statusColumn) {
-      columnMapping.statusColumn = 'D';
-      console.log('Using default status column: D');
-    }
-    
-    // Department is optional, might be E or skipped
-    if (!columnMapping.departmentColumn) {
-      columnMapping.departmentColumn = 'E';
-      console.log('Using default department column: E');
-    }
-  }
-  
-  // Create a new array with normalized data using the guessed columns
-  const normalizedData = data.map(row => {
-    return {
-      department: columnMapping.departmentColumn ? (row[columnMapping.departmentColumn] || '') : '',
-      name: columnMapping.nameColumn ? (row[columnMapping.nameColumn] || '') : '',
-      employeeNumber: columnMapping.employeeNumberColumn ? (row[columnMapping.employeeNumberColumn] || '') : '',
-      timestamp: columnMapping.timestampColumn ? (row[columnMapping.timestampColumn] || '') : '',
-      status: columnMapping.statusColumn ? (row[columnMapping.statusColumn] || '') : ''
-    };
-  });
-  
-  // Filter out rows with empty required fields
-  const filteredData = normalizedData.filter(row => 
-    row.name && 
-    row.employeeNumber && 
-    row.timestamp
-  );
-  
-  if (filteredData.length === 0) {
-    throw new Error(
-      "Could not identify valid records in the file. Please check that:" +
-      "\n• Your Excel file has data in the expected format" +
-      "\n• Employee names and numbers are present" +
-      "\n• Timestamp and status information is included" +
-      "\n\nTip: The file should have columns for employee number, name, timestamp, and check-in/out status."
-    );
-  }
-  
-  console.log(`Identified ${filteredData.length} records after filtering`);
-  
-  // Now process using the standard function
-  return processExcelData(filteredData);
 };
 
 /**
@@ -279,20 +79,13 @@ export const processExcelData = (data: any[]): EmployeeRecord[] => {
     throw new Error('No data found in the Excel file');
   }
   
-  console.log('Processing Excel data, total rows:', data.length);
+  console.log('Processing Excel data, sample row:', data[0]);
   
-  // Log sample row for debugging
+  // Normalize the column names
   const sampleRow = data[0];
-  console.log('Sample row:', sampleRow);
+  const keys = Object.keys(sampleRow);
   
-  // Get all column keys from the data
-  const allKeys = new Set<string>();
-  data.forEach(row => {
-    Object.keys(row).forEach(key => allKeys.add(key));
-  });
-  const keys = Array.from(allKeys);
-  
-  console.log('All available columns:', keys);
+  console.log('Available columns:', keys);
 
   // Required columns
   let departmentColumn = '';
@@ -303,7 +96,7 @@ export const processExcelData = (data: any[]): EmployeeRecord[] => {
   
   // Find the matching columns with more flexible matching (case-insensitive)
   for (const key of keys) {
-    const lowerKey = String(key).toLowerCase().trim();
+    const lowerKey = key.toLowerCase().trim();
     
     // Department column patterns
     if (
@@ -312,8 +105,7 @@ export const processExcelData = (data: any[]): EmployeeRecord[] => {
       lowerKey === 'dept' || 
       lowerKey === 'dep' || 
       lowerKey.includes('division') ||
-      lowerKey.includes('section') ||
-      lowerKey === 'department'
+      lowerKey.includes('section')
     ) {
       departmentColumn = key;
       console.log('Found department column:', key);
@@ -325,8 +117,7 @@ export const processExcelData = (data: any[]): EmployeeRecord[] => {
       lowerKey === 'name' || 
       lowerKey === 'emp name' || 
       lowerKey.includes('person') ||
-      lowerKey.includes('staff') ||
-      lowerKey === 'employee name'
+      lowerKey.includes('staff')
     ) {
       nameColumn = key;
       console.log('Found name column:', key);
@@ -345,8 +136,7 @@ export const processExcelData = (data: any[]): EmployeeRecord[] => {
       lowerKey.includes('staff id') ||
       lowerKey === 'no.' || 
       lowerKey === 'no' || 
-      lowerKey === '#' ||
-      lowerKey === 'employee number'
+      lowerKey === '#'
     ) {
       employeeNumberColumn = key;
       console.log('Found employee number column:', key);
@@ -363,8 +153,7 @@ export const processExcelData = (data: any[]): EmployeeRecord[] => {
       lowerKey === 'time' ||
       lowerKey === 'clock in' ||
       lowerKey === 'clock out' ||
-      lowerKey === 'datetime' ||
-      lowerKey === 'check time'
+      lowerKey === 'datetime'
     ) {
       timestampColumn = key;
       console.log('Found timestamp column:', key);
@@ -384,8 +173,7 @@ export const processExcelData = (data: any[]): EmployeeRecord[] => {
       lowerKey === 'in' ||
       lowerKey === 'out' ||
       lowerKey === 'io type' ||
-      lowerKey === 'i/o' ||
-      lowerKey === 'check type'
+      lowerKey === 'i/o'
     ) {
       statusColumn = key;
       console.log('Found status column:', key);
@@ -399,143 +187,53 @@ export const processExcelData = (data: any[]): EmployeeRecord[] => {
     timestampColumn,
     statusColumn
   });
-
-  // Special case: if data comes from Face ID systems, the column structure might be different
-  // Sometimes status is not a separate column but indicated by having both "Check in" and "Check out" columns
-  if (!statusColumn) {
-    // Try to find check-in and check-out as separate columns
-    let checkInColumn = '';
-    let checkOutColumn = '';
-    
-    for (const key of keys) {
-      const lowerKey = String(key).toLowerCase().trim();
-      
-      if (
-        lowerKey.includes('check in') ||
-        lowerKey.includes('checkin') ||
-        lowerKey.includes('clock in') ||
-        lowerKey.includes('in time') ||
-        lowerKey === 'in' ||
-        lowerKey === 'check in'
-      ) {
-        checkInColumn = key;
-        console.log('Found check-in column:', key);
-      } else if (
-        lowerKey.includes('check out') ||
-        lowerKey.includes('checkout') ||
-        lowerKey.includes('clock out') ||
-        lowerKey.includes('out time') ||
-        lowerKey === 'out' ||
-        lowerKey === 'check out'
-      ) {
-        checkOutColumn = key;
-        console.log('Found check-out column:', key);
-      }
-    }
-    
-    // If we found both columns, we can process in a different way
-    if (checkInColumn && checkOutColumn) {
-      console.log('Processing Excel with separate check-in/check-out columns');
-      return processExcelWithSeparateInOutColumns(
-        data, 
-        nameColumn, 
-        employeeNumberColumn, 
-        departmentColumn, 
-        checkInColumn, 
-        checkOutColumn
-      );
-    }
-  }
   
-  // Try to infer column positions if standard headers not found
+  // If we're missing required columns, try to infer from data patterns
   if (!nameColumn || !employeeNumberColumn || !timestampColumn || !statusColumn) {
-    console.log('Standard columns not found, trying to infer from data patterns...');
+    console.log('Missing required columns, attempting to infer from data...');
     
-    // Look at sample values in each column to infer types
+    // Attempt to infer columns based on content patterns
     for (const key of keys) {
-      // Skip already identified columns
-      if (key === nameColumn || key === employeeNumberColumn || 
-          key === timestampColumn || key === statusColumn ||
-          key === departmentColumn) {
-        continue;
+      const sampleValue = String(sampleRow[key]).trim();
+      
+      // If we're missing employee number and this looks like an ID
+      if (!employeeNumberColumn && /^[A-Z0-9]{3,10}$/i.test(sampleValue)) {
+        employeeNumberColumn = key;
+        console.log('Inferred employee number column from pattern:', key);
       }
       
-      // Get sample values from this column
-      const sampleValues = data.slice(0, Math.min(10, data.length))
-        .map(row => String(row[key] || '').trim())
-        .filter(val => val.length > 0);
-      
-      if (sampleValues.length === 0) continue;
-      
-      console.log(`Sample values for column ${key}:`, sampleValues.slice(0, 3));
-      
-      // Check for employee number pattern
-      if (!employeeNumberColumn) {
-        // Employee numbers are often short numeric or alphanumeric strings
-        const isEmployeeNumber = sampleValues.every(val => 
-          /^\d+$/.test(val) || /^[A-Z0-9]{2,10}$/i.test(val)
-        );
-        
-        if (isEmployeeNumber) {
-          employeeNumberColumn = key;
-          console.log(`Inferred employee number column: ${key}`);
-          continue;
-        }
+      // If we're missing name and this looks like a name
+      if (!nameColumn && sampleValue.length > 2 && sampleValue.includes(' ') && !/^\d/.test(sampleValue)) {
+        nameColumn = key;
+        console.log('Inferred name column from pattern:', key);
       }
       
-      // Check for name pattern
-      if (!nameColumn) {
-        // Names typically contain spaces and are longer than IDs
-        const isName = sampleValues.some(val => 
-          val.includes(' ') && val.length > 5 && !/^\d+$/.test(val)
-        );
-        
-        if (isName) {
-          nameColumn = key;
-          console.log(`Inferred name column: ${key}`);
-          continue;
-        }
+      // If we're missing timestamp and this looks like a date/time
+      if (!timestampColumn && (
+        sampleValue.includes('/') || 
+        sampleValue.includes('-') || 
+        sampleValue.includes(':') ||
+        /\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}/.test(sampleValue)
+      )) {
+        timestampColumn = key;
+        console.log('Inferred timestamp column from pattern:', key);
       }
       
-      // Check for timestamp pattern
-      if (!timestampColumn) {
-        const isTimestamp = sampleValues.some(val => 
-          val.includes('/') || 
-          val.includes('-') || 
-          val.includes(':') || 
-          /\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4}/.test(val)
-        );
-        
-        if (isTimestamp) {
-          timestampColumn = key;
-          console.log(`Inferred timestamp column: ${key}`);
-          continue;
-        }
-      }
-      
-      // Check for status pattern
-      if (!statusColumn) {
-        const isStatus = sampleValues.some(val => {
-          const lowerVal = val.toLowerCase();
-          return lowerVal === 'in' || 
-                lowerVal === 'out' || 
-                lowerVal === 'check in' || 
-                lowerVal === 'check out' ||
-                lowerVal === 'ci' ||
-                lowerVal === 'co';
-        });
-        
-        if (isStatus) {
-          statusColumn = key;
-          console.log(`Inferred status column: ${key}`);
-          continue;
-        }
+      // If we're missing status and this looks like a status
+      if (!statusColumn && (
+        sampleValue.toUpperCase() === 'IN' || 
+        sampleValue.toUpperCase() === 'OUT' ||
+        sampleValue.toUpperCase() === 'CI' ||
+        sampleValue.toUpperCase() === 'CO'
+      )) {
+        statusColumn = key;
+        console.log('Inferred status column from pattern:', key);
       }
     }
   }
   
   // Build detailed error message if still missing columns
-  if (!nameColumn || !employeeNumberColumn || !timestampColumn) {
+  if (!nameColumn || !employeeNumberColumn || !timestampColumn || !statusColumn) {
     let errorMsg = 'Missing required columns in Excel file.\n\n';
     
     if (!nameColumn) {
@@ -550,15 +248,15 @@ export const processExcelData = (data: any[]): EmployeeRecord[] => {
       errorMsg += '• Timestamp/DateTime column not found. Expected headers like: "Date", "Time", "Check Time", etc.\n';
     }
     
+    if (!statusColumn) {
+      errorMsg += '• Status/Check Type column not found. Expected headers like: "Status", "Type", "In/Out", etc.\n';
+    }
+    
     errorMsg += '\nAvailable columns: ' + keys.join(', ') + '\n';
     errorMsg += '\nPlease ensure your Excel file has the required columns with appropriate headers.';
     
     throw new Error(errorMsg);
   }
-  
-  // If status column is missing but we have timestamp, try to infer status from patterns
-  const inferStatus = !statusColumn;
-  console.log('Will need to infer status from patterns:', inferStatus);
   
   // Extract time records
   const timeRecords: TimeRecord[] = [];
@@ -568,51 +266,36 @@ export const processExcelData = (data: any[]): EmployeeRecord[] => {
     const row = data[i];
     
     // Skip if missing required fields
-    if (!row[nameColumn] || !row[employeeNumberColumn] || !row[timestampColumn]) {
+    if (!row[nameColumn] || !row[employeeNumberColumn] || !row[timestampColumn] || !row[statusColumn]) {
+      console.log('Skipping row due to missing required fields:', row);
       skipCount++;
       continue;
     }
     
+    // Normalize status (CI, C/I, Check In, C IN, etc. all become "check_in")
+    const rawStatus = String(row[statusColumn]).trim().toUpperCase();
     let status: 'check_in' | 'check_out';
     
-    // Determine status - if status column exists, use it
-    if (statusColumn) {
-      const rawStatus = String(row[statusColumn]).trim().toUpperCase();
-      
-      // Parse status with expanded patterns
-      if (
-        rawStatus === 'CI' || 
-        rawStatus === 'C/I' || 
-        rawStatus === 'CHECK IN' || 
-        rawStatus === 'CHECK-IN' || 
-        rawStatus === 'C IN' || 
-        rawStatus === 'IN' ||
-        rawStatus === 'F1' ||
-        rawStatus === 'CHECKIN' ||
-        rawStatus === 'C I' ||
-        rawStatus === 'I' ||
-        rawStatus === '1' ||
-        rawStatus === 'CLOCK IN' ||
-        rawStatus === 'ENTER' ||
-        rawStatus === 'ARRIVAL'
-      ) {
-        status = 'check_in';
-      } else {
-        status = 'check_out';
-      }
+    // Parse status with expanded patterns
+    if (
+      rawStatus === 'CI' || 
+      rawStatus === 'C/I' || 
+      rawStatus === 'CHECK IN' || 
+      rawStatus === 'CHECK-IN' || 
+      rawStatus === 'C IN' || 
+      rawStatus === 'IN' ||
+      rawStatus === 'F1' ||
+      rawStatus === 'CHECKIN' ||
+      rawStatus === 'C I' ||
+      rawStatus === 'I' ||
+      rawStatus === '1' ||
+      rawStatus === 'CLOCK IN' ||
+      rawStatus === 'ENTER' ||
+      rawStatus === 'ARRIVAL'
+    ) {
+      status = 'check_in';
     } else {
-      // If no status column, try to infer from the timestamp pattern
-      // This is a fallback and might not be perfect
-      const timestamp = String(row[timestampColumn]);
-      const hour = tryExtractHour(timestamp);
-      
-      // Guess check_in for morning times (5AM-11AM), check_out for afternoon/evening (12PM-10PM)
-      if (hour !== null) {
-        status = (hour >= 5 && hour < 12) ? 'check_in' : 'check_out';
-      } else {
-        // Default to check_in if we can't tell
-        status = 'check_in';
-      }
+      status = 'check_out';
     }
     
     // Parse timestamp with multiple approaches
@@ -653,16 +336,13 @@ export const processExcelData = (data: any[]): EmployeeRecord[] => {
             'MM/dd/yy HH:mm',
             'dd/MM/yy HH:mm:ss',
             'dd/MM/yy HH:mm',
-            // Time-only formats (assume current date)
-            'HH:mm:ss',
-            'HH:mm',
           ];
           
-          for (const formatStr of dateFormats) {
+          for (const format of dateFormats) {
             try {
-              timestamp = parse(rawTimestamp, formatStr, new Date());
+              timestamp = parse(rawTimestamp, format, new Date());
               if (!isNaN(timestamp.getTime())) {
-                console.log('Parsed with format:', formatStr, timestamp);
+                console.log('Parsed with format:', format, timestamp);
                 break;
               }
             } catch (err) {
@@ -705,7 +385,7 @@ export const processExcelData = (data: any[]): EmployeeRecord[] => {
     
     // Add to time records
     timeRecords.push({
-      department: departmentColumn ? (row[departmentColumn] || '') : '',
+      department: row[departmentColumn] || '',
       name: String(row[nameColumn]).trim(),
       employeeNumber: String(row[employeeNumberColumn]).trim(),
       timestamp,
@@ -748,240 +428,6 @@ export const processExcelData = (data: any[]): EmployeeRecord[] => {
   
   console.log(`Final result: ${employeeRecords.length} employee records with data`);
   return employeeRecords;
-};
-
-/**
- * Process Excel data with separate check-in and check-out columns
- */
-export const processExcelWithSeparateInOutColumns = (
-  data: any[],
-  nameColumn: string,
-  employeeNumberColumn: string,
-  departmentColumn: string,
-  checkInColumn: string,
-  checkOutColumn: string
-): EmployeeRecord[] => {
-  console.log('Processing Excel with separate check-in/check-out columns');
-  
-  const timeRecords: TimeRecord[] = [];
-  let skipCount = 0;
-  
-  // Process each row
-  for (let i = 0; i < data.length; i++) {
-    const row = data[i];
-    
-    // Skip if missing required fields
-    if (!row[nameColumn] || !row[employeeNumberColumn]) {
-      skipCount++;
-      continue;
-    }
-    
-    const name = String(row[nameColumn]).trim();
-    const employeeNumber = String(row[employeeNumberColumn]).trim();
-    const department = departmentColumn ? (row[departmentColumn] || '') : '';
-    
-    // Process check-in if present
-    if (row[checkInColumn]) {
-      const rawCheckIn = String(row[checkInColumn]).trim();
-      let checkInTime: Date | null = null;
-      
-      try {
-        checkInTime = parseTimestamp(rawCheckIn);
-      } catch (e) {
-        console.warn('Failed to parse check-in time:', rawCheckIn, e);
-      }
-      
-      if (checkInTime && !isNaN(checkInTime.getTime())) {
-        timeRecords.push({
-          department,
-          name,
-          employeeNumber,
-          timestamp: checkInTime,
-          status: 'check_in',
-          originalIndex: i
-        });
-      }
-    }
-    
-    // Process check-out if present
-    if (row[checkOutColumn]) {
-      const rawCheckOut = String(row[checkOutColumn]).trim();
-      let checkOutTime: Date | null = null;
-      
-      try {
-        checkOutTime = parseTimestamp(rawCheckOut);
-      } catch (e) {
-        console.warn('Failed to parse check-out time:', rawCheckOut, e);
-      }
-      
-      if (checkOutTime && !isNaN(checkOutTime.getTime())) {
-        timeRecords.push({
-          department,
-          name,
-          employeeNumber,
-          timestamp: checkOutTime,
-          status: 'check_out',
-          originalIndex: i
-        });
-      }
-    }
-  }
-  
-  console.log(`Processed ${timeRecords.length} time records from separate columns (skipped ${skipCount} rows)`);
-  
-  // Verify we have at least some valid records
-  if (timeRecords.length === 0) {
-    throw new Error(
-      "No valid time records found in the file with separate check-in/check-out columns. Please check that:\n\n" +
-      "• Your Excel file has the correct column headers\n" +
-      "• There are valid values in the check-in and check-out columns\n" +
-      "• Date/time values are in a recognized format\n" +
-      "• Employee names and numbers are properly formatted"
-    );
-  }
-  
-  // Group time records by employee
-  return processTimeRecords(timeRecords);
-};
-
-/**
- * Helper function to parse various timestamp formats
- */
-export const parseTimestamp = (rawTimestamp: string): Date | null => {
-  if (!rawTimestamp) return null;
-  
-  // Try standard Date constructor first
-  let timestamp = new Date(rawTimestamp);
-  
-  // If invalid, try various parsing approaches
-  if (isNaN(timestamp.getTime())) {
-    // Try Excel serial date format
-    const serialDate = parseFloat(rawTimestamp);
-    if (!isNaN(serialDate)) {
-      // Convert Excel serial date to JS Date
-      const millisecondsPerDay = 24 * 60 * 60 * 1000;
-      timestamp = new Date((serialDate - 25569) * millisecondsPerDay);
-    } 
-    // Try common date formats
-    else {
-      // Try common date formats with date-fns
-      const dateFormats = [
-        'MM/dd/yyyy HH:mm:ss',
-        'MM/dd/yyyy HH:mm',
-        'dd/MM/yyyy HH:mm:ss',
-        'dd/MM/yyyy HH:mm',
-        'yyyy-MM-dd HH:mm:ss',
-        'yyyy-MM-dd HH:mm',
-        // More formats
-        'MM-dd-yyyy HH:mm:ss',
-        'MM-dd-yyyy HH:mm',
-        'dd-MM-yyyy HH:mm:ss',
-        'dd-MM-yyyy HH:mm',
-        'MM/dd/yy HH:mm:ss',
-        'MM/dd/yy HH:mm',
-        'dd/MM/yy HH:mm:ss',
-        'dd/MM/yy HH:mm',
-        // Time only formats (assumes current date)
-        'HH:mm:ss',
-        'HH:mm',
-        // 12-hour formats with AM/PM
-        'MM/dd/yyyy h:mm:ss a',
-        'MM/dd/yyyy h:mm a',
-        'dd/MM/yyyy h:mm:ss a',
-        'dd/MM/yyyy h:mm a',
-        'h:mm:ss a',
-        'h:mm a'
-      ];
-      
-      for (const formatStr of dateFormats) {
-        try {
-          const parsedDate = parse(rawTimestamp, formatStr, new Date());
-          if (!isNaN(parsedDate.getTime())) {
-            timestamp = parsedDate;
-            break;
-          }
-        } catch (err) {
-          // Continue to next format
-        }
-      }
-    }
-  }
-  
-  // If still invalid, try parsing components
-  if (isNaN(timestamp.getTime())) {
-    // Handle special case where date and time might be in separate columns
-    const dateTimePattern = /(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})(?:[\sT]+(\d{1,2}:\d{1,2}(?::\d{1,2})?(?:\s*[AP]M)?)?)?/i;
-    const match = rawTimestamp.match(dateTimePattern);
-    
-    if (match) {
-      const datePart = match[1];
-      const timePart = match[2] || '00:00:00';
-      
-      // Try to parse the combined date and time
-      try {
-        const dateTimeStr = `${datePart} ${timePart}`;
-        timestamp = new Date(dateTimeStr);
-      } catch (err) {
-        console.error('Failed to parse from components:', err);
-        return null;
-      }
-    } else {
-      // Maybe it's just a time without a date
-      const timePattern = /(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?(?:\s*([AP]M))?/i;
-      const timeMatch = rawTimestamp.match(timePattern);
-      
-      if (timeMatch) {
-        const today = new Date();
-        const hours = parseInt(timeMatch[1], 10);
-        const minutes = parseInt(timeMatch[2], 10);
-        const seconds = timeMatch[3] ? parseInt(timeMatch[3], 10) : 0;
-        const isPM = timeMatch[4]?.toUpperCase() === 'PM';
-        
-        // Adjust hours for PM
-        const adjustedHours = isPM && hours < 12 ? hours + 12 : hours;
-        
-        timestamp = new Date(
-          today.getFullYear(), 
-          today.getMonth(), 
-          today.getDate(), 
-          adjustedHours, 
-          minutes, 
-          seconds
-        );
-      } else {
-        return null; // Can't parse
-      }
-    }
-  }
-  
-  return timestamp;
-};
-
-/**
- * Try to extract hour from a timestamp string
- */
-export const tryExtractHour = (timestampStr: string): number | null => {
-  // Check for common time patterns
-  const timePatterns = [
-    /(\d{1,2}):\d{2}(?::\d{2})?(?:\s*[AP]M)?/i, // 12:30, 12:30:45, 12:30 PM
-    /(\d{1,2})(?::\d{2})?\s*([AP]M)/i,  // 12 PM, 12:30 PM
-  ];
-  
-  for (const pattern of timePatterns) {
-    const match = timestampStr.match(pattern);
-    if (match) {
-      let hour = parseInt(match[1], 10);
-      
-      // Check for AM/PM
-      if (match[2] && match[2].toUpperCase() === 'PM' && hour < 12) {
-        hour += 12;
-      }
-      
-      return hour;
-    }
-  }
-  
-  return null;
 };
 
 /**
@@ -1215,6 +661,35 @@ export const processDailyTimeRecords = (records: TimeRecord[], date: string): Da
     hasMultipleRecords: records.length > 2, // Flag if there are more than just a check-in and check-out
     isCrossDay: false, // Will be set later if needed
   };
+};
+
+/**
+ * Helper function to determine if a sequence of records likely contains a night shift
+ * @param {TimeRecord[]} records Array of time records
+ * @returns {boolean} True if night shift is likely
+ */
+export const isLikelyNightShift = (records: TimeRecord[]): boolean => {
+  if (records.length < 2) return false;
+  
+  // Get timestamps
+  const timestamps = records.map(r => r.timestamp);
+  
+  // Sort timestamps
+  timestamps.sort((a, b) => a.getTime() - b.getTime());
+  
+  // Check first and last timestamps
+  const firstTime = timestamps[0];
+  const lastTime = timestamps[timestamps.length - 1];
+  
+  // If first time is after 6pm or before 5am, and last time is before noon next day
+  const firstHour = firstTime.getHours();
+  const lastHour = lastTime.getHours();
+  
+  if ((firstHour >= 18 || firstHour < 5) && lastHour < 12) {
+    return true;
+  }
+  
+  return false;
 };
 
 /**
