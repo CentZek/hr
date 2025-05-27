@@ -66,6 +66,10 @@ export const fetchApprovedHours = async (dateFilter: string = ''): Promise<{
           console.error('Error parsing month filter:', err);
         }
       }
+    } else {
+      // Default to last 365 days
+      startDate = format(subDays(new Date(), 365), 'yyyy-MM-dd');
+      endDate = format(addDays(new Date(), 30), 'yyyy-MM-dd');
     }
     
     const { data, error } = await query;
@@ -177,12 +181,9 @@ export const fetchApprovedHours = async (dateFilter: string = ''): Promise<{
           }
         } catch (err) {
           console.error('Error parsing month filter for off days:', err);
+          throw new Error('Invalid month format');
         }
       }
-    } else {
-      // Default to last 365 days
-      const startDate = format(subDays(new Date(), 365), 'yyyy-MM-dd');
-      const endDate = format(addDays(new Date(), 30), 'yyyy-MM-dd');
     }
     
     const { data: offDayData, error: offDayError } = await offDayQuery;
@@ -265,9 +266,14 @@ export const fetchApprovedHours = async (dateFilter: string = ''): Promise<{
       let doubleTimeHours = 0;
       let fridaysWorked = 0;
       let holidaysWorked = 0;
-      let offDays = 0;
       
       const workingDates = Array.from(emp.working_week_dates);
+      
+      // Calculate off days using literal count logic
+      const offDays = workingDates.filter(date => {
+        const hrs = emp.hours_by_date[date] || 0;
+        return hrs === 0 && !doubleDays.includes(date);
+      }).length;
       
       workingDates.forEach(date => {
         const dateHours = emp.hours_by_date[date] || 0;
@@ -290,9 +296,6 @@ export const fetchApprovedHours = async (dateFilter: string = ''): Promise<{
               }
             }
           }
-        } else if (!workedThisDay) {
-          // If they didn't work on this day and it's not a double-time day, it's an off day
-          offDays++;
         }
       });
       
