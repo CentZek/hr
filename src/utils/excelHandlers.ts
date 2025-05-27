@@ -169,12 +169,12 @@ export const exportApprovedHoursToExcel = (data: any) => {
     'Employee Number',
     'Name',
     'Total Days',
+    'Working Days',
+    'Off Days',
     'Regular Hours',
     'Double-Time Hours',
     'Total Payable Hours',
-    'Avg Hours/Day',
-    'Off Days',
-    'Working Days'
+    'Avg Hours/Day'
   ]);
   
   // Process summary data
@@ -208,12 +208,12 @@ export const exportApprovedHoursToExcel = (data: any) => {
       employee.employee_number,
       employee.name,
       totalDays,
+      workingDays,
+      offDays,
       regularHours.toFixed(2),
       doubleTimeHours.toFixed(2),
       payableHours.toFixed(2),
-      avgHoursPerDay.toFixed(2),
-      offDays,
-      workingDays
+      avgHoursPerDay.toFixed(2)
     ]);
     
     // Add to totals
@@ -230,12 +230,12 @@ export const exportApprovedHoursToExcel = (data: any) => {
     { wch: 15 }, // Employee Number
     { wch: 25 }, // Name
     { wch: 12 }, // Total Days
+    { wch: 12 }, // Working Days
+    { wch: 12 }, // Off Days
     { wch: 15 }, // Regular Hours
     { wch: 15 }, // Double-Time Hours
     { wch: 15 }, // Total Payable Hours
-    { wch: 15 }, // Avg Hours/Day
-    { wch: 12 }, // Off Days
-    { wch: 12 }  // Working Days
+    { wch: 15 }  // Avg Hours/Day
   ];
   summaryWs['!cols'] = summaryColWidths;
   
