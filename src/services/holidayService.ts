@@ -220,8 +220,7 @@ export const checkAndRestoreHolidays = async (): Promise<boolean> => {
         console.log('Successfully restored holidays from backup');
         
         // After restoring, clear the cache to force a refresh
-        doubleTimeDaysCache = {};
-        lastCacheRefresh = 0;
+        refreshDoubleTimeDaysCache();
         
         return true;
       } else {

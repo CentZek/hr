@@ -62,8 +62,8 @@ export const fetchApprovedHours = async (dateFilter: string = ''): Promise<{
               }
             }
           }
-        } catch (err) {
-          console.error('Error parsing month filter:', err);
+        } catch (error) {
+          console.error('Error parsing month filter:', error);
         }
       }
     }
@@ -287,11 +287,16 @@ export const fetchApprovedHours = async (dateFilter: string = ''): Promise<{
         const isDoubletime = doubleDays.includes(date) || isFriday(parseISO(date));
         
         if (isDoubletime) {
-          const dateHours = emp.hours_by_date[date] || 0;
+          const dateHours = emp.hours_by_date?.[date] || 0;
           doubleTimeHours += dateHours;
+          doubleTimeHours += dateHours; // Add the bonus hours (base hours already counted)
+          regularHours += dateHours; // Base hours
+        } else {
+          employeeRegularTime += dateHours;
+          regularHours += dateHours;
         }
       });
-
+      
       // Get the count of off days
       const offDaysCount = emp.off_days ? emp.off_days.size : 0;
       
