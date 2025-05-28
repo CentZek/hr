@@ -91,7 +91,7 @@ export const saveProcessedExcelFile = async (
     const fileId = fileData.id;
     
     // Add a delay to ensure the file record is committed
-    await delay(8000);  // Increased from 4000ms to 8000ms to ensure record is committed
+    await delay(4000);  // Increased from 2000ms to 4000ms to ensure record is committed
 
     // Verify the file was actually created
     const fileExists = await checkFileExists(fileId);
@@ -138,7 +138,7 @@ export const saveProcessedExcelFile = async (
       const employeeId = employeeData.id;
       
       // Add a delay to ensure the employee record is committed
-      await delay(6000);  // Increased from 3000ms to 6000ms
+      await delay(3000);  // Increased from 1000ms to 3000ms
 
       // Step 3: Save daily records for this employee
       const dailyRecordsToInsert = employee.days.map(day => ({
@@ -358,7 +358,7 @@ export const updateProcessedEmployeeData = async (
       }
       
       // Add increased delay after creating the file
-      await delay(10000);  // Increased from 5000ms to 10000ms
+      await delay(5000);  // Increased from 2500ms to 5000ms
       
       // Verify file was created
       const newFileExists = await checkFileExists(actualFileId);
@@ -456,7 +456,7 @@ export const updateProcessedEmployeeData = async (
         }
         
         // Add a longer delay before manipulating daily records
-        await delay(6000);  // Increased from 3000ms to 6000ms
+        await delay(3000);  // Increased from 1000ms to 3000ms
         
         // Verify employee record still exists
         const { data: empCheck, error: empCheckError } = await supabase
