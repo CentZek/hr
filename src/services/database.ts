@@ -3,7 +3,7 @@ import { format, parseISO, startOfMonth, endOfMonth, addDays, isValid, subDays, 
 import { EmployeeRecord, DailyRecord } from '../types';
 import toast from 'react-hot-toast';
 import { parseShiftTimes } from '../utils/dateTimeHelper';
-import { isDoubleTimeDay, getDoubleTimeDays, backupCurrentHolidays } from '../services/holidayService';
+import { isDoubleTimeDay, getDoubleTimeDays, backupCurrentHolidays, refreshDoubleTimeDaysCache } from '../services/holidayService';
 
 // Fetch approved hours summary
 export const fetchApprovedHours = async (dateFilter: string = ''): Promise<{
@@ -270,6 +270,9 @@ export const fetchApprovedHours = async (dateFilter: string = ''): Promise<{
       endDate = format(addDays(new Date(), 30), 'yyyy-MM-dd');
     }
     
+    // Refresh the double-time days cache to ensure fresh data
+    refreshDoubleTimeDaysCache();
+    
     // Get all double-time days in the date range
     const doubleDays = await getDoubleTimeDays(startDate, endDate);
     
@@ -280,7 +283,10 @@ export const fetchApprovedHours = async (dateFilter: string = ''): Promise<{
       const workingDates = Array.from(emp.working_week_dates);
       
       workingDates.forEach(date => {
-        if (doubleDays.includes(date)) {
+        // Check both the doubleDays array AND if it's a Friday
+        const isDoubletime = doubleDays.includes(date) || isFriday(parseISO(date));
+        
+        if (isDoubletime) {
           const dateHours = emp.hours_by_date[date] || 0;
           doubleTimeHours += dateHours;
         }
@@ -576,8 +582,8 @@ export const saveRecordsToDatabase = async (employeeRecords: EmployeeRecord[]): 
         // Get employee ID
         const employeeId = await getEmployeeId(employee.employeeNumber);
         
-        // Check if this is a double-time day
-        const isDoubleTime = doubleDays.includes(day.date);
+        // Check if this is a double-time day (Friday or holiday)
+        const isDoubletime = doubleDays.includes(day.date) || isFriday(parseISO(day.date));
         
         // Add check-in record if available
         if (day.firstCheckIn) {
@@ -597,7 +603,7 @@ export const saveRecordsToDatabase = async (employeeRecords: EmployeeRecord[]): 
           
           // Add double-time indicator to notes if applicable
           let notes = day.notes ? `${day.notes}; hours:${day.hoursWorked.toFixed(2)}` : `hours:${day.hoursWorked.toFixed(2)}`;
-          if (isDoubleTime) {
+          if (isDoubletime) {
             notes = `${notes}; double-time:true`;
           }
 
@@ -646,7 +652,7 @@ export const saveRecordsToDatabase = async (employeeRecords: EmployeeRecord[]): 
           
           // Add double-time indicator to notes if applicable
           let notes = day.notes ? `${day.notes}; hours:${day.hoursWorked.toFixed(2)}` : `hours:${day.hoursWorked.toFixed(2)}`;
-          if (isDoubleTime) {
+          if (isDoubletime) {
             notes = `${notes}; double-time:true`;
           }
 

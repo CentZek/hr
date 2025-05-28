@@ -202,7 +202,7 @@ export const checkAndRestoreHolidays = async (): Promise<boolean> => {
       if (backupData && backupData.length > 0) {
         console.log(`Found ${backupData.length} holidays in backup, restoring...`);
         
-        // Insert holidays from backup
+        // Insert holidays from backup - without the ID to avoid conflicts
         const { error: insertError } = await supabase
           .from('holidays')
           .insert(
@@ -218,6 +218,11 @@ export const checkAndRestoreHolidays = async (): Promise<boolean> => {
         }
         
         console.log('Successfully restored holidays from backup');
+        
+        // After restoring, clear the cache to force a refresh
+        doubleTimeDaysCache = {};
+        lastCacheRefresh = 0;
+        
         return true;
       } else {
         console.log('No backup holiday data found');
@@ -236,6 +241,8 @@ export const checkAndRestoreHolidays = async (): Promise<boolean> => {
 // Function to backup all current holidays
 export const backupCurrentHolidays = async (): Promise<boolean> => {
   try {
+    console.log('Starting holiday backup process...');
+    
     // Fetch all current holidays
     const { data: holidays, error: fetchError } = await supabase
       .from('holidays')
@@ -250,6 +257,8 @@ export const backupCurrentHolidays = async (): Promise<boolean> => {
       console.log('No holidays to backup');
       return true;
     }
+    
+    console.log(`Found ${holidays.length} holidays to backup`);
     
     // Insert into backup table
     const { error: backupError } = await supabase
@@ -277,4 +286,17 @@ export const backupCurrentHolidays = async (): Promise<boolean> => {
     console.error('Error in backupCurrentHolidays:', error);
     return false;
   }
+};
+
+// Force refresh of the double-time days cache
+export const refreshDoubleTimeDaysCache = (): void => {
+  console.log('Refreshing double-time days cache');
+  doubleTimeDaysCache = {};
+  lastCacheRefresh = 0;
+};
+
+// Explicitly check if a date is Friday (for UI components that need direct access)
+export const isDateFriday = (dateStr: string): boolean => {
+  if (!dateStr || !isValid(parseISO(dateStr))) return false;
+  return isFriday(parseISO(dateStr));
 };
