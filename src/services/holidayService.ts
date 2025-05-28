@@ -264,48 +264,21 @@ export const backupCurrentHolidays = async (): Promise<boolean> => {
       try {
         const now = new Date().toISOString();
         
-        // First check if the holiday already exists in the backup table
-        const { data: existingBackup, error: checkError } = await supabase
+        // Use upsert operation for each holiday - this handles both insert and update cases
+        const { error: upsertError } = await supabase
           .from('holidays_backup')
-          .select('id')
-          .eq('id', holiday.id)
-          .maybeSingle();
+          .upsert({
+            id: holiday.id,
+            date: holiday.date,
+            description: holiday.description,
+            created_at: holiday.created_at,
+            restored_at: now
+          }, { 
+            onConflict: 'id' 
+          });
           
-        if (checkError) {
-          console.error(`Error checking existing backup for holiday ${holiday.date}:`, checkError);
-          continue;
-        }
-        
-        if (existingBackup) {
-          // Update existing backup
-          const { error: updateError } = await supabase
-            .from('holidays_backup')
-            .update({
-              date: holiday.date,
-              description: holiday.description,
-              created_at: holiday.created_at,
-              restored_at: now
-            })
-            .eq('id', holiday.id);
-            
-          if (updateError) {
-            console.error(`Error updating holiday backup for ${holiday.date}:`, updateError);
-          }
-        } else {
-          // Insert new backup
-          const { error: insertError } = await supabase
-            .from('holidays_backup')
-            .insert({
-              id: holiday.id,
-              date: holiday.date,
-              description: holiday.description,
-              created_at: holiday.created_at,
-              restored_at: now
-            });
-            
-          if (insertError) {
-            console.error(`Error inserting holiday backup for ${holiday.date}:`, insertError);
-          }
+        if (upsertError) {
+          console.error(`Error backing up holiday: ${holiday.date}`, upsertError);
         }
       } catch (err) {
         console.error(`Error processing holiday backup for ${holiday.date}:`, err);
