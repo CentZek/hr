@@ -56,12 +56,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const storedFileId = localStorage.getItem('activeFileId');
         
         if (storedFileId) {
-          setActiveFileId(storedFileId);
-          
           // Fetch employees for this file
           const employees = await getProcessedEmployees(storedFileId);
           
           if (employees && employees.length > 0) {
+            setActiveFileId(storedFileId);
             setEmployeeRecords(employees);
             setHasUploadedFile(true);
             setTotalEmployees(employees.length);
@@ -75,6 +74,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             
             setIsLoading(false);
             return;
+          } else {
+            // If no employees found for this file, clear localStorage and reset state
+            localStorage.removeItem('activeFileId');
+            localStorage.removeItem('currentFileName');
+            setActiveFileId(null);
+            setCurrentFileName('');
+            console.log('No employees found for stored file ID, resetting state');
           }
         }
         

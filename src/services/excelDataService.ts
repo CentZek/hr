@@ -207,85 +207,25 @@ export const updateProcessedEmployeeData = async (
   employeeRecords: EmployeeRecord[]
 ): Promise<boolean> => {
   try {
-    let finalFileId = fileId;
-    
     // First, verify the file exists before proceeding
     const { data: fileData, error: fileError } = await supabase
       .from('processed_excel_files')
       .select('id')
       .eq('id', fileId)
-      .maybeSingle();  // Changed from single() to maybeSingle() to handle case where no rows are found
+      .maybeSingle();
       
     if (fileError) {
       console.error('Error verifying file existence:', fileError);
-      
-      try {
-        // Create a new file record before proceeding
-        const { data: newFile, error: createFileError } = await supabase
-          .from('processed_excel_files')
-          .insert([{
-            file_name: 'Recovered File',
-            total_employees: employeeRecords.length,
-            total_days: employeeRecords.reduce((sum, emp) => sum + emp.days.length, 0),
-            is_active: true
-          }])
-          .select()
-          .single();
-          
-        if (createFileError || !newFile) {
-          console.error('Failed to create recovery file:', createFileError);
-          return false; // Exit early if we can't create the file
-        }
-        
-        console.log('Created recovery file with ID:', newFile.id);
-        
-        // Update fileId to use the newly created file
-        finalFileId = newFile.id;
-        
-        // Double-check that the file was created
-        const { data: checkFile, error: checkError } = await supabase
-          .from('processed_excel_files')
-          .select('id')
-          .eq('id', finalFileId)
-          .single();
-          
-        if (checkError || !checkFile) {
-          console.error('Verification failed for newly created file:', checkError);
-          return false; // Exit if we can't verify the file exists
-        }
-      } catch (err) {
-        console.error('Error during file recovery process:', err);
-        return false;
-      }
-    } else if (!fileData) {
-      // Handle the case where no file was found but no error was thrown
-      console.log('File not found, creating a new one');
-      
-      try {
-        // Create a new file record
-        const { data: newFile, error: createFileError } = await supabase
-          .from('processed_excel_files')
-          .insert([{
-            file_name: 'Recovered File',
-            total_employees: employeeRecords.length,
-            total_days: employeeRecords.reduce((sum, emp) => sum + emp.days.length, 0),
-            is_active: true
-          }])
-          .select()
-          .single();
-          
-        if (createFileError || !newFile) {
-          console.error('Failed to create recovery file:', createFileError);
-          return false; // Exit early if we can't create the file
-        }
-        
-        console.log('Created recovery file with ID:', newFile.id);
-        finalFileId = newFile.id;
-      } catch (err) {
-        console.error('Error creating new file record:', err);
-        return false;
-      }
+      return false; // Return immediately if there's an error
     }
+    
+    if (!fileData) {
+      // If the file doesn't exist, return false without attempting to create a recovery file
+      console.log('File not found, cannot update data');
+      return false;
+    }
+    
+    // If we reach here, the file exists, so we can proceed with the update
     
     // For each employee, ensure their record exists before updating daily records
     for (const employee of employeeRecords) {
@@ -293,7 +233,7 @@ export const updateProcessedEmployeeData = async (
       const { data: existingEmployee, error: lookupError } = await supabase
         .from('processed_employee_data')
         .select('id')
-        .eq('file_id', finalFileId)
+        .eq('file_id', fileId)
         .eq('employee_number', employee.employeeNumber)
         .maybeSingle();
         
@@ -309,7 +249,7 @@ export const updateProcessedEmployeeData = async (
         const { data: newEmployee, error: createError } = await supabase
           .from('processed_employee_data')
           .insert([{
-            file_id: finalFileId,  // Use the verified file ID
+            file_id: fileId,
             employee_number: employee.employeeNumber,
             name: employee.name,
             department: employee.department || '',
@@ -401,7 +341,7 @@ export const updateProcessedEmployeeData = async (
         total_employees: employeeRecords.length,
         total_days: employeeRecords.reduce((sum, emp) => sum + emp.days.length, 0)
       })
-      .eq('id', finalFileId);
+      .eq('id', fileId);
 
     if (updateFileError) {
       console.error('Error updating file record:', updateFileError);
