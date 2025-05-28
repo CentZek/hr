@@ -141,6 +141,19 @@ export const getActiveProcessedFile = async (): Promise<{
 // Get all employees for a specific file
 export const getProcessedEmployees = async (fileId: string): Promise<EmployeeRecord[]> => {
   try {
+    // Verify the file exists first
+    const { data: fileExists, error: fileError } = await supabase
+      .from('processed_excel_files')
+      .select('id')
+      .eq('id', fileId)
+      .maybeSingle();
+      
+    if (fileError) throw fileError;
+    if (!fileExists) {
+      console.error('File does not exist:', fileId);
+      return [];
+    }
+
     // Step 1: Fetch employee data
     const { data: employeesData, error: employeesError } = await supabase
       .from('processed_employee_data')
@@ -219,7 +232,7 @@ export const updateProcessedEmployeeData = async (
       
     if (fileError) {
       console.error('Error verifying file existence:', fileError);
-      return { success: false, fileId }; // Return immediately if there's an error
+      throw new Error(`File verification failed: ${fileError.message}`);
     }
     
     // If the file doesn't exist, create a new one
@@ -238,17 +251,34 @@ export const updateProcessedEmployeeData = async (
         
       if (createError) {
         console.error('Error creating new file record:', createError);
-        return { success: false, fileId };
+        throw new Error(`Failed to create new file record: ${createError.message}`);
       }
       
       if (!newFileData || !newFileData.id) {
         console.error('New file record created but no ID returned');
-        return { success: false, fileId };
+        throw new Error('New file record created but no ID was returned');
       }
       
       // Use the new file ID for subsequent operations
       actualFileId = newFileData.id;
       console.log('Created new file with ID:', actualFileId);
+    }
+    
+    // Double-check that we now have a valid file ID
+    if (!actualFileId) {
+      throw new Error('No valid file ID available for operation');
+    }
+    
+    // Verify again the file exists after potential creation
+    const { data: verifyFileData, error: verifyError } = await supabase
+      .from('processed_excel_files')
+      .select('id')
+      .eq('id', actualFileId)
+      .maybeSingle();
+      
+    if (verifyError || !verifyFileData) {
+      console.error('Error verifying file after creation:', verifyError);
+      throw new Error('Unable to verify file existence after creation');
     }
     
     // For each employee, ensure their record exists before updating daily records
@@ -269,42 +299,45 @@ export const updateProcessedEmployeeData = async (
       let employeeId: string;
       
       if (!existingEmployee) {
-        // Verify file exists again before creating employee
-        const { data: fileVerify, error: verifyError } = await supabase
-          .from('processed_excel_files')
-          .select('id')
-          .eq('id', actualFileId)
-          .maybeSingle();
-          
-        if (verifyError || !fileVerify) {
-          console.error('File does not exist before creating employee:', verifyError);
-          continue; // Skip this employee if the file doesn't exist
-        }
-        
         // Create the employee record if it doesn't exist
-        const { data: newEmployee, error: createError } = await supabase
-          .from('processed_employee_data')
-          .insert([{
-            file_id: actualFileId,
-            employee_number: employee.employeeNumber,
-            name: employee.name,
-            department: employee.department || '',
-            total_days: employee.days.length
-          }])
-          .select('id')
-          .single();
+        try {
+          // Final verification of file existence before creating employee
+          const { data: finalFileCheck } = await supabase
+            .from('processed_excel_files')
+            .select('id')
+            .eq('id', actualFileId)
+            .single();
+            
+          if (!finalFileCheck || !finalFileCheck.id) {
+            throw new Error(`File with ID ${actualFileId} does not exist for employee creation`);
+          }
           
-        if (createError) {
-          console.error('Error creating employee record:', createError);
-          continue; // Skip this employee if creation fails
+          const { data: newEmployee, error: createError } = await supabase
+            .from('processed_employee_data')
+            .insert([{
+              file_id: actualFileId,
+              employee_number: employee.employeeNumber,
+              name: employee.name,
+              department: employee.department || '',
+              total_days: employee.days.length
+            }])
+            .select('id')
+            .single();
+            
+          if (createError) {
+            console.error('Error creating employee record:', createError);
+            throw createError;
+          }
+          
+          if (!newEmployee || !newEmployee.id) {
+            throw new Error('New employee record created but no ID returned');
+          }
+          
+          employeeId = newEmployee.id;
+        } catch (err) {
+          console.error('Failed to create employee record:', err);
+          continue; // Skip this employee
         }
-        
-        if (!newEmployee || !newEmployee.id) {
-          console.error('New employee record created but no ID returned');
-          continue; // Skip this employee if no ID is returned
-        }
-        
-        employeeId = newEmployee.id;
       } else {
         employeeId = existingEmployee.id;
         
@@ -331,8 +364,13 @@ export const updateProcessedEmployeeData = async (
         .eq('id', employeeId)
         .maybeSingle();
         
-      if (empVerifyError || !empVerify) {
-        console.error('Employee does not exist before modifying daily records:', empVerifyError);
+      if (empVerifyError) {
+        console.error('Error verifying employee existence:', empVerifyError);
+        continue;
+      }
+      
+      if (!empVerify) {
+        console.error('Employee does not exist before modifying daily records:', employeeId);
         continue; // Skip this employee if they don't exist
       }
       
@@ -375,13 +413,17 @@ export const updateProcessedEmployeeData = async (
         const batchSize = 100;
         for (let i = 0; i < dailyRecordsToInsert.length; i += batchSize) {
           const batch = dailyRecordsToInsert.slice(i, i + batchSize);
-          const { error: insertError } = await supabase
-            .from('processed_daily_records')
-            .insert(batch);
+          try {
+            const { error: insertError } = await supabase
+              .from('processed_daily_records')
+              .insert(batch);
 
-          if (insertError) {
-            console.error('Error inserting daily records:', insertError);
-            // Continue with next batch even if there's an error
+            if (insertError) {
+              console.error('Error inserting daily records batch:', insertError);
+              // Continue with next batch even if there's an error
+            }
+          } catch (batchError) {
+            console.error('Exception during batch insert:', batchError);
           }
         }
       }
@@ -505,6 +547,19 @@ export const setActiveProcessedFile = async (
   deactivateOthers: boolean = true
 ): Promise<boolean> => {
   try {
+    // Verify the file exists first
+    const { data: fileExists, error: fileError } = await supabase
+      .from('processed_excel_files')
+      .select('id')
+      .eq('id', fileId)
+      .maybeSingle();
+      
+    if (fileError) throw fileError;
+    if (!fileExists) {
+      console.error('File does not exist:', fileId);
+      return false;
+    }
+    
     // Step 1: Set the specified file as active
     const { error: updateError } = await supabase
       .from('processed_excel_files')

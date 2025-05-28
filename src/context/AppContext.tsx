@@ -56,6 +56,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const storedFileId = localStorage.getItem('activeFileId');
         
         if (storedFileId) {
+          // Verify the file still exists in the database
+          const { data: fileVerify } = await supabase
+            .from('processed_excel_files')
+            .select('id')
+            .eq('id', storedFileId)
+            .maybeSingle();
+            
+          if (!fileVerify) {
+            // File doesn't exist anymore, clear localStorage and reset state
+            console.log('File ID in localStorage no longer exists in database');
+            localStorage.removeItem('activeFileId');
+            localStorage.removeItem('currentFileName');
+            setActiveFileId(null);
+            setCurrentFileName('');
+            setIsLoading(false);
+            return;
+          }
+          
           // Fetch employees for this file
           const employees = await getProcessedEmployees(storedFileId);
           
@@ -138,14 +156,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         // Skip updating Supabase if we're still loading initial data
         if (isLoading) return;
         
-        const result = await updateInSupabase(employeeRecords);
-        
-        // If the update resulted in a new file ID, update our state
-        if (result && activeFileId !== localStorage.getItem('activeFileId')) {
-          const newFileId = localStorage.getItem('activeFileId');
-          if (newFileId) {
-            setActiveFileId(newFileId);
+        try {
+          const result = await updateInSupabase(employeeRecords);
+          
+          // If the update resulted in a new file ID, update our state
+          if (result && activeFileId !== localStorage.getItem('activeFileId')) {
+            const newFileId = localStorage.getItem('activeFileId');
+            if (newFileId) {
+              setActiveFileId(newFileId);
+            }
           }
+        } catch (error) {
+          console.error('Error in auto-update to Supabase:', error);
+          // Continue without crashing the app
         }
       }
     };
@@ -158,14 +181,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Save processed data to Supabase
   const saveToSupabase = async (fileName: string, records: EmployeeRecord[]): Promise<boolean> => {
     try {
+      if (!fileName || !records || records.length === 0) {
+        console.error('Invalid data for saveToSupabase - fileName or records missing');
+        return false;
+      }
+      
       const fileId = await saveProcessedExcelFile(fileName, records);
       
       if (fileId) {
         setActiveFileId(fileId);
         return true;
+      } else {
+        console.error('Failed to save to Supabase - no file ID returned');
+        return false;
       }
-      
-      return false;
     } catch (error) {
       console.error('Error saving to Supabase:', error);
       return false;
@@ -174,18 +203,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   
   // Update existing data in Supabase
   const updateInSupabase = async (records: EmployeeRecord[]): Promise<boolean> => {
-    if (!activeFileId) return false;
+    if (!activeFileId) {
+      console.error('Cannot update in Supabase - no active file ID');
+      return false;
+    }
     
     try {
-      const result = await updateProcessedEmployeeData(activeFileId, records, currentFileName);
+      // Ensure currentFileName is not empty
+      const effectiveFileName = currentFileName || 'Untitled File';
       
-      if (result.success && result.fileId !== activeFileId) {
+      const result = await updateProcessedEmployeeData(activeFileId, records, effectiveFileName);
+      
+      if (!result.success) {
+        console.error('Update to Supabase failed');
+        return false;
+      }
+      
+      if (result.fileId && result.fileId !== activeFileId) {
         // If a new file was created, update the activeFileId
         setActiveFileId(result.fileId);
         localStorage.setItem('activeFileId', result.fileId);
       }
       
-      return result.success;
+      return true;
     } catch (error) {
       console.error('Error updating in Supabase:', error);
       return false;
