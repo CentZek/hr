@@ -217,11 +217,10 @@ export const updateProcessedEmployeeData = async (
     if (fileError || !fileData) {
       console.error('File not found or error verifying file existence:', fileError);
       
-      // Create a new file only if we really need to
+      // Create a new file record before proceeding
       const { data: newFile, error: createFileError } = await supabase
         .from('processed_excel_files')
         .insert([{
-          id: fileId, // Use the provided fileId to ensure consistency
           file_name: 'Recovered File',
           total_employees: employeeRecords.length,
           total_days: employeeRecords.reduce((sum, emp) => sum + emp.days.length, 0),
@@ -236,6 +235,9 @@ export const updateProcessedEmployeeData = async (
       }
       
       console.log('Created recovery file with ID:', newFile.id);
+      
+      // Update fileId to use the newly created file
+      fileId = newFile.id;
     }
     
     // For each employee, ensure their record exists before updating daily records

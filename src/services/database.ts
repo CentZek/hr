@@ -837,16 +837,21 @@ export const deleteAllTimeRecords = async (dateFilter: string = '', employeeFilt
   count: number;
 }> => {
   try {
-    // Always get approved records first to preserve them
-    const { data: approvedRecords, error: approvedError } = await supabase
-      .from('time_records')
-      .select('id')
-      .or('notes.ilike.%approved%,notes.ilike.%double-time%'); // Preserve both approved and double-time records
-      
-    if (approvedError) throw approvedError;
+    // Get IDs of records to preserve if needed
+    let preserveIds: string[] = [];
     
-    // Get the IDs of records to preserve
-    const preserveIds = approvedRecords ? approvedRecords.map(record => record.id) : [];
+    if (preserveApproved) {
+      // Get approved records but exclude double-time records (fix)
+      const { data: approvedRecords, error: approvedError } = await supabase
+        .from('time_records')
+        .select('id')
+        .not('notes', 'ilike', '%double-time%')  // Fix: Don't preserve double-time records
+        .ilike('notes', '%approved%');
+        
+      if (approvedError) throw approvedError;
+      
+      preserveIds = approvedRecords ? approvedRecords.map(record => record.id) : [];
+    }
     
     // Build the delete query
     let query = supabase.from('time_records').delete();
@@ -904,49 +909,51 @@ export const deleteAllTimeRecords = async (dateFilter: string = '', employeeFilt
       }
     }
     
-    // ALWAYS exclude approved records and double-time records
-    if (preserveIds.length > 0) {
-      // FIX: Properly format the 'not.in' filter for Supabase
-      // The issue was that we were passing an array directly, but Supabase expects
-      // a properly formatted string for multiple values in the filter
-      
-      // Handle the case where there are too many IDs to include in a single query
-      // Split preserveIds into chunks if needed (Supabase might have limits on URL length)
-      const CHUNK_SIZE = 50; // Adjust based on your needs
-      
-      if (preserveIds.length <= CHUNK_SIZE) {
-        // Fixed syntax for the not.in filter
-        query = query.not('id', 'in', `(${preserveIds.join(',')})`);
+    // Exclude approved records if needed
+    if (preserveApproved && preserveIds.length > 0) {
+      if (preserveIds.length <= 100) { // Reasonable limit for IN clause
+        query = query.not('id', 'in', preserveIds);
       } else {
-        // For large number of IDs, we need to handle differently
-        // Get count of records to be deleted first without applying the preserve filter
-        const { count: totalCount, error: countError } = await query.select('*', { count: 'exact', head: true });
+        // For large number of IDs, perform deletion in chunks
+        const { count, error: countError } = await query.select('*', { count: 'exact', head: true });
         
         if (countError) throw countError;
         
         // If there are records to delete, proceed with chunked deletion
-        if (totalCount && totalCount > 0) {
+        if (count && count > 0) {
           let deletedCount = 0;
+          const chunkSize = 100;
           
-          // Process deletion in chunks
-          for (let i = 0; i < preserveIds.length; i += CHUNK_SIZE) {
-            const chunk = preserveIds.slice(i, i + CHUNK_SIZE);
-            const { error } = await supabase
-              .from('time_records')
-              .delete()
-              .not('id', 'in', `(${chunk.join(',')})`)
-              .select('*', { count: 'exact' });
-              
-            if (error) throw error;
+          // First, get all IDs that would be deleted by our filter
+          const { data: allRecords, error: allRecordsError } = await query.select('id');
+          
+          if (allRecordsError) throw allRecordsError;
+          
+          if (allRecords && allRecords.length > 0) {
+            // Filter out the IDs we want to preserve
+            const idsToDelete = allRecords
+              .map(record => record.id)
+              .filter(id => !preserveIds.includes(id));
             
-            deletedCount += chunk.length;
+            // Delete in chunks
+            for (let i = 0; i < idsToDelete.length; i += chunkSize) {
+              const chunk = idsToDelete.slice(i, i + chunkSize);
+              const { error: deleteError } = await supabase
+                .from('time_records')
+                .delete()
+                .in('id', chunk);
+                
+              if (deleteError) throw deleteError;
+              
+              deletedCount += chunk.length;
+            }
+            
+            return {
+              success: true,
+              message: `Deleted ${deletedCount} records while preserving ${preserveIds.length} approved records`,
+              count: deletedCount
+            };
           }
-          
-          return {
-            success: true,
-            message: `Deleted records while preserving ${preserveIds.length} approved and double-time records`,
-            count: totalCount - preserveIds.length
-          };
         }
         
         return {
@@ -971,7 +978,7 @@ export const deleteAllTimeRecords = async (dateFilter: string = '', employeeFilt
     
     return {
       success: true,
-      message: `Deleted ${count || 0} records while preserving approved and double-time records`,
+      message: `Deleted ${count || 0} records${preserveApproved ? ' while preserving approved records' : ''}`,
       count: count || 0
     };
   } catch (error) {
@@ -990,29 +997,49 @@ export const resetAllDatabaseData = async (): Promise<{
   message: string;
 }> => {
   try {
-    // Delete from all related tables EXCEPT approved records
+    // First handle the processed data tables in correct order
     
-    // First, delete time_records but preserve approved records
+    // 1. First delete all processed_daily_records
+    const { error: dailyRecordsError } = await supabase
+      .from('processed_daily_records')
+      .delete()
+      .neq('id', '00000000-0000-0000-0000-000000000000');
+      
+    if (dailyRecordsError) {
+      console.error('Error deleting processed_daily_records:', dailyRecordsError);
+      // Continue anyway to try other deletions
+    }
+    
+    // 2. Then delete all processed_employee_data
+    const { error: employeeDataError } = await supabase
+      .from('processed_employee_data')
+      .delete()
+      .neq('id', '00000000-0000-0000-0000-000000000000');
+      
+    if (employeeDataError) {
+      console.error('Error deleting processed_employee_data:', employeeDataError);
+      // Continue anyway to try other deletions
+    }
+    
+    // 3. Finally delete all processed_excel_files
+    const { error: filesError } = await supabase
+      .from('processed_excel_files')
+      .delete()
+      .neq('id', '00000000-0000-0000-0000-000000000000');
+      
+    if (filesError) {
+      console.error('Error deleting processed_excel_files:', filesError);
+      // Continue anyway to try other deletions
+    }
+    
+    // Now delete time_records but preserve approved records (not double-time records)
     const { success: timeRecordsDeleted, count: timeRecordsCount, message: timeRecordsMessage } = 
-      await deleteAllTimeRecords('', '', true); // Pass true to preserve approved records
+      await deleteAllTimeRecords('', '', true);
     
     if (!timeRecordsDeleted) {
       return {
         success: false,
         message: `Failed to delete time records: ${timeRecordsMessage}`
-      };
-    }
-    
-    // Delete processed_excel_files (this will cascade to processed_employee_data and processed_daily_records)
-    const { data: filesDeleted, error: filesError } = await supabase
-      .from('processed_excel_files')
-      .delete()
-      .neq('id', '00000000-0000-0000-0000-000000000000'); // Delete all
-    
-    if (filesError) {
-      return {
-        success: false,
-        message: `Failed to delete processed files: ${filesError.message}`
       };
     }
     
