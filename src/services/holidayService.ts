@@ -259,23 +259,17 @@ export const backupCurrentHolidays = async (): Promise<boolean> => {
     
     console.log(`Found ${holidays.length} holidays to backup`);
     
-    // Process each holiday individually for backup
+    // Insert into backup table one by one
+    let successCount = 0;
     for (const holiday of holidays) {
       try {
-        // Check if holiday already exists in backup
-        const { data: existing, error: checkError } = await supabase
+        // Check if already exists in backup
+        const { data: existing } = await supabase
           .from('holidays_backup')
           .select('id')
           .eq('date', holiday.date)
           .maybeSingle();
           
-        if (checkError) {
-          console.error(`Error checking holiday existence: ${holiday.date}`, checkError);
-          continue;
-        }
-        
-        const now = new Date().toISOString();
-        
         if (existing) {
           // Update existing backup
           const { error: updateError } = await supabase
@@ -283,15 +277,16 @@ export const backupCurrentHolidays = async (): Promise<boolean> => {
             .update({
               description: holiday.description,
               created_at: holiday.created_at,
-              restored_at: now
+              restored_at: new Date().toISOString()
             })
             .eq('id', existing.id);
             
           if (updateError) {
-            console.error(`Error updating holiday backup: ${holiday.date}`, updateError);
+            console.error(`Error updating backup for holiday ${holiday.date}:`, updateError);
+            continue;
           }
         } else {
-          // Create new backup
+          // Insert new backup
           const { error: insertError } = await supabase
             .from('holidays_backup')
             .insert({
@@ -299,20 +294,23 @@ export const backupCurrentHolidays = async (): Promise<boolean> => {
               date: holiday.date,
               description: holiday.description,
               created_at: holiday.created_at,
-              restored_at: now
+              restored_at: new Date().toISOString()
             });
             
           if (insertError) {
-            console.error(`Error backing up holiday: ${holiday.date}`, insertError);
+            console.error(`Error inserting backup for holiday ${holiday.date}:`, insertError);
+            continue;
           }
         }
+        
+        successCount++;
       } catch (err) {
-        console.error(`Error processing holiday backup for ${holiday.date}:`, err);
+        console.error(`Error backing up holiday ${holiday.date}:`, err);
       }
     }
     
-    console.log(`Successfully backed up ${holidays.length} holidays`);
-    return true;
+    console.log(`Successfully backed up ${successCount} of ${holidays.length} holidays`);
+    return successCount > 0;
   } catch (error) {
     console.error('Error in backupCurrentHolidays:', error);
     return false;

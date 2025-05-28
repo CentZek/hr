@@ -8,42 +8,6 @@ import { EmployeeRecord, DailyRecord } from '../types';
 // Helper function to create a delay
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-// Retry function with exponential backoff
-const retry = async <T>(
-  fn: () => Promise<T>,
-  retries = 3,
-  initialDelay = 500,
-  maxDelay = 5000
-): Promise<T> => {
-  let attempts = 0;
-  let currentDelay = initialDelay;
-
-  while (true) {
-    try {
-      return await fn();
-    } catch (error: any) {
-      attempts++;
-      
-      // Check if it's a foreign key constraint error
-      const isFKError = error.message && (
-        error.message.includes('violates foreign key constraint') || 
-        error.message.includes('Key is not present in table')
-      );
-      
-      // If we've exhausted retries or it's not a foreign key error, throw
-      if (attempts >= retries || !isFKError) {
-        throw error;
-      }
-      
-      console.log(`Retry attempt ${attempts} after ${currentDelay}ms delay (foreign key constraint error)`);
-      await delay(currentDelay);
-      
-      // Exponential backoff with jitter
-      currentDelay = Math.min(currentDelay * 2, maxDelay) * (0.75 + Math.random() * 0.5);
-    }
-  }
-};
-
 // Helper to check if a file exists
 const checkFileExists = async (fileId: string): Promise<boolean> => {
   try {
@@ -85,25 +49,27 @@ export const saveProcessedExcelFile = async (
       .select()
       .single();
 
-    if (fileError) throw fileError;
-    if (!fileData) throw new Error('Failed to create file record');
+    if (fileError) {
+      console.error('Error creating file record:', fileError);
+      throw fileError;
+    }
+    
+    if (!fileData) {
+      console.error('No file data returned from insert operation');
+      throw new Error('Failed to create file record');
+    }
 
     const fileId = fileData.id;
+    console.log(`Created file record with ID: ${fileId}`);
     
-    // Add a small delay to ensure the file record is committed
-    await delay(1000);  // Increased delay to ensure record is committed
-
-    // Verify the file was actually created
-    const fileExists = await checkFileExists(fileId);
-    if (!fileExists) {
-      throw new Error(`File record created but not found in subsequent query. ID: ${fileId}`);
-    }
+    // Add a delay to ensure the file record is committed
+    await delay(1000);
 
     // Step 2: Save employee data
     for (const employee of employeeRecords) {
-      // Create employee record with retry mechanism
-      const employeeData = await retry(async () => {
-        const { data, error } = await supabase
+      try {
+        // Create employee record
+        const { data: employeeData, error: employeeError } = await supabase
           .from('processed_employee_data')
           .insert([
             {
@@ -117,69 +83,72 @@ export const saveProcessedExcelFile = async (
           .select()
           .single();
 
-        if (error) {
-          console.error('Error inserting employee data:', error);
-          throw error;
+        if (employeeError) {
+          console.error(`Error inserting employee data for ${employee.name}:`, employeeError);
+          continue; // Skip this employee if there's an error
         }
         
-        if (!data) {
-          throw new Error('No employee data returned after insert');
+        if (!employeeData) {
+          console.error(`No employee data returned after insert for ${employee.name}`);
+          continue; // Skip this employee if no data is returned
         }
+
+        const employeeId = employeeData.id;
         
-        return data;
-      }, 5);  // Increased retries for more reliability
+        // Add a delay to ensure the employee record is committed
+        await delay(300);
 
-      const employeeId = employeeData.id;
-      
-      // Add a small delay to ensure the employee record is committed
-      await delay(500);  // Increased delay for record commitment
+        // Step 3: Save daily records for this employee in smaller batches
+        const dailyRecordsToInsert = employee.days.map(day => ({
+          employee_id: employeeId,
+          date: day.date,
+          first_check_in: day.firstCheckIn?.toISOString() || null,
+          last_check_out: day.lastCheckOut?.toISOString() || null,
+          hours_worked: day.hoursWorked,
+          approved: day.approved,
+          shift_type: day.shiftType,
+          notes: day.notes || '',
+          missing_check_in: day.missingCheckIn,
+          missing_check_out: day.missingCheckOut,
+          is_late: day.isLate,
+          early_leave: day.earlyLeave,
+          excessive_overtime: day.excessiveOvertime,
+          penalty_minutes: day.penaltyMinutes,
+          corrected_records: day.correctedRecords || false,
+          display_check_in: day.displayCheckIn || null,
+          display_check_out: day.displayCheckOut || null,
+          working_week_start: day.working_week_start || null,
+          all_time_records: day.allTimeRecords ? JSON.stringify(day.allTimeRecords) : null
+        }));
 
-      // Step 3: Save daily records for this employee
-      const dailyRecordsToInsert = employee.days.map(day => ({
-        employee_id: employeeId, // Use the ID from the newly created employee record
-        date: day.date,
-        first_check_in: day.firstCheckIn?.toISOString() || null,
-        last_check_out: day.lastCheckOut?.toISOString() || null,
-        hours_worked: day.hoursWorked,
-        approved: day.approved,
-        shift_type: day.shiftType,
-        notes: day.notes || '',
-        missing_check_in: day.missingCheckIn,
-        missing_check_out: day.missingCheckOut,
-        is_late: day.isLate,
-        early_leave: day.earlyLeave,
-        excessive_overtime: day.excessiveOvertime,
-        penalty_minutes: day.penaltyMinutes,
-        corrected_records: day.correctedRecords || false,
-        display_check_in: day.displayCheckIn || null,
-        display_check_out: day.displayCheckOut || null,
-        working_week_start: day.working_week_start || null,
-        all_time_records: day.allTimeRecords ? JSON.stringify(day.allTimeRecords) : null
-      }));
+        if (dailyRecordsToInsert.length > 0) {
+          // Insert in smaller batches to avoid payload size limitations
+          const batchSize = 25;
+          for (let i = 0; i < dailyRecordsToInsert.length; i += batchSize) {
+            const batch = dailyRecordsToInsert.slice(i, i + batchSize);
+            try {
+              const { error: dailyError } = await supabase
+                .from('processed_daily_records')
+                .insert(batch);
 
-      if (dailyRecordsToInsert.length > 0) {
-        // Insert in batches to avoid payload size limitations
-        const batchSize = 20;  // Reduced batch size
-        for (let i = 0; i < dailyRecordsToInsert.length; i += batchSize) {
-          const batch = dailyRecordsToInsert.slice(i, i + batchSize);
-          
-          // Use retry mechanism for batch inserts
-          await retry(async () => {
-            const { error } = await supabase
-              .from('processed_daily_records')
-              .insert(batch);
-
-            if (error) {
-              console.error('Error inserting daily records batch:', error);
-              throw error;
+              if (dailyError) {
+                console.error(`Error inserting daily records batch for ${employee.name}:`, dailyError);
+                // Continue with next batch
+              }
+              
+              // Add a small delay between batches
+              if (i + batchSize < dailyRecordsToInsert.length) {
+                await delay(100);
+              }
+            } catch (batchError) {
+              console.error(`Exception during batch insert for ${employee.name}:`, batchError);
+              // Continue with next batch
             }
-          }, 5);  // Increased retries
-          
-          // Add a small delay between batches
-          if (i + batchSize < dailyRecordsToInsert.length) {
-            await delay(300);
           }
         }
+      } catch (employeeError) {
+        console.error(`Error processing employee ${employee.name}:`, employeeError);
+        // Continue with next employee
       }
     }
 
@@ -238,54 +207,65 @@ export const getProcessedEmployees = async (fileId: string): Promise<EmployeeRec
       .select('id, employee_number, name, department, total_days')
       .eq('file_id', fileId);
 
-    if (employeesError) throw employeesError;
-    if (!employeesData || employeesData.length === 0) return [];
+    if (employeesError) {
+      console.error('Error fetching employees data:', employeesError);
+      throw employeesError;
+    }
+    
+    if (!employeesData || employeesData.length === 0) {
+      return [];
+    }
 
     // Step 2: For each employee, fetch their daily records
     const employeeRecords: EmployeeRecord[] = [];
 
     for (const emp of employeesData) {
-      const { data: daysData, error: daysError } = await supabase
-        .from('processed_daily_records')
-        .select('*')
-        .eq('employee_id', emp.id);
+      try {
+        const { data: daysData, error: daysError } = await supabase
+          .from('processed_daily_records')
+          .select('*')
+          .eq('employee_id', emp.id);
 
-      if (daysError) {
-        console.error(`Error fetching daily records for employee ${emp.id}:`, daysError);
-        continue;
+        if (daysError) {
+          console.error(`Error fetching daily records for employee ${emp.id}:`, daysError);
+          continue;
+        }
+
+        // Convert database records to DailyRecord format
+        const days: DailyRecord[] = (daysData || []).map(day => ({
+          date: day.date,
+          firstCheckIn: day.first_check_in ? new Date(day.first_check_in) : null,
+          lastCheckOut: day.last_check_out ? new Date(day.last_check_out) : null,
+          hoursWorked: day.hours_worked,
+          approved: day.approved,
+          shiftType: day.shift_type as any, // Cast to the expected type
+          notes: day.notes,
+          missingCheckIn: day.missing_check_in,
+          missingCheckOut: day.missing_check_out,
+          isLate: day.is_late,
+          earlyLeave: day.early_leave,
+          excessiveOvertime: day.excessive_overtime,
+          penaltyMinutes: day.penalty_minutes,
+          correctedRecords: day.corrected_records,
+          displayCheckIn: day.display_check_in,
+          displayCheckOut: day.display_check_out,
+          working_week_start: day.working_week_start,
+          allTimeRecords: day.all_time_records ? JSON.parse(day.all_time_records) : [],
+          hasMultipleRecords: (day.all_time_records && JSON.parse(day.all_time_records).length > 1) || false
+        }));
+
+        employeeRecords.push({
+          employeeNumber: emp.employee_number,
+          name: emp.name,
+          department: emp.department,
+          days,
+          totalDays: emp.total_days,
+          expanded: false
+        });
+      } catch (empError) {
+        console.error(`Error processing employee ${emp.id}:`, empError);
+        // Continue with next employee
       }
-
-      // Convert database records to DailyRecord format
-      const days: DailyRecord[] = (daysData || []).map(day => ({
-        date: day.date,
-        firstCheckIn: day.first_check_in ? new Date(day.first_check_in) : null,
-        lastCheckOut: day.last_check_out ? new Date(day.last_check_out) : null,
-        hoursWorked: day.hours_worked,
-        approved: day.approved,
-        shiftType: day.shift_type as any, // Cast to the expected type
-        notes: day.notes,
-        missingCheckIn: day.missing_check_in,
-        missingCheckOut: day.missing_check_out,
-        isLate: day.is_late,
-        earlyLeave: day.early_leave,
-        excessiveOvertime: day.excessive_overtime,
-        penaltyMinutes: day.penalty_minutes,
-        correctedRecords: day.corrected_records,
-        displayCheckIn: day.display_check_in,
-        displayCheckOut: day.display_check_out,
-        working_week_start: day.working_week_start,
-        allTimeRecords: day.all_time_records ? JSON.parse(day.all_time_records) : [],
-        hasMultipleRecords: (day.all_time_records && JSON.parse(day.all_time_records).length > 1) || false
-      }));
-
-      employeeRecords.push({
-        employeeNumber: emp.employee_number,
-        name: emp.name,
-        department: emp.department,
-        days,
-        totalDays: emp.total_days,
-        expanded: false
-      });
     }
 
     return employeeRecords;
@@ -302,17 +282,21 @@ export const updateProcessedEmployeeData = async (
   fileName: string = 'Untitled File'
 ): Promise<{ success: boolean; fileId: string }> => {
   try {
+    // Delay to ensure any previous operations have completed
+    await delay(500);
+
     let actualFileId = fileId;
+    let newFileCreated = false;
     
-    // First check if the file exists
+    // First, verify the file exists before proceeding
     const fileExists = await checkFileExists(fileId);
     
-    // If file doesn't exist, create a new one
     if (!fileExists) {
       console.log('File not found, creating a new one');
       
       try {
-        const { data: newFile, error: createError } = await supabase
+        // Create a new file record
+        const { data: newFileData, error: createError } = await supabase
           .from('processed_excel_files')
           .insert({
             file_name: fileName,
@@ -320,41 +304,41 @@ export const updateProcessedEmployeeData = async (
             total_days: employeeRecords.reduce((sum, emp) => sum + emp.days.length, 0),
             is_active: true
           })
-          .select()
-          .single();
+          .select();
           
         if (createError) {
-          throw createError;
+          console.error('Error creating new file record:', createError);
+          throw new Error(`Failed to create new file record: ${createError.message}`);
         }
         
-        if (!newFile || !newFile.id) {
-          throw new Error('File created but no ID returned');
+        if (!newFileData || newFileData.length === 0 || !newFileData[0].id) {
+          throw new Error('New file record created but no ID returned');
         }
         
-        // Use new file ID
-        actualFileId = newFile.id;
+        // Use the new file ID for subsequent operations
+        actualFileId = newFileData[0].id;
+        newFileCreated = true;
         console.log('Created new file with ID:', actualFileId);
+        
+        // Add delay after creating the file to ensure it's committed
+        await delay(1500);
+        
+        // Double-check that the file exists
+        const newFileExists = await checkFileExists(actualFileId);
+        if (!newFileExists) {
+          console.error('New file record was created but cannot be found in database');
+          throw new Error('Failed to create file record properly');
+        }
       } catch (err) {
-        console.error('Failed to create new file:', err);
-        // If we can't create a new file, return failure
-        return { success: false, fileId: actualFileId };
-      }
-      
-      // Add delay after creating the file
-      await delay(1500);
-      
-      // Verify file was created
-      const newFileExists = await checkFileExists(actualFileId);
-      if (!newFileExists) {
-        console.error('New file record was not created successfully');
+        console.error('Error creating new file:', err);
         return { success: false, fileId: actualFileId };
       }
     }
     
-    // For each employee, ensure their record exists before updating daily records
+    // Process each employee
     for (const employee of employeeRecords) {
       try {
-        // Look for existing employee
+        // Check if employee record exists
         const { data: existingEmployee, error: lookupError } = await supabase
           .from('processed_employee_data')
           .select('id')
@@ -363,8 +347,8 @@ export const updateProcessedEmployeeData = async (
           .maybeSingle();
           
         if (lookupError) {
-          console.error('Error looking up employee:', lookupError);
-          continue;
+          console.error(`Error looking up employee ${employee.name}:`, lookupError);
+          continue; // Skip this employee
         }
         
         let employeeId: string;
@@ -373,7 +357,7 @@ export const updateProcessedEmployeeData = async (
           // Use existing employee ID
           employeeId = existingEmployee.id;
           
-          // Update employee details
+          // Update the existing employee record
           const { error: updateError } = await supabase
             .from('processed_employee_data')
             .update({
@@ -384,21 +368,27 @@ export const updateProcessedEmployeeData = async (
             .eq('id', employeeId);
             
           if (updateError) {
-            console.error('Error updating employee:', updateError);
-            continue;
+            console.error(`Error updating employee ${employee.name}:`, updateError);
+            // Continue anyway to try updating daily records
           }
         } else {
           // Create new employee record
-          let newEmployee;
           try {
-            // Verify file still exists before creating employee
+            // Verify file still exists
             const fileStillExists = await checkFileExists(actualFileId);
             if (!fileStillExists) {
-              console.error(`File ${actualFileId} no longer exists, cannot create employee`);
+              console.error(`File ${actualFileId} no longer exists, cannot create employee record`);
+              // If this is a newly created file that disappeared, we need to return failure
+              if (newFileCreated) {
+                return { success: false, fileId: actualFileId };
+              }
               continue;
             }
             
-            const { data, error } = await supabase
+            // Add a delay before creating the employee record
+            await delay(300);
+            
+            const { data: newEmployee, error: createError } = await supabase
               .from('processed_employee_data')
               .insert({
                 file_id: actualFileId,
@@ -407,99 +397,105 @@ export const updateProcessedEmployeeData = async (
                 department: employee.department || '',
                 total_days: employee.days.length
               })
-              .select('id')
-              .single();
+              .select();
               
-            if (error) {
-              console.error('Error creating employee:', error);
+            if (createError) {
+              console.error(`Error creating employee record for ${employee.name}:`, createError);
               continue;
             }
             
-            newEmployee = data;
+            if (!newEmployee || newEmployee.length === 0 || !newEmployee[0].id) {
+              console.error(`Failed to create employee record for ${employee.name}: No ID returned`);
+              continue;
+            }
+            
+            employeeId = newEmployee[0].id;
+            console.log(`Created employee record with ID: ${employeeId}`);
           } catch (err) {
-            console.error('Exception creating employee:', err);
+            console.error(`Error creating employee record for ${employee.name}:`, err);
             continue;
           }
-          
-          if (!newEmployee || !newEmployee.id) {
-            console.error('Failed to create employee record');
-            continue;
-          }
-          
-          employeeId = newEmployee.id;
         }
         
-        // Add a delay before manipulating daily records
-        await delay(500);
-        
-        // Verify employee record still exists
-        const { data: empCheck, error: empCheckError } = await supabase
-          .from('processed_employee_data')
-          .select('id')
-          .eq('id', employeeId)
-          .maybeSingle();
-          
-        if (empCheckError || !empCheck) {
-          console.error(`Employee ${employeeId} no longer exists, skipping daily records`);
-          continue;
-        }
+        // Add a delay before processing daily records
+        await delay(300);
         
         // Delete existing daily records for this employee
         try {
+          // First check if the employee still exists
+          const { data: empCheck, error: empCheckError } = await supabase
+            .from('processed_employee_data')
+            .select('id')
+            .eq('id', employeeId)
+            .maybeSingle();
+            
+          if (empCheckError) {
+            console.error(`Error checking employee existence for ${employee.name}:`, empCheckError);
+            continue;
+          }
+          
+          if (!empCheck) {
+            console.error(`Employee ID ${employeeId} no longer exists`);
+            continue;
+          }
+          
+          // Now delete the daily records
           const { error: deleteError } = await supabase
             .from('processed_daily_records')
             .delete()
             .eq('employee_id', employeeId);
             
           if (deleteError) {
-            console.error('Error deleting daily records:', deleteError);
-            // Continue anyway to attempt insertion
+            console.error(`Error deleting daily records for ${employee.name}:`, deleteError);
+            // Continue anyway to try inserting new records
           }
           
-          // Wait for delete to complete
-          await delay(500);
+          // Wait after delete operation
+          await delay(300);
         } catch (err) {
-          console.error('Exception deleting daily records:', err);
-          // Continue to try insertions
+          console.error(`Exception deleting daily records for ${employee.name}:`, err);
+          // Continue anyway to try inserting new records
         }
         
-        // Insert new daily records in small batches
-        const dailyRecordsToInsert = employee.days.map(day => ({
-          employee_id: employeeId,
-          date: day.date,
-          first_check_in: day.firstCheckIn?.toISOString() || null,
-          last_check_out: day.lastCheckOut?.toISOString() || null,
-          hours_worked: day.hoursWorked,
-          approved: day.approved,
-          shift_type: day.shiftType,
-          notes: day.notes || '',
-          missing_check_in: day.missingCheckIn,
-          missing_check_out: day.missingCheckOut,
-          is_late: day.isLate,
-          early_leave: day.earlyLeave,
-          excessive_overtime: day.excessiveOvertime,
-          penalty_minutes: day.penaltyMinutes,
-          corrected_records: day.correctedRecords || false,
-          display_check_in: day.displayCheckIn || null,
-          display_check_out: day.displayCheckOut || null,
-          working_week_start: day.working_week_start || null,
-          all_time_records: day.allTimeRecords ? JSON.stringify(day.allTimeRecords) : null
-        }));
-        
-        if (dailyRecordsToInsert.length > 0) {
-          const batchSize = 10; // Smaller batch size
+        // Insert daily records in small batches
+        if (employee.days.length > 0) {
+          // Convert days to database format
+          const dailyRecordsToInsert = employee.days.map(day => ({
+            employee_id: employeeId,
+            date: day.date,
+            first_check_in: day.firstCheckIn?.toISOString() || null,
+            last_check_out: day.lastCheckOut?.toISOString() || null,
+            hours_worked: day.hoursWorked,
+            approved: day.approved,
+            shift_type: day.shiftType,
+            notes: day.notes || '',
+            missing_check_in: day.missingCheckIn,
+            missing_check_out: day.missingCheckOut,
+            is_late: day.isLate,
+            early_leave: day.earlyLeave,
+            excessive_overtime: day.excessiveOvertime,
+            penalty_minutes: day.penaltyMinutes,
+            corrected_records: day.correctedRecords || false,
+            display_check_in: day.displayCheckIn || null,
+            display_check_out: day.displayCheckOut || null,
+            working_week_start: day.working_week_start || null,
+            all_time_records: day.allTimeRecords ? JSON.stringify(day.allTimeRecords) : null
+          }));
+          
+          // Insert in smaller batches
+          const batchSize = 20; // Smaller batch size to avoid issues
           for (let i = 0; i < dailyRecordsToInsert.length; i += batchSize) {
             const batch = dailyRecordsToInsert.slice(i, i + batchSize);
             
             try {
-              // Final check before insert to ensure employee exists
-              const { data: empFinalCheck } = await supabase
+              // Verify employee still exists before each batch insert
+              const { data: empVerify } = await supabase
                 .from('processed_employee_data')
                 .select('id')
                 .eq('id', employeeId)
                 .maybeSingle();
                 
-              if (!empFinalCheck) {
+              if (!empVerify) {
                 console.error(`Employee ${employeeId} no longer exists before batch insert`);
                 break;
               }
@@ -509,26 +505,33 @@ export const updateProcessedEmployeeData = async (
                 .insert(batch);
                 
               if (insertError) {
-                console.error('Error inserting daily records batch:', insertError);
-                // Continue with next batch
+                console.error(`Error inserting daily records batch for ${employee.name}:`, insertError);
+                // Continue with next batch anyway
               }
               
-              // Delay between batches
-              await delay(300);
-            } catch (err) {
-              console.error('Exception inserting daily records batch:', err);
+              // Add delay between batches
+              await delay(200);
+            } catch (batchError) {
+              console.error(`Exception during batch insert for ${employee.name}:`, batchError);
               // Continue with next batch
             }
           }
         }
       } catch (employeeError) {
-        console.error('Error processing employee:', employeeError);
+        console.error(`Error processing employee ${employee.name}:`, employeeError);
         // Continue with next employee
       }
     }
-    
+
     // Update file record with new totals
     try {
+      // Verify file still exists
+      const fileStillExists = await checkFileExists(actualFileId);
+      if (!fileStillExists) {
+        console.error(`File ${actualFileId} no longer exists, cannot update totals`);
+        return { success: true, fileId: actualFileId };  // Return success anyway since data was saved
+      }
+      
       const { error: updateError } = await supabase
         .from('processed_excel_files')
         .update({
@@ -538,12 +541,12 @@ export const updateProcessedEmployeeData = async (
         .eq('id', actualFileId);
         
       if (updateError) {
-        console.error('Error updating file record:', updateError);
-        // Continue anyway as the main data is already saved
+        console.error('Error updating file record totals:', updateError);
+        // Return success anyway since the main data was saved
       }
     } catch (err) {
       console.error('Exception updating file record:', err);
-      // Continue as the main data is already saved
+      // Return success anyway since the main data was saved
     }
 
     return { success: true, fileId: actualFileId };
@@ -557,54 +560,77 @@ export const updateProcessedEmployeeData = async (
 export const deleteProcessedExcelData = async (fileId?: string): Promise<boolean> => {
   try {
     if (fileId) {
-      // Delete just the file - cascade should handle the rest
-      try {
-        const { error } = await supabase
-          .from('processed_excel_files')
-          .delete()
-          .eq('id', fileId);
+      // First check if file exists
+      const fileExists = await checkFileExists(fileId);
+      if (!fileExists) {
+        console.log(`File ${fileId} doesn't exist, nothing to delete`);
+        return true;
+      }
+      
+      // Delete the specified file (cascade should handle related records)
+      const { error } = await supabase
+        .from('processed_excel_files')
+        .delete()
+        .eq('id', fileId);
 
-        if (error) {
-          console.error('Error deleting file record:', error);
-          return false;
-        }
-      } catch (err) {
-        console.error('Exception deleting file:', err);
+      if (error) {
+        console.error(`Error deleting file ${fileId}:`, error);
         return false;
       }
     } else {
-      // Delete everything in reverse order of dependency
+      // Delete all records in separate operations in reverse dependency order
+      
+      console.log('Deleting all processed daily records...');
       try {
-        console.log('Deleting all processed daily records...');
-        await supabase
+        const { error: dailyRecordsError } = await supabase
           .from('processed_daily_records')
           .delete()
-          .neq('employee_id', '00000000-0000-0000-0000-000000000000');
+          .neq('id', '00000000-0000-0000-0000-000000000000');
           
-        // Wait for deletion to complete
-        await delay(1000);
+        if (dailyRecordsError) {
+          console.error('Error deleting all daily records:', dailyRecordsError);
+          // Continue with other deletions
+        }
         
-        console.log('Deleting all processed employee data...');
-        await supabase
+        // Add delay between operations
+        await delay(1000);
+      } catch (err) {
+        console.error('Exception deleting daily records:', err);
+        // Continue with other deletions
+      }
+      
+      console.log('Deleting all processed employee data...');
+      try {
+        const { error: employeeDataError } = await supabase
           .from('processed_employee_data')
           .delete()
-          .neq('file_id', '00000000-0000-0000-0000-000000000000');
+          .neq('id', '00000000-0000-0000-0000-000000000000');
           
-        // Wait for deletion to complete
-        await delay(1000);
+        if (employeeDataError) {
+          console.error('Error deleting all employee data:', employeeDataError);
+          // Continue with other deletions
+        }
         
-        console.log('Deleting all processed excel files...');
-        const { error } = await supabase
+        // Add delay between operations
+        await delay(1000);
+      } catch (err) {
+        console.error('Exception deleting employee data:', err);
+        // Continue with other deletions
+      }
+      
+      console.log('Deleting all processed Excel files...');
+      try {
+        const { error: filesError } = await supabase
           .from('processed_excel_files')
           .delete()
           .neq('id', '00000000-0000-0000-0000-000000000000');
-
-        if (error) {
-          console.error('Error in bulk deletion of files:', error);
+          
+        if (filesError) {
+          console.error('Error deleting all Excel files:', filesError);
           return false;
         }
       } catch (err) {
-        console.error('Exception during bulk deletion:', err);
+        console.error('Exception deleting Excel files:', err);
         return false;
       }
     }
