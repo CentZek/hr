@@ -973,9 +973,6 @@ export const resetAllDatabaseData = async (): Promise<{
   message: string;
 }> => {
   try {
-    // FIXED: Do not delete processed data tables as they contain approved hours data
-    // We'll only delete non-approved time records and pending shifts
-    
     // Delete time_records but preserve approved records
     const { success: timeRecordsDeleted, count: timeRecordsCount, message: timeRecordsMessage } = 
       await deleteAllTimeRecords('', '', true);
@@ -987,11 +984,22 @@ export const resetAllDatabaseData = async (): Promise<{
       };
     }
     
-    // Delete employee_shifts EXCEPT approved ones
+    // Delete processed_excel_files (this will cascade to processed_employee_data and processed_daily_records)
+    const { data: filesDeleted, error: filesError } = await supabase
+      .from('processed_excel_files')
+      .delete()
+      .neq('id', '00000000-0000-0000-0000-000000000000');
+    
+    if (filesError) {
+      console.error('Error deleting processed_excel_files:', filesError);
+      // Continue anyway to try deleting other tables
+    }
+    
+    // Delete pending employee shifts EXCEPT approved ones
     const { data: shiftsDeleted, error: shiftsError } = await supabase
       .from('employee_shifts')
       .delete()
-      .not('status', 'eq', 'approved') // Don't delete approved shifts
+      .not('status', 'eq', 'approved')
       .neq('id', '00000000-0000-0000-0000-000000000000');
     
     if (shiftsError) {
