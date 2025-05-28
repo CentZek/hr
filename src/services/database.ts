@@ -841,16 +841,19 @@ export const deleteAllTimeRecords = async (dateFilter: string = '', employeeFilt
     let preserveIds: string[] = [];
     
     if (preserveApproved) {
-      // Get approved records but exclude double-time records (fix)
+      // Get approved records - use a more reliable way to identify approved records
+      // Look for records with notes containing "approved" or with exact_hours that aren't null
+      // This ensures we preserve all records that have been processed and approved
       const { data: approvedRecords, error: approvedError } = await supabase
         .from('time_records')
         .select('id')
-        .not('notes', 'ilike', '%double-time%')  // Fix: Don't preserve double-time records
-        .ilike('notes', '%approved%');
+        .not('exact_hours', 'is', null)
+        .not('notes', 'ilike', '%double-time%');  // Don't preserve double-time records
         
       if (approvedError) throw approvedError;
       
       preserveIds = approvedRecords ? approvedRecords.map(record => record.id) : [];
+      console.log(`Found ${preserveIds.length} approved records to preserve`);
     }
     
     // Build the delete query
@@ -997,42 +1000,10 @@ export const resetAllDatabaseData = async (): Promise<{
   message: string;
 }> => {
   try {
-    // First handle the processed data tables in correct order
+    // FIXED: Do not delete processed data tables as they contain approved hours data
+    // We'll only delete non-approved time records and pending shifts
     
-    // 1. First delete all processed_daily_records
-    const { error: dailyRecordsError } = await supabase
-      .from('processed_daily_records')
-      .delete()
-      .neq('id', '00000000-0000-0000-0000-000000000000');
-      
-    if (dailyRecordsError) {
-      console.error('Error deleting processed_daily_records:', dailyRecordsError);
-      // Continue anyway to try other deletions
-    }
-    
-    // 2. Then delete all processed_employee_data
-    const { error: employeeDataError } = await supabase
-      .from('processed_employee_data')
-      .delete()
-      .neq('id', '00000000-0000-0000-0000-000000000000');
-      
-    if (employeeDataError) {
-      console.error('Error deleting processed_employee_data:', employeeDataError);
-      // Continue anyway to try other deletions
-    }
-    
-    // 3. Finally delete all processed_excel_files
-    const { error: filesError } = await supabase
-      .from('processed_excel_files')
-      .delete()
-      .neq('id', '00000000-0000-0000-0000-000000000000');
-      
-    if (filesError) {
-      console.error('Error deleting processed_excel_files:', filesError);
-      // Continue anyway to try other deletions
-    }
-    
-    // Now delete time_records but preserve approved records (not double-time records)
+    // Delete time_records but preserve approved records
     const { success: timeRecordsDeleted, count: timeRecordsCount, message: timeRecordsMessage } = 
       await deleteAllTimeRecords('', '', true);
     
