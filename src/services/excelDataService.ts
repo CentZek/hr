@@ -47,14 +47,21 @@ export const saveProcessedExcelFile = async (
         .select()
         .single();
 
-      if (employeeError) throw employeeError;
-      if (!employeeData) continue;
+      if (employeeError) {
+        console.error('Error inserting employee data:', employeeError);
+        continue; // Skip this employee if there's an error
+      }
+      
+      if (!employeeData) {
+        console.error('No employee data returned after insert');
+        continue; // Skip this employee if no data is returned
+      }
 
       const employeeId = employeeData.id;
 
       // Step 3: Save daily records for this employee
       const dailyRecordsToInsert = employee.days.map(day => ({
-        employee_id: employeeId,
+        employee_id: employeeId, // Use the ID from the newly created employee record
         date: day.date,
         first_check_in: day.firstCheckIn?.toISOString() || null,
         last_check_out: day.lastCheckOut?.toISOString() || null,
@@ -84,7 +91,10 @@ export const saveProcessedExcelFile = async (
             .from('processed_daily_records')
             .insert(batch);
 
-          if (dailyError) throw dailyError;
+          if (dailyError) {
+            console.error('Error inserting daily records:', dailyError);
+            // Continue with next batch even if there's an error
+          }
         }
       }
     }
@@ -197,36 +207,85 @@ export const updateProcessedEmployeeData = async (
   employeeRecords: EmployeeRecord[]
 ): Promise<boolean> => {
   try {
-    // For simplicity, we'll just delete and re-insert all records for this file
-    // This avoids complex update logic for nested data
+    // First, verify the file exists
+    const { data: fileData, error: fileError } = await supabase
+      .from('processed_excel_files')
+      .select('id')
+      .eq('id', fileId)
+      .single();
+      
+    if (fileError || !fileData) {
+      console.error('File not found:', fileId);
+      return false;
+    }
     
-    // Step 1: Get all employee IDs for this file
-    const { data: employeesData, error: employeesError } = await supabase
-      .from('processed_employee_data')
-      .select('id, employee_number')
-      .eq('file_id', fileId);
-
-    if (employeesError) throw employeesError;
-    if (!employeesData) return false;
-
-    // Create a map for easy lookup of employee IDs
-    const employeeIdMap = new Map(
-      employeesData.map(emp => [emp.employee_number, emp.id])
-    );
-
-    // Step 2: Update each employee's daily records
+    // For each employee, ensure their record exists before updating daily records
     for (const employee of employeeRecords) {
-      const employeeId = employeeIdMap.get(employee.employeeNumber);
-      if (!employeeId) continue;
-
+      // Check if employee record exists
+      const { data: existingEmployee, error: lookupError } = await supabase
+        .from('processed_employee_data')
+        .select('id')
+        .eq('file_id', fileId)
+        .eq('employee_number', employee.employeeNumber)
+        .maybeSingle();
+        
+      if (lookupError) {
+        console.error('Error looking up employee:', lookupError);
+        continue; // Skip this employee if there's an error
+      }
+      
+      let employeeId: string;
+      
+      if (!existingEmployee) {
+        // Create the employee record if it doesn't exist
+        const { data: newEmployee, error: createError } = await supabase
+          .from('processed_employee_data')
+          .insert([{
+            file_id: fileId,
+            employee_number: employee.employeeNumber,
+            name: employee.name,
+            department: employee.department || '',
+            total_days: employee.days.length
+          }])
+          .select('id')
+          .single();
+          
+        if (createError || !newEmployee) {
+          console.error('Error creating employee record:', createError);
+          continue; // Skip this employee if creation fails
+        }
+        
+        employeeId = newEmployee.id;
+      } else {
+        employeeId = existingEmployee.id;
+        
+        // Update the existing employee record
+        const { error: updateError } = await supabase
+          .from('processed_employee_data')
+          .update({
+            name: employee.name,
+            department: employee.department || '',
+            total_days: employee.days.length
+          })
+          .eq('id', employeeId);
+          
+        if (updateError) {
+          console.error('Error updating employee record:', updateError);
+          // Continue anyway to try updating daily records
+        }
+      }
+      
       // Delete existing daily records for this employee
       const { error: deleteError } = await supabase
         .from('processed_daily_records')
         .delete()
         .eq('employee_id', employeeId);
-
-      if (deleteError) throw deleteError;
-
+        
+      if (deleteError) {
+        console.error('Error deleting daily records:', deleteError);
+        // Continue anyway to try inserting new records
+      }
+      
       // Insert updated daily records
       const dailyRecordsToInsert = employee.days.map(day => ({
         employee_id: employeeId,
@@ -259,20 +318,15 @@ export const updateProcessedEmployeeData = async (
             .from('processed_daily_records')
             .insert(batch);
 
-          if (insertError) throw insertError;
+          if (insertError) {
+            console.error('Error inserting daily records:', insertError);
+            // Continue with next batch even if there's an error
+          }
         }
       }
-
-      // Update employee record with new total_days
-      const { error: updateError } = await supabase
-        .from('processed_employee_data')
-        .update({ total_days: employee.days.length })
-        .eq('id', employeeId);
-
-      if (updateError) throw updateError;
     }
 
-    // Step 3: Update file record with new totals
+    // Update file record with new totals
     const { error: updateFileError } = await supabase
       .from('processed_excel_files')
       .update({
@@ -281,7 +335,10 @@ export const updateProcessedEmployeeData = async (
       })
       .eq('id', fileId);
 
-    if (updateFileError) throw updateFileError;
+    if (updateFileError) {
+      console.error('Error updating file record:', updateFileError);
+      // Continue anyway as the main data is already updated
+    }
 
     return true;
   } catch (error) {

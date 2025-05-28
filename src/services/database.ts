@@ -831,12 +831,24 @@ export const fetchPendingEmployeeShifts = async (): Promise<any[]> => {
 };
 
 // Delete all time records
-export const deleteAllTimeRecords = async (dateFilter: string = '', employeeFilter: string = '', preserveApproved: boolean = false): Promise<{
+export const deleteAllTimeRecords = async (dateFilter: string = '', employeeFilter: string = '', preserveApproved: boolean = true): Promise<{
   success: boolean;
   message: string;
   count: number;
 }> => {
   try {
+    // Always get approved records first to preserve them
+    const { data: approvedRecords, error: approvedError } = await supabase
+      .from('time_records')
+      .select('id')
+      .or('notes.ilike.%approved%,notes.ilike.%double-time%'); // Preserve both approved and double-time records
+      
+    if (approvedError) throw approvedError;
+    
+    // Get the IDs of records to preserve
+    const preserveIds = approvedRecords ? approvedRecords.map(record => record.id) : [];
+    
+    // Build the delete query
     let query = supabase.from('time_records').delete();
     
     // Apply date filter if provided
@@ -892,40 +904,26 @@ export const deleteAllTimeRecords = async (dateFilter: string = '', employeeFilt
       }
     }
     
-    // If preserveApproved is true, only delete non-approved records
-    if (preserveApproved) {
-      // We need to get all approved record IDs and exclude them
-      const { data: approvedRecords, error: approvedError } = await supabase
-        .from('time_records')
-        .select('id')
-        .ilike('notes', '%approved%');
-        
-      if (approvedError) throw approvedError;
-      
-      if (approvedRecords && approvedRecords.length > 0) {
-        // Extract IDs
-        const approvedIds = approvedRecords.map(record => record.id);
-        
-        // Exclude these IDs from deletion
-        query = query.not('id', 'in', approvedIds);
-      }
+    // ALWAYS exclude approved records and double-time records
+    if (preserveIds.length > 0) {
+      query = query.not('id', 'in', preserveIds);
     }
     
-    // Get count first
-    const { count, error: countError } = await supabase
-      .from('time_records')
-      .select('*', { count: 'exact', head: true });
+    // Get count of records to be deleted first
+    const { count, error: countError } = await query.select('*', { count: 'exact', head: true });
     
     if (countError) throw countError;
     
-    // Execute the delete
-    const { error } = await query;
-    
-    if (error) throw error;
+    // Execute the delete if there are records to delete
+    if (count && count > 0) {
+      const { error } = await query;
+      
+      if (error) throw error;
+    }
     
     return {
       success: true,
-      message: `Deleted ${count} records`,
+      message: `Deleted ${count || 0} records while preserving approved and double-time records`,
       count: count || 0
     };
   } catch (error) {
@@ -970,11 +968,12 @@ export const resetAllDatabaseData = async (): Promise<{
       };
     }
     
-    // Delete employee_shifts
+    // Delete employee_shifts EXCEPT approved ones
     const { data: shiftsDeleted, error: shiftsError } = await supabase
       .from('employee_shifts')
       .delete()
-      .neq('id', '00000000-0000-0000-0000-000000000000'); // Delete all
+      .not('status', 'eq', 'approved') // Don't delete approved shifts
+      .neq('id', '00000000-0000-0000-0000-000000000000');
     
     if (shiftsError) {
       return {
@@ -998,7 +997,7 @@ export const resetAllDatabaseData = async (): Promise<{
     
     return {
       success: true,
-      message: `Reset complete. Deleted ${timeRecordsCount} non-approved time records.`
+      message: `Reset complete. Deleted ${timeRecordsCount} non-approved time records while preserving approved records.`
     };
   } catch (error) {
     console.error('Error resetting database:', error);
