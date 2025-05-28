@@ -262,49 +262,23 @@ export const backupCurrentHolidays = async (): Promise<boolean> => {
     // Process each holiday individually for backup
     for (const holiday of holidays) {
       try {
-        // Check if holiday already exists in backup
-        const { data: existing, error: checkError } = await supabase
-          .from('holidays_backup')
-          .select('id')
-          .eq('date', holiday.date)
-          .maybeSingle();
-          
-        if (checkError) {
-          console.error(`Error checking holiday existence: ${holiday.date}`, checkError);
-          continue;
-        }
-        
         const now = new Date().toISOString();
         
-        if (existing) {
-          // Update existing backup
-          const { error: updateError } = await supabase
-            .from('holidays_backup')
-            .update({
-              description: holiday.description,
-              created_at: holiday.created_at,
-              restored_at: now
-            })
-            .eq('id', existing.id);
-            
-          if (updateError) {
-            console.error(`Error updating holiday backup: ${holiday.date}`, updateError);
-          }
-        } else {
-          // Create new backup
-          const { error: insertError } = await supabase
-            .from('holidays_backup')
-            .insert({
-              id: holiday.id,
-              date: holiday.date,
-              description: holiday.description,
-              created_at: holiday.created_at,
-              restored_at: now
-            });
-            
-          if (insertError) {
-            console.error(`Error backing up holiday: ${holiday.date}`, insertError);
-          }
+        // Use upsert operation for each holiday - this handles both insert and update cases
+        const { error: upsertError } = await supabase
+          .from('holidays_backup')
+          .upsert({
+            id: holiday.id,
+            date: holiday.date,
+            description: holiday.description,
+            created_at: holiday.created_at,
+            restored_at: now
+          }, { 
+            onConflict: 'id' 
+          });
+          
+        if (upsertError) {
+          console.error(`Error backing up holiday: ${holiday.date}`, upsertError);
         }
       } catch (err) {
         console.error(`Error processing holiday backup for ${holiday.date}:`, err);
