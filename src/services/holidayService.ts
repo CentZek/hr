@@ -261,48 +261,53 @@ export const backupCurrentHolidays = async (): Promise<boolean> => {
     
     // Process each holiday individually for backup
     for (const holiday of holidays) {
-      // First check if the holiday already exists in backup
-      const { data: existingHoliday, error: checkError } = await supabase
-        .from('holidays_backup')
-        .select('id')
-        .eq('id', holiday.id)
-        .maybeSingle();
+      try {
+        // Check if holiday already exists in backup
+        const { data: existing, error: checkError } = await supabase
+          .from('holidays_backup')
+          .select('id')
+          .eq('date', holiday.date)
+          .maybeSingle();
+          
+        if (checkError) {
+          console.error(`Error checking holiday existence: ${holiday.date}`, checkError);
+          continue;
+        }
         
-      if (checkError) {
-        console.error(`Error checking if holiday ${holiday.date} exists:`, checkError);
-        continue;
-      }
-      
-      if (existingHoliday) {
-        // Holiday exists, update it
-        const { error: updateError } = await supabase
-          .from('holidays_backup')
-          .update({
-            date: holiday.date,
-            description: holiday.description,
-            created_at: holiday.created_at,
-            restored_at: new Date().toISOString()
-          })
-          .eq('id', holiday.id);
-          
-        if (updateError) {
-          console.error(`Error updating backup for holiday ${holiday.date}:`, updateError);
+        const now = new Date().toISOString();
+        
+        if (existing) {
+          // Update existing backup
+          const { error: updateError } = await supabase
+            .from('holidays_backup')
+            .update({
+              description: holiday.description,
+              created_at: holiday.created_at,
+              restored_at: now
+            })
+            .eq('id', existing.id);
+            
+          if (updateError) {
+            console.error(`Error updating holiday backup: ${holiday.date}`, updateError);
+          }
+        } else {
+          // Create new backup
+          const { error: insertError } = await supabase
+            .from('holidays_backup')
+            .insert({
+              id: holiday.id,
+              date: holiday.date,
+              description: holiday.description,
+              created_at: holiday.created_at,
+              restored_at: now
+            });
+            
+          if (insertError) {
+            console.error(`Error backing up holiday: ${holiday.date}`, insertError);
+          }
         }
-      } else {
-        // Holiday doesn't exist, insert it
-        const { error: insertError } = await supabase
-          .from('holidays_backup')
-          .insert({
-            id: holiday.id,
-            date: holiday.date,
-            description: holiday.description,
-            created_at: holiday.created_at,
-            restored_at: new Date().toISOString()
-          });
-          
-        if (insertError) {
-          console.error(`Error inserting backup for holiday ${holiday.date}:`, insertError);
-        }
+      } catch (err) {
+        console.error(`Error processing holiday backup for ${holiday.date}:`, err);
       }
     }
     
