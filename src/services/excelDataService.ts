@@ -214,10 +214,10 @@ export const updateProcessedEmployeeData = async (
       .from('processed_excel_files')
       .select('id')
       .eq('id', fileId)
-      .single();
+      .maybeSingle();  // Changed from single() to maybeSingle() to handle case where no rows are found
       
-    if (fileError || !fileData) {
-      console.error('File not found or error verifying file existence:', fileError);
+    if (fileError) {
+      console.error('Error verifying file existence:', fileError);
       
       try {
         // Create a new file record before proceeding
@@ -255,6 +255,34 @@ export const updateProcessedEmployeeData = async (
         }
       } catch (err) {
         console.error('Error during file recovery process:', err);
+        return false;
+      }
+    } else if (!fileData) {
+      // Handle the case where no file was found but no error was thrown
+      console.log('File not found, creating a new one');
+      
+      try {
+        // Create a new file record
+        const { data: newFile, error: createFileError } = await supabase
+          .from('processed_excel_files')
+          .insert([{
+            file_name: 'Recovered File',
+            total_employees: employeeRecords.length,
+            total_days: employeeRecords.reduce((sum, emp) => sum + emp.days.length, 0),
+            is_active: true
+          }])
+          .select()
+          .single();
+          
+        if (createFileError || !newFile) {
+          console.error('Failed to create recovery file:', createFileError);
+          return false; // Exit early if we can't create the file
+        }
+        
+        console.log('Created recovery file with ID:', newFile.id);
+        finalFileId = newFile.id;
+      } catch (err) {
+        console.error('Error creating new file record:', err);
         return false;
       }
     }
