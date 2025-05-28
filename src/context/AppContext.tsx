@@ -7,6 +7,7 @@ import {
   updateProcessedEmployeeData,
   deleteProcessedExcelData
 } from '../services/excelDataService';
+import { supabase } from '../lib/supabase';
 
 interface AppContextType {
   // HR page state
