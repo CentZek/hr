@@ -837,27 +837,8 @@ export const deleteAllTimeRecords = async (dateFilter: string = '', employeeFilt
   count: number;
 }> => {
   try {
-    // Get IDs of records to preserve if needed
-    let preserveIds: string[] = [];
-    
-    if (preserveApproved) {
-      // Get approved records - use a more reliable way to identify approved records
-      // Look for records with notes containing "approved" or with exact_hours that aren't null
-      // This ensures we preserve all records that have been processed and approved
-      const { data: approvedRecords, error: approvedError } = await supabase
-        .from('time_records')
-        .select('id')
-        .not('exact_hours', 'is', null)
-        .not('notes', 'ilike', '%double-time%');  // Don't preserve double-time records
-        
-      if (approvedError) throw approvedError;
-      
-      preserveIds = approvedRecords ? approvedRecords.map(record => record.id) : [];
-      console.log(`Found ${preserveIds.length} approved records to preserve`);
-    }
-    
-    // Build the delete query
-    let query = supabase.from('time_records').delete();
+    // Build the query for selecting records to delete
+    let query = supabase.from('time_records').select('id');
     
     // Apply date filter if provided
     if (dateFilter) {
@@ -866,7 +847,6 @@ export const deleteAllTimeRecords = async (dateFilter: string = '', employeeFilt
         const [startDate, endDate] = dateFilter.split('|');
         
         if (startDate && endDate && isValid(parseISO(startDate)) && isValid(parseISO(endDate))) {
-          // Fix: Use AND filtering instead of OR filtering
           query = query
             .gte('working_week_start', startDate)
             .lte('working_week_start', endDate);
@@ -883,7 +863,6 @@ export const deleteAllTimeRecords = async (dateFilter: string = '', employeeFilt
               const startDate = format(startOfMonth(monthDate), 'yyyy-MM-dd');
               const endDate = format(endOfMonth(monthDate), 'yyyy-MM-dd');
               
-              // Fix: Use AND filtering instead of OR filtering
               query = query
                 .gte('working_week_start', startDate)
                 .lte('working_week_start', endDate);
@@ -894,10 +873,6 @@ export const deleteAllTimeRecords = async (dateFilter: string = '', employeeFilt
           throw new Error('Invalid month format');
         }
       }
-    } else {
-      // If no date filter, we need a WHERE clause to delete all records
-      // Use a condition that will always be true
-      query = query.neq('id', '00000000-0000-0000-0000-000000000000');
     }
     
     // Apply employee filter if provided
@@ -912,77 +887,75 @@ export const deleteAllTimeRecords = async (dateFilter: string = '', employeeFilt
       }
     }
     
-    // Exclude approved records if needed
-    if (preserveApproved && preserveIds.length > 0) {
-      if (preserveIds.length <= 100) { // Reasonable limit for IN clause
-        query = query.not('id', 'in', preserveIds);
-      } else {
-        // For large number of IDs, perform deletion in chunks
-        const { count, error: countError } = await query.select('*', { count: 'exact', head: true });
-        
-        if (countError) throw countError;
-        
-        // If there are records to delete, proceed with chunked deletion
-        if (count && count > 0) {
-          let deletedCount = 0;
-          const chunkSize = 100;
-          
-          // First, get all IDs that would be deleted by our filter
-          const { data: allRecords, error: allRecordsError } = await query.select('id');
-          
-          if (allRecordsError) throw allRecordsError;
-          
-          if (allRecords && allRecords.length > 0) {
-            // Filter out the IDs we want to preserve
-            const idsToDelete = allRecords
-              .map(record => record.id)
-              .filter(id => !preserveIds.includes(id));
-            
-            // Delete in chunks
-            for (let i = 0; i < idsToDelete.length; i += chunkSize) {
-              const chunk = idsToDelete.slice(i, i + chunkSize);
-              const { error: deleteError } = await supabase
-                .from('time_records')
-                .delete()
-                .in('id', chunk);
-                
-              if (deleteError) throw deleteError;
-              
-              deletedCount += chunk.length;
-            }
-            
-            return {
-              success: true,
-              message: `Deleted ${deletedCount} records while preserving ${preserveIds.length} approved records`,
-              count: deletedCount
-            };
-          }
-        }
-        
-        return {
-          success: true,
-          message: 'No records to delete',
-          count: 0
-        };
-      }
+    // Get all record IDs that match our filters
+    const { data: recordsToDelete, error: recordsError } = await query;
+    
+    if (recordsError) throw recordsError;
+    
+    if (!recordsToDelete || recordsToDelete.length === 0) {
+      return {
+        success: true,
+        message: 'No records found matching the criteria',
+        count: 0
+      };
     }
     
-    // Get count of records to be deleted first
-    const { count, error: countError } = await query.select('*', { count: 'exact', head: true });
+    // Get IDs of records to preserve if needed
+    let preserveIds: string[] = [];
     
-    if (countError) throw countError;
-    
-    // Execute the delete if there are records to delete
-    if (count && count > 0) {
-      const { error } = await query;
+    if (preserveApproved) {
+      // Get approved records - find records with exact_hours that aren't null
+      const { data: approvedRecords, error: approvedError } = await supabase
+        .from('time_records')
+        .select('id')
+        .not('exact_hours', 'is', null)
+        .not('notes', 'ilike', '%double-time%');  // Don't preserve double-time records
+        
+      if (approvedError) throw approvedError;
       
-      if (error) throw error;
+      preserveIds = approvedRecords ? approvedRecords.map(record => record.id) : [];
+      console.log(`Found ${preserveIds.length} approved records to preserve`);
+    }
+    
+    // Create a Set of IDs to delete by filtering out preserved IDs
+    const idsToDelete = recordsToDelete
+      .map(record => record.id)
+      .filter(id => !preserveApproved || !preserveIds.includes(id));
+    
+    // If nothing to delete after filtering
+    if (idsToDelete.length === 0) {
+      return {
+        success: true,
+        message: 'No records to delete after filtering out approved records',
+        count: 0
+      };
+    }
+    
+    // Process deletions in chunks to avoid URL length limitations
+    const chunkSize = 50; // Smaller chunk size to avoid URL length issues
+    let deletedCount = 0;
+    
+    for (let i = 0; i < idsToDelete.length; i += chunkSize) {
+      const chunk = idsToDelete.slice(i, i + chunkSize);
+      
+      // Delete the chunk of records
+      const { error: deleteError } = await supabase
+        .from('time_records')
+        .delete()
+        .in('id', chunk);
+      
+      if (deleteError) {
+        console.error(`Error deleting chunk ${i/chunkSize + 1}:`, deleteError);
+        throw deleteError;
+      }
+      
+      deletedCount += chunk.length;
     }
     
     return {
       success: true,
-      message: `Deleted ${count || 0} records${preserveApproved ? ' while preserving approved records' : ''}`,
-      count: count || 0
+      message: `Deleted ${deletedCount} records${preserveApproved ? ' while preserving approved records' : ''}`,
+      count: deletedCount
     };
   } catch (error) {
     console.error('Error deleting time records:', error);
