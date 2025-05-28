@@ -280,73 +280,39 @@ export const updateProcessedEmployeeData = async (
     
     // Process each employee
     for (const employee of employeeRecords) {
-      // Check if employee record exists
-      const { data: existingEmployee, error: lookupError } = await supabase
+      // Use upsert instead of separate select/insert/update operations
+      const { data: employeeData, error: upsertError } = await supabase
         .from('processed_employee_data')
-        .select('id')
-        .eq('file_id', actualFileId)
-        .eq('employee_number', employee.employeeNumber)
-        .maybeSingle();
-        
-      if (lookupError) {
-        console.error('Error looking up employee:', lookupError);
-        continue; // Skip this employee if there's an error
-      }
-      
-      let employeeId: string;
-      
-      if (!existingEmployee) {
-        // Create the employee record if it doesn't exist
-        try {
-          // Create employee record
-          const { data: newEmployee, error: createError } = await supabase
-            .from('processed_employee_data')
-            .insert([{
-              file_id: actualFileId,
-              employee_number: employee.employeeNumber,
-              name: employee.name,
-              department: employee.department || '',
-              total_days: employee.days.length
-            }])
-            .select('id')
-            .single();
-            
-          if (createError) {
-            console.error('Error creating employee record:', createError);
-            continue; // Skip this employee if there's an error
-          }
-          
-          if (!newEmployee || !newEmployee.id) {
-            console.error('New employee record created but no ID returned');
-            continue; // Skip this employee if no ID is returned
-          }
-          
-          employeeId = newEmployee.id;
-          
-          // Add a delay to ensure the employee record is committed
-          await delay(50);
-        } catch (err) {
-          console.error('Failed to create employee record:', err);
-          continue; // Skip this employee
-        }
-      } else {
-        employeeId = existingEmployee.id;
-        
-        // Update the existing employee record
-        const { error: updateError } = await supabase
-          .from('processed_employee_data')
-          .update({
+        .upsert(
+          {
+            file_id: actualFileId,
+            employee_number: employee.employeeNumber,
             name: employee.name,
             department: employee.department || '',
             total_days: employee.days.length
-          })
-          .eq('id', employeeId);
-          
-        if (updateError) {
-          console.error('Error updating employee record:', updateError);
-          // Continue anyway to try updating daily records
-        }
+          },
+          {
+            onConflict: 'file_id,employee_number',
+            returning: 'representation'
+          }
+        )
+        .select('id')
+        .single();
+        
+      if (upsertError) {
+        console.error('Error upserting employee record:', upsertError);
+        continue; // Skip this employee if there's an error
       }
+      
+      if (!employeeData || !employeeData.id) {
+        console.error('Employee record upserted but no ID returned');
+        continue; // Skip this employee if no ID is returned
+      }
+      
+      const employeeId = employeeData.id;
+      
+      // Add a delay to ensure the employee record is committed
+      await delay(100);
       
       // Delete existing daily records for this employee
       const { error: deleteError } = await supabase
@@ -358,6 +324,9 @@ export const updateProcessedEmployeeData = async (
         console.error('Error deleting daily records:', deleteError);
         // Continue anyway to try inserting new records
       }
+      
+      // Add a small delay to ensure deletion is processed
+      await delay(50);
       
       // Insert updated daily records
       const dailyRecordsToInsert = employee.days.map(day => ({
