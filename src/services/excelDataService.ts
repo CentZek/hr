@@ -274,7 +274,8 @@ export const updateProcessedEmployeeData = async (
       console.log('Created new file with ID:', actualFileId);
       
       // Add a delay to ensure the file record is committed
-      await delay(100);
+      // Increased from 100ms to 500ms to ensure the record is fully committed
+      await delay(500);
     }
     
     // Process each employee
