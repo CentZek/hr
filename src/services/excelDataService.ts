@@ -5,6 +5,9 @@ import { EmployeeRecord, DailyRecord } from '../types';
  * Service for handling processed Excel data storage in Supabase
  */
 
+// Helper function to create a delay
+const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
 // Save a new processed Excel file with its data
 export const saveProcessedExcelFile = async (
   fileName: string,
@@ -29,6 +32,9 @@ export const saveProcessedExcelFile = async (
     if (!fileData) throw new Error('Failed to create file record');
 
     const fileId = fileData.id;
+    
+    // Add a small delay to ensure the file record is committed
+    await delay(100);
 
     // Step 2: Save employee data
     for (const employee of employeeRecords) {
@@ -58,6 +64,9 @@ export const saveProcessedExcelFile = async (
       }
 
       const employeeId = employeeData.id;
+      
+      // Add a small delay to ensure the employee record is committed
+      await delay(50);
 
       // Step 3: Save daily records for this employee
       const dailyRecordsToInsert = employee.days.map(day => ({
@@ -263,6 +272,9 @@ export const updateProcessedEmployeeData = async (
       // Use the new file ID for subsequent operations
       actualFileId = newFileData.id;
       console.log('Created new file with ID:', actualFileId);
+      
+      // Add a delay to ensure the file record is committed
+      await delay(100);
     }
     
     // Process each employee
@@ -309,6 +321,9 @@ export const updateProcessedEmployeeData = async (
           }
           
           employeeId = newEmployee.id;
+          
+          // Add a delay to ensure the employee record is committed
+          await delay(50);
         } catch (err) {
           console.error('Failed to create employee record:', err);
           continue; // Skip this employee
