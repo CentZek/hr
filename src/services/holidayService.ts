@@ -179,23 +179,102 @@ export const calculateDoubleTimeHours = (hours: number, dateStr: string, cachedD
 // Check if holidays need to be restored after reset
 export const checkAndRestoreHolidays = async (): Promise<boolean> => {
   try {
-    // First check if we have any holidays
-    const { count, error } = await supabase
+    // Check if we have any holidays
+    const { data: holidays, count, error } = await supabase
       .from('holidays')
-      .select('*', { count: 'exact', head: true });
+      .select('*', { count: 'exact' });
       
     if (error) throw error;
     
-    if (count === 0) {
-      console.log('No holidays found, attempting to restore from backup');
-      // In a real implementation, you might restore from a backup table
-      // For now, we'll just log this
+    if (!holidays || holidays.length === 0 || count === 0) {
+      console.log('No holidays found, attempting to restore from backup...');
+      
+      // Try to restore from backup table
+      const { data: backupData, error: backupError } = await supabase
+        .from('holidays_backup')
+        .select('*');
+        
+      if (backupError) {
+        console.error('Error fetching backup holidays:', backupError);
+        return false;
+      }
+      
+      if (backupData && backupData.length > 0) {
+        console.log(`Found ${backupData.length} holidays in backup, restoring...`);
+        
+        // Insert holidays from backup
+        const { error: insertError } = await supabase
+          .from('holidays')
+          .insert(
+            backupData.map(h => ({
+              date: h.date,
+              description: h.description || null
+            }))
+          );
+          
+        if (insertError) {
+          console.error('Error restoring holidays from backup:', insertError);
+          return false;
+        }
+        
+        console.log('Successfully restored holidays from backup');
+        return true;
+      } else {
+        console.log('No backup holiday data found');
+        return false;
+      }
+    }
+    
+    console.log(`Holidays check: ${holidays.length} holidays found, no restoration needed`);
+    return true;
+  } catch (error) {
+    console.error('Error checking/restoring holiday data:', error);
+    return false;
+  }
+};
+
+// Function to backup all current holidays
+export const backupCurrentHolidays = async (): Promise<boolean> => {
+  try {
+    // Fetch all current holidays
+    const { data: holidays, error: fetchError } = await supabase
+      .from('holidays')
+      .select('*');
+      
+    if (fetchError) {
+      console.error('Error fetching holidays for backup:', fetchError);
       return false;
     }
     
+    if (!holidays || holidays.length === 0) {
+      console.log('No holidays to backup');
+      return true;
+    }
+    
+    // Insert into backup table
+    const { error: backupError } = await supabase
+      .from('holidays_backup')
+      .insert(
+        holidays.map(h => ({
+          id: h.id,
+          date: h.date,
+          description: h.description,
+          created_at: h.created_at,
+          restored_at: new Date().toISOString()
+        }))
+      )
+      .onConflict(['date'])
+      .merge();
+      
+    if (backupError) {
+      console.error('Error backing up holidays:', backupError);
+      return false;
+    }
+    
+    console.log(`Successfully backed up ${holidays.length} holidays`);
     return true;
   } catch (error) {
-    console.error('Error checking holiday data:', error);
+    console.error('Error in backupCurrentHolidays:', error);
     return false;
   }
 };

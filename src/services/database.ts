@@ -3,7 +3,7 @@ import { format, parseISO, startOfMonth, endOfMonth, addDays, isValid, subDays, 
 import { EmployeeRecord, DailyRecord } from '../types';
 import toast from 'react-hot-toast';
 import { parseShiftTimes } from '../utils/dateTimeHelper';
-import { isDoubleTimeDay, getDoubleTimeDays } from '../services/holidayService';
+import { isDoubleTimeDay, getDoubleTimeDays, backupCurrentHolidays } from '../services/holidayService';
 
 // Fetch approved hours summary
 export const fetchApprovedHours = async (dateFilter: string = ''): Promise<{
@@ -973,6 +973,9 @@ export const resetAllDatabaseData = async (): Promise<{
   message: string;
 }> => {
   try {
+    // First backup all holidays to ensure they can be restored
+    await backupCurrentHolidays();
+    
     // Delete time_records but preserve approved records
     const { success: timeRecordsDeleted, count: timeRecordsCount, message: timeRecordsMessage } = 
       await deleteAllTimeRecords('', '', true);
