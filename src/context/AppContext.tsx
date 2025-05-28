@@ -138,7 +138,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         // Skip updating Supabase if we're still loading initial data
         if (isLoading) return;
         
-        await updateInSupabase(employeeRecords);
+        const result = await updateInSupabase(employeeRecords);
+        
+        // If the update resulted in a new file ID, update our state
+        if (result && activeFileId !== localStorage.getItem('activeFileId')) {
+          const newFileId = localStorage.getItem('activeFileId');
+          if (newFileId) {
+            setActiveFileId(newFileId);
+          }
+        }
       }
     };
     
@@ -169,7 +177,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (!activeFileId) return false;
     
     try {
-      return await updateProcessedEmployeeData(activeFileId, records);
+      const result = await updateProcessedEmployeeData(activeFileId, records, currentFileName);
+      
+      if (result.success && result.fileId !== activeFileId) {
+        // If a new file was created, update the activeFileId
+        setActiveFileId(result.fileId);
+        localStorage.setItem('activeFileId', result.fileId);
+      }
+      
+      return result.success;
     } catch (error) {
       console.error('Error updating in Supabase:', error);
       return false;
