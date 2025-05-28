@@ -1,6 +1,3 @@
-/**
- * Time record helper functions for applying changes to daily records
- */
 import { EmployeeRecord, DailyRecord } from '../types';
 import { calculatePayableHours, determineShiftType } from './shiftCalculations';
 import { parse, format, eachDayOfInterval, parseISO } from 'date-fns';
@@ -105,8 +102,7 @@ export const addManualEntryToRecords = (
     checkOutNextDay: shiftType === 'night',
     // Add display values for consistent viewing
     displayCheckIn: getStandardDisplayTime(shiftType, 'start'),
-    displayCheckOut: getStandardDisplayTime(shiftType, 'end'),
-    working_week_start: date // Set working_week_start to ensure proper grouping
+    displayCheckOut: getStandardDisplayTime(shiftType, 'end')
   };
   
   // Get normalized employee info for matching
@@ -257,8 +253,7 @@ export const createOffDayRecord = (dateStr: string): DailyRecord => {
     allTimeRecords: [],
     hasMultipleRecords: false,
     displayCheckIn: 'OFF-DAY',
-    displayCheckOut: 'OFF-DAY',
-    working_week_start: dateStr
+    displayCheckOut: 'OFF-DAY'
   };
 };
 
@@ -328,8 +323,7 @@ export const convertShiftRequestsToRecords = async () => {
         excessiveOvertime: false,
         penaltyMinutes: 0,
         displayCheckIn: getStandardDisplayTime(shift.shift_type, 'start'),
-        displayCheckOut: getStandardDisplayTime(shift.shift_type, 'end'),
-        working_week_start: shift.date
+        displayCheckOut: getStandardDisplayTime(shift.shift_type, 'end')
       });
       
       emp.totalDays++;
