@@ -288,12 +288,7 @@ export const fetchApprovedHours = async (dateFilter: string = ''): Promise<{
         
         if (isDoubletime) {
           const dateHours = emp.hours_by_date?.[date] || 0;
-          doubleTimeHours += dateHours;
-          doubleTimeHours += dateHours; // Add the bonus hours (base hours already counted)
-          regularHours += dateHours; // Base hours
-        } else {
-          employeeRegularTime += dateHours;
-          regularHours += dateHours;
+          doubleTimeHours += dateHours; // Add the bonus hours (base hours already included in total_hours)
         }
       });
       
