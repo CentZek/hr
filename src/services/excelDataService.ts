@@ -214,9 +214,34 @@ export const updateProcessedEmployeeData = async (
       .eq('id', fileId)
       .single();
       
-    if (fileError || !fileData) {
-      console.error('File not found:', fileId);
+    if (fileError) {
+      console.error('Error verifying file existence:', fileError);
       return false;
+    }
+    
+    if (!fileData) {
+      console.error('File not found:', fileId);
+      
+      // Try to create the file if it doesn't exist
+      const { data: newFile, error: createFileError } = await supabase
+        .from('processed_excel_files')
+        .insert([{
+          file_name: 'Recovered File',
+          total_employees: employeeRecords.length,
+          total_days: employeeRecords.reduce((sum, emp) => sum + emp.days.length, 0),
+          is_active: true
+        }])
+        .select()
+        .single();
+        
+      if (createFileError || !newFile) {
+        console.error('Failed to create recovery file:', createFileError);
+        return false;
+      }
+      
+      // Use the newly created file ID
+      fileId = newFile.id;
+      console.log('Created recovery file with ID:', fileId);
     }
     
     // For each employee, ensure their record exists before updating daily records
@@ -250,9 +275,14 @@ export const updateProcessedEmployeeData = async (
           .select('id')
           .single();
           
-        if (createError || !newEmployee) {
+        if (createError) {
           console.error('Error creating employee record:', createError);
           continue; // Skip this employee if creation fails
+        }
+        
+        if (!newEmployee) {
+          console.error('No employee data returned after insert');
+          continue; // Skip this employee if no data is returned
         }
         
         employeeId = newEmployee.id;
@@ -351,21 +381,84 @@ export const updateProcessedEmployeeData = async (
 export const deleteProcessedExcelData = async (fileId?: string): Promise<boolean> => {
   try {
     if (fileId) {
-      // Delete specific file and its associated data (cascade will handle related records)
+      // First, ensure we delete all processed_daily_records associated with employees from this file
+      const { data: employeesData, error: employeesError } = await supabase
+        .from('processed_employee_data')
+        .select('id')
+        .eq('file_id', fileId);
+        
+      if (employeesError) {
+        console.error('Error fetching employees for deletion:', employeesError);
+      } else if (employeesData && employeesData.length > 0) {
+        // Get all employee IDs
+        const employeeIds = employeesData.map(emp => emp.id);
+        
+        // Delete all daily records for these employees
+        for (const empId of employeeIds) {
+          const { error: deleteRecordsError } = await supabase
+            .from('processed_daily_records')
+            .delete()
+            .eq('employee_id', empId);
+            
+          if (deleteRecordsError) {
+            console.error(`Error deleting daily records for employee ${empId}:`, deleteRecordsError);
+          }
+        }
+        
+        // Now delete the employee records
+        const { error: deleteEmployeesError } = await supabase
+          .from('processed_employee_data')
+          .delete()
+          .eq('file_id', fileId);
+          
+        if (deleteEmployeesError) {
+          console.error('Error deleting employee records:', deleteEmployeesError);
+        }
+      }
+      
+      // Finally, delete the file record
       const { error } = await supabase
         .from('processed_excel_files')
         .delete()
         .eq('id', fileId);
 
-      if (error) throw error;
+      if (error) {
+        console.error('Error deleting file record:', error);
+        return false;
+      }
     } else {
-      // Delete all files and their associated data
+      // For bulk deletion, manually delete in the correct order to respect foreign key constraints
+      
+      // 1. First delete all processed_daily_records
+      const { error: deleteRecordsError } = await supabase
+        .from('processed_daily_records')
+        .delete()
+        .neq('id', '00000000-0000-0000-0000-000000000000'); // Dummy condition to delete all
+        
+      if (deleteRecordsError) {
+        console.error('Error deleting all daily records:', deleteRecordsError);
+      }
+      
+      // 2. Then delete all processed_employee_data
+      const { error: deleteEmployeesError } = await supabase
+        .from('processed_employee_data')
+        .delete()
+        .neq('id', '00000000-0000-0000-0000-000000000000'); // Dummy condition to delete all
+        
+      if (deleteEmployeesError) {
+        console.error('Error deleting all employee records:', deleteEmployeesError);
+      }
+      
+      // 3. Finally delete all files
       const { error } = await supabase
         .from('processed_excel_files')
         .delete()
         .neq('id', '00000000-0000-0000-0000-000000000000'); // Dummy condition to delete all
 
-      if (error) throw error;
+      if (error) {
+        console.error('Error deleting all file records:', error);
+        return false;
+      }
     }
 
     return true;
