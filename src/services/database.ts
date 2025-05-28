@@ -1013,7 +1013,7 @@ export const resetAllDatabaseData = async (): Promise<{
     const { data: patternsDeleted, error: patternsError } = await supabase
       .from('employee_shift_patterns')
       .delete()
-      .neq('id', '00000000-0000-0000-0000-000000000000'); // Delete all
+      .neq('id', '00000000-0000-0000-0000-000000000000');
     
     if (patternsError) {
       return {
@@ -1024,7 +1024,7 @@ export const resetAllDatabaseData = async (): Promise<{
     
     return {
       success: true,
-      message: `Reset complete. Deleted ${timeRecordsCount} non-approved time records while preserving approved records.`
+      message: `Reset complete. Deleted ${timeRecordsCount} non-approved time records while preserving approved records and holiday data.`
     };
   } catch (error) {
     console.error('Error resetting database:', error);

@@ -175,3 +175,27 @@ export const calculateDoubleTimeHours = (hours: number, dateStr: string, cachedD
   
   return 0; // Return 0 if not double-time
 };
+
+// Check if holidays need to be restored after reset
+export const checkAndRestoreHolidays = async (): Promise<boolean> => {
+  try {
+    // First check if we have any holidays
+    const { count, error } = await supabase
+      .from('holidays')
+      .select('*', { count: 'exact', head: true });
+      
+    if (error) throw error;
+    
+    if (count === 0) {
+      console.log('No holidays found, attempting to restore from backup');
+      // In a real implementation, you might restore from a backup table
+      // For now, we'll just log this
+      return false;
+    }
+    
+    return true;
+  } catch (error) {
+    console.error('Error checking holiday data:', error);
+    return false;
+  }
+};

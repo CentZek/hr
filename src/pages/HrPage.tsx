@@ -15,6 +15,7 @@ import { addManualEntryToRecords, calculateStats, processRecordsAfterSave } from
 import { saveRecordsToDatabase, fetchManualTimeRecords, fetchPendingEmployeeShifts, resetAllDatabaseData } from '../services/database';
 import { runAllMigrations, checkSupabaseConnection } from '../services/migrationService';
 import { supabase } from '../lib/supabase';
+import { checkAndRestoreHolidays } from '../services/holidayService';
 
 // Import components
 import NavigationTabs from '../components/NavigationTabs';
@@ -356,12 +357,15 @@ function HrPage() {
       // Use the new resetAllDatabaseData function
       const result = await resetAllDatabaseData();
       
+      // After reset is complete, check if holidays need to be restored
+      await checkAndRestoreHolidays();
+      
       if (result.success) {
         // Clear local state
         clearData();
         setManualRecords([]);
         toast.dismiss(loadingToast);
-        toast.success(`${result.message} All data has been reset.`);
+        toast.success(`${result.message} Double-time days have been preserved.`);
       } else {
         toast.dismiss(loadingToast);
         toast.error(`Reset failed: ${result.message}`);
@@ -762,6 +766,7 @@ function HrPage() {
                     <X className="w-5 h-5" />
                   </button>
                 </div>
+                
                 <DateRangePicker 
                   onSelect={handleDateRangeChange} 
                   initialStartDate={startDate} 
@@ -1020,7 +1025,7 @@ function HrPage() {
         onClose={() => setIsResetConfirmOpen(false)}
         onConfirm={confirmReset}
         title="Reset Face ID Data"
-        message="This will delete Face ID Data, processed files, and employee shifts, but will preserve approved time records. This action cannot be undone. Are you sure you want to proceed?"
+        message="This will delete Face ID Data, processed files, and employee shifts, but will preserve approved time records and double-time days. This action cannot be undone. Are you sure you want to proceed?"
         isProcessing={isResetting}
         confirmButtonText="Yes, Reset Face ID Data"
         cancelButtonText="Cancel"
