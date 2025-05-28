@@ -34,6 +34,24 @@ export const handleExcelFile = async (file: File): Promise<EmployeeRecord[]> => 
         // Convert to JSON
         const jsonData = utils.sheet_to_json(worksheet);
         
+        // Check if this is a raw attendance file or a summary report
+        if (jsonData.length > 0) {
+          const firstRow = jsonData[0];
+          
+          // Check if this is a summary report (has summary fields)
+          if (firstRow['Employee Number'] !== undefined && 
+              firstRow['Total Days'] !== undefined &&
+              firstRow['Regular Hours'] !== undefined) {
+            // This appears to be a summary report, not a raw attendance file
+            reject(new Error(
+              "The uploaded file appears to be a summary report, not a raw attendance file. " +
+              "Please upload the original attendance data file with columns: " +
+              "'Date/Time', 'Name', 'No.', 'Status', and 'Department'."
+            ));
+            return;
+          }
+        }
+        
         // Process the data
         const processedData = await processExcelData(jsonData);
         resolve(processedData);
@@ -523,11 +541,36 @@ export const processExcelData = async (data: any[]): Promise<EmployeeRecord[]> =
   const timeRecords: TimeRecord[] = [];
   const parseErrors: string[] = [];
 
+  // Check if this is a raw attendance file or a summary/processed file
+  if (data.length > 0) {
+    const firstRow = data[0];
+    
+    // Check for summary report format
+    if (firstRow['Employee Number'] !== undefined && 
+        firstRow['Total Days'] !== undefined &&
+        firstRow['Regular Hours'] !== undefined) {
+      throw new Error(
+        "The uploaded file appears to be a summary report, not a raw attendance file. " +
+        "Please upload the original attendance data file with columns: " +
+        "'Date/Time', 'Name', 'No.', 'Status', and 'Department'."
+      );
+    }
+    
+    // Check for expected format
+    if (!firstRow['Date/Time'] && !firstRow['Name'] && !firstRow['No.'] && !firstRow['Status']) {
+      throw new Error(
+        "The uploaded file is missing required columns. " +
+        "Please ensure your file contains the following columns: " +
+        "'Date/Time', 'Name', 'No.', 'Status', and optionally 'Department'."
+      );
+    }
+  }
+
   // STEP 1: Parse all rows from the Excel file in EXACT order
   for (let i = 0; i < data.length; i++) {
     const row = data[i];
     if (!row['Date/Time'] || !row['Name'] || !row['No.'] || !row['Status']) {
-      const errorMsg = `Missing required fields in row ${i+1}`;
+      const errorMsg = `Missing required fields in row ${i+1}. Required fields are: Date/Time, Name, No., Status`;
       console.error(errorMsg, row);
       parseErrors.push(errorMsg);
       continue; // Skip this row but continue processing
