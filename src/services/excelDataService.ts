@@ -207,25 +207,21 @@ export const updateProcessedEmployeeData = async (
   employeeRecords: EmployeeRecord[]
 ): Promise<boolean> => {
   try {
-    // First, verify the file exists
+    // First, verify the file exists before proceeding
     const { data: fileData, error: fileError } = await supabase
       .from('processed_excel_files')
       .select('id')
       .eq('id', fileId)
       .single();
       
-    if (fileError) {
-      console.error('Error verifying file existence:', fileError);
-      return false;
-    }
-    
-    if (!fileData) {
-      console.error('File not found:', fileId);
+    if (fileError || !fileData) {
+      console.error('File not found or error verifying file existence:', fileError);
       
-      // Try to create the file if it doesn't exist
+      // Create a new file only if we really need to
       const { data: newFile, error: createFileError } = await supabase
         .from('processed_excel_files')
         .insert([{
+          id: fileId, // Use the provided fileId to ensure consistency
           file_name: 'Recovered File',
           total_employees: employeeRecords.length,
           total_days: employeeRecords.reduce((sum, emp) => sum + emp.days.length, 0),
@@ -236,12 +232,10 @@ export const updateProcessedEmployeeData = async (
         
       if (createFileError || !newFile) {
         console.error('Failed to create recovery file:', createFileError);
-        return false;
+        return false; // Exit early if we can't create the file
       }
       
-      // Use the newly created file ID
-      fileId = newFile.id;
-      console.log('Created recovery file with ID:', fileId);
+      console.log('Created recovery file with ID:', newFile.id);
     }
     
     // For each employee, ensure their record exists before updating daily records
@@ -275,14 +269,9 @@ export const updateProcessedEmployeeData = async (
           .select('id')
           .single();
           
-        if (createError) {
+        if (createError || !newEmployee) {
           console.error('Error creating employee record:', createError);
           continue; // Skip this employee if creation fails
-        }
-        
-        if (!newEmployee) {
-          console.error('No employee data returned after insert');
-          continue; // Skip this employee if no data is returned
         }
         
         employeeId = newEmployee.id;
