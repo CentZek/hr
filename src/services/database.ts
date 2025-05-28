@@ -906,7 +906,55 @@ export const deleteAllTimeRecords = async (dateFilter: string = '', employeeFilt
     
     // ALWAYS exclude approved records and double-time records
     if (preserveIds.length > 0) {
-      query = query.not('id', 'in', preserveIds);
+      // FIX: Properly format the 'not.in' filter for Supabase
+      // The issue was that we were passing an array directly, but Supabase expects
+      // a properly formatted string for multiple values in the filter
+      
+      // Handle the case where there are too many IDs to include in a single query
+      // Split preserveIds into chunks if needed (Supabase might have limits on URL length)
+      const CHUNK_SIZE = 50; // Adjust based on your needs
+      
+      if (preserveIds.length <= CHUNK_SIZE) {
+        // Fixed syntax for the not.in filter
+        query = query.not('id', 'in', `(${preserveIds.join(',')})`);
+      } else {
+        // For large number of IDs, we need to handle differently
+        // Get count of records to be deleted first without applying the preserve filter
+        const { count: totalCount, error: countError } = await query.select('*', { count: 'exact', head: true });
+        
+        if (countError) throw countError;
+        
+        // If there are records to delete, proceed with chunked deletion
+        if (totalCount && totalCount > 0) {
+          let deletedCount = 0;
+          
+          // Process deletion in chunks
+          for (let i = 0; i < preserveIds.length; i += CHUNK_SIZE) {
+            const chunk = preserveIds.slice(i, i + CHUNK_SIZE);
+            const { error } = await supabase
+              .from('time_records')
+              .delete()
+              .not('id', 'in', `(${chunk.join(',')})`)
+              .select('*', { count: 'exact' });
+              
+            if (error) throw error;
+            
+            deletedCount += chunk.length;
+          }
+          
+          return {
+            success: true,
+            message: `Deleted records while preserving ${preserveIds.length} approved and double-time records`,
+            count: totalCount - preserveIds.length
+          };
+        }
+        
+        return {
+          success: true,
+          message: 'No records to delete',
+          count: 0
+        };
+      }
     }
     
     // Get count of records to be deleted first
