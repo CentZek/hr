@@ -905,11 +905,11 @@ export const deleteAllTimeRecords = async (dateFilter: string = '', employeeFilt
     
     if (preserveApproved) {
       // Get approved records - find records with exact_hours that aren't null
+      // FIXED: Removed the filter that excluded double-time records
       const { data: approvedRecords, error: approvedError } = await supabase
         .from('time_records')
         .select('id')
-        .not('exact_hours', 'is', null)
-        .not('notes', 'ilike', '%double-time%');  // Don't preserve double-time records
+        .not('exact_hours', 'is', null);
         
       if (approvedError) throw approvedError;
       
