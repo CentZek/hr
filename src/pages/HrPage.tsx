@@ -752,7 +752,7 @@ function HrPage() {
               <div className="bg-white border border-gray-200 rounded-md p-4 shadow-sm">
                 <div className="flex justify-between items-center mb-4">
                   <h3 className="text-sm font-medium flex items-center text-gray-700">
-                    <Calendar className="w-4 h-4 mr-2 text-purple-600" />
+                    <Calendar className="w-4 h-4 mr-2 text-purple-500" />
                     Select Date Range
                   </h3>
                   <button 
@@ -1019,10 +1019,10 @@ function HrPage() {
         isOpen={isResetConfirmOpen}
         onClose={() => setIsResetConfirmOpen(false)}
         onConfirm={confirmReset}
-        title="Reset All Data"
-        message="This will delete ALL data from the database, including all time records, processed files, and employee shifts. This action cannot be undone. Are you sure you want to proceed?"
+        title="Reset Face ID Data"
+        message="This will delete Face ID Data, processed files, and employee shifts, but will preserve approved time records. This action cannot be undone. Are you sure you want to proceed?"
         isProcessing={isResetting}
-        confirmButtonText="Yes, Reset Everything"
+        confirmButtonText="Yes, Reset Face ID Data"
         cancelButtonText="Cancel"
         type="danger"
       />

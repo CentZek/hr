@@ -315,7 +315,7 @@ const ApprovedHoursPage: React.FC = () => {
                             (filterEmployee !== "all" ? filterEmployee : "");
       
       // Perform the delete operation
-      const { success, message, count } = await deleteAllTimeRecords(dateFilter, employeeFilter);
+      const { success, message, count } = await deleteAllTimeRecords(dateFilter, employeeFilter, false);
       
       toast.dismiss(loadingToast);
       if (success) {
