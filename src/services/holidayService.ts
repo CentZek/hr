@@ -84,28 +84,8 @@ export const isDoubleTimeDay = async (dateStr: string): Promise<boolean> => {
 
 // In-memory cache for double-time days
 let doubleTimeDaysCache: Record<string, boolean> = {};
-let holidaysCache: string[] = [];
 let lastCacheRefresh: number = 0;
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
-
-// Pre-fetch all holidays and cache them
-export const preloadHolidaysCache = async (): Promise<void> => {
-  try {
-    const { data, error } = await supabase
-      .from('holidays')
-      .select('date')
-      .order('date');
-
-    if (error) throw error;
-    
-    holidaysCache = data ? data.map(h => h.date) : [];
-    lastCacheRefresh = Date.now();
-    
-    console.log(`Preloaded ${holidaysCache.length} holidays into cache`);
-  } catch (error) {
-    console.error('Error preloading holidays cache:', error);
-  }
-};
 
 // Get all double-time days (Fridays and holidays) for a given date range
 export const getDoubleTimeDays = async (startDate: string, endDate: string): Promise<string[]> => {
@@ -122,15 +102,22 @@ export const getDoubleTimeDays = async (startDate: string, endDate: string): Pro
   
   // Check if cache needs refresh
   const now = Date.now();
-  if (now - lastCacheRefresh > CACHE_TTL || holidaysCache.length === 0) {
-    await preloadHolidaysCache();
+  if (now - lastCacheRefresh > CACHE_TTL) {
+    doubleTimeDaysCache = {}; // Clear cache
   }
   
   try {
-    // Get all holidays in the date range from cache
-    const holidayDates = holidaysCache.filter(date => 
-      date >= startDate && date <= endDate
-    );
+    // Get all holidays in the date range
+    const { data: holidays, error } = await supabase
+      .from('holidays')
+      .select('date')
+      .gte('date', startDate)
+      .lte('date', endDate);
+
+    if (error) throw error;
+    
+    // Create an array of holiday dates
+    const holidayDates = holidays?.map(h => h.date) || [];
     
     // For each date in the range, check if it's a Friday
     const start = parseISO(startDate);
@@ -153,6 +140,9 @@ export const getDoubleTimeDays = async (startDate: string, endDate: string): Pro
       
       current = new Date(current.getTime() + 86400000); // Add one day
     }
+    
+    // Update cache timestamp
+    lastCacheRefresh = now;
     
     return allDates;
   } catch (error) {
@@ -213,17 +203,18 @@ export const checkAndRestoreHolidays = async (): Promise<boolean> => {
         console.log(`Found ${backupData.length} holidays in backup, restoring...`);
         
         // Insert holidays from backup - without the ID to avoid conflicts
-        for (const holiday of backupData) {
-          try {
-            await supabase
-              .from('holidays')
-              .insert({
-                date: holiday.date,
-                description: holiday.description || null
-              });
-          } catch (insertError) {
-            console.error(`Error restoring holiday ${holiday.date}:`, insertError);
-          }
+        const { error: insertError } = await supabase
+          .from('holidays')
+          .insert(
+            backupData.map(h => ({
+              date: h.date,
+              description: h.description || null
+            }))
+          );
+          
+        if (insertError) {
+          console.error('Error restoring holidays from backup:', insertError);
+          return false;
         }
         
         console.log('Successfully restored holidays from backup');
@@ -300,7 +291,7 @@ export const backupCurrentHolidays = async (): Promise<boolean> => {
             console.error(`Error updating holiday backup: ${holiday.date}`, updateError);
           }
         } else {
-          // Create new backup using single item insert
+          // Create new backup
           const { error: insertError } = await supabase
             .from('holidays_backup')
             .insert({
@@ -332,11 +323,7 @@ export const backupCurrentHolidays = async (): Promise<boolean> => {
 export const refreshDoubleTimeDaysCache = (): void => {
   console.log('Refreshing double-time days cache');
   doubleTimeDaysCache = {};
-  holidaysCache = [];
   lastCacheRefresh = 0;
-  
-  // Trigger preloading of holidays
-  preloadHolidaysCache();
 };
 
 // Explicitly check if a date is Friday (for UI components that need direct access)

@@ -91,7 +91,7 @@ export const saveProcessedExcelFile = async (
     const fileId = fileData.id;
     
     // Add a small delay to ensure the file record is committed
-    await delay(500);
+    await delay(1000);  // Increased delay to ensure record is committed
 
     // Verify the file was actually created
     const fileExists = await checkFileExists(fileId);
@@ -99,118 +99,86 @@ export const saveProcessedExcelFile = async (
       throw new Error(`File record created but not found in subsequent query. ID: ${fileId}`);
     }
 
-    // Step 2: Prepare data for batch insert
-    const employeeDataBatch: any[] = [];
-    const dailyRecordsBatch: any[] = [];
-    const employeeMap: Record<string, string> = {};
-
-    // Prepare employee data batch
-    employeeRecords.forEach(employee => {
-      employeeDataBatch.push({
-        file_id: fileId,
-        employee_number: employee.employeeNumber,
-        name: employee.name,
-        department: employee.department || '',
-        total_days: employee.days.length
-      });
-    });
-
-    // Step 3: Insert employee data in a single batch
-    const { data: employeeInsertData, error: employeeError } = await supabase
-      .from('processed_employee_data')
-      .insert(employeeDataBatch)
-      .select('id, employee_number');
-
-    if (employeeError) {
-      throw employeeError;
-    }
-
-    // Map employee numbers to their IDs
-    if (employeeInsertData) {
-      employeeInsertData.forEach(emp => {
-        employeeMap[emp.employee_number] = emp.id;
-      });
-    }
-
-    // Add a small delay to ensure employee records are committed
-    await delay(500);
-
-    // Step 4: Prepare daily records for batch insert
-    employeeRecords.forEach(employee => {
-      const employeeId = employeeMap[employee.employeeNumber];
-      if (!employeeId) {
-        console.error(`Could not find ID for employee ${employee.employeeNumber}`);
-        return;
-      }
-
-      employee.days.forEach(day => {
-        dailyRecordsBatch.push({
-          employee_id: employeeId,
-          date: day.date,
-          first_check_in: day.firstCheckIn?.toISOString() || null,
-          last_check_out: day.lastCheckOut?.toISOString() || null,
-          hours_worked: day.hoursWorked,
-          approved: day.approved,
-          shift_type: day.shiftType,
-          notes: day.notes || '',
-          missing_check_in: day.missingCheckIn,
-          missing_check_out: day.missingCheckOut,
-          is_late: day.isLate,
-          early_leave: day.earlyLeave,
-          excessive_overtime: day.excessiveOvertime,
-          penalty_minutes: day.penaltyMinutes,
-          corrected_records: day.correctedRecords || false,
-          display_check_in: day.displayCheckIn || null,
-          display_check_out: day.displayCheckOut || null,
-          working_week_start: day.working_week_start || null,
-          all_time_records: day.allTimeRecords ? JSON.stringify(day.allTimeRecords) : null
-        });
-      });
-    });
-
-    // Step 5: Insert daily records in batches
-    const batchSize = 100; // Increased batch size for better performance
-    
-    if (dailyRecordsBatch.length > 0) {
-      for (let i = 0; i < dailyRecordsBatch.length; i += batchSize) {
-        const batch = dailyRecordsBatch.slice(i, i + batchSize);
-        try {
-          const { error } = await supabase
-            .from('processed_daily_records')
-            .insert(batch);
-
-          if (error) {
-            console.error('Error inserting daily records batch:', error);
-            
-            // If batch insert fails, try individual inserts
-            for (const record of batch) {
-              try {
-                await supabase
-                  .from('processed_daily_records')
-                  .insert([record]);
-              } catch (err) {
-                console.error('Error inserting individual daily record:', err);
-              }
+    // Step 2: Save employee data
+    for (const employee of employeeRecords) {
+      // Create employee record with retry mechanism
+      const employeeData = await retry(async () => {
+        const { data, error } = await supabase
+          .from('processed_employee_data')
+          .insert([
+            {
+              file_id: fileId,
+              employee_number: employee.employeeNumber,
+              name: employee.name,
+              department: employee.department || '',
+              total_days: employee.days.length
             }
-          }
-        } catch (error) {
-          console.error('Exception inserting daily records batch:', error);
-          
-          // If batch insert fails, try individual inserts
-          for (const record of batch) {
-            try {
-              await supabase
-                .from('processed_daily_records')
-                .insert([record]);
-            } catch (err) {
-              console.error('Error inserting individual daily record:', err);
-            }
-          }
+          ])
+          .select()
+          .single();
+
+        if (error) {
+          console.error('Error inserting employee data:', error);
+          throw error;
         }
         
-        // Only add a small delay between large batches
-        if (i + batchSize < dailyRecordsBatch.length && dailyRecordsBatch.length > batchSize * 2) {
-          await delay(100);
+        if (!data) {
+          throw new Error('No employee data returned after insert');
+        }
+        
+        return data;
+      }, 5);  // Increased retries for more reliability
+
+      const employeeId = employeeData.id;
+      
+      // Add a small delay to ensure the employee record is committed
+      await delay(500);  // Increased delay for record commitment
+
+      // Step 3: Save daily records for this employee
+      const dailyRecordsToInsert = employee.days.map(day => ({
+        employee_id: employeeId, // Use the ID from the newly created employee record
+        date: day.date,
+        first_check_in: day.firstCheckIn?.toISOString() || null,
+        last_check_out: day.lastCheckOut?.toISOString() || null,
+        hours_worked: day.hoursWorked,
+        approved: day.approved,
+        shift_type: day.shiftType,
+        notes: day.notes || '',
+        missing_check_in: day.missingCheckIn,
+        missing_check_out: day.missingCheckOut,
+        is_late: day.isLate,
+        early_leave: day.earlyLeave,
+        excessive_overtime: day.excessiveOvertime,
+        penalty_minutes: day.penaltyMinutes,
+        corrected_records: day.correctedRecords || false,
+        display_check_in: day.displayCheckIn || null,
+        display_check_out: day.displayCheckOut || null,
+        working_week_start: day.working_week_start || null,
+        all_time_records: day.allTimeRecords ? JSON.stringify(day.allTimeRecords) : null
+      }));
+
+      if (dailyRecordsToInsert.length > 0) {
+        // Insert in batches to avoid payload size limitations
+        const batchSize = 20;  // Reduced batch size
+        for (let i = 0; i < dailyRecordsToInsert.length; i += batchSize) {
+          const batch = dailyRecordsToInsert.slice(i, i + batchSize);
+          
+          // Use retry mechanism for batch inserts
+          await retry(async () => {
+            const { error } = await supabase
+              .from('processed_daily_records')
+              .insert(batch);
+
+            if (error) {
+              console.error('Error inserting daily records batch:', error);
+              throw error;
+            }
+          }, 5);  // Increased retries
+          
+          // Add a small delay between batches
+          if (i + batchSize < dailyRecordsToInsert.length) {
+            await delay(300);
+          }
         }
       }
     }
@@ -273,30 +241,22 @@ export const getProcessedEmployees = async (fileId: string): Promise<EmployeeRec
     if (employeesError) throw employeesError;
     if (!employeesData || employeesData.length === 0) return [];
 
-    // Step 2: Fetch daily records for all employees at once
-    const employeeIds = employeesData.map(emp => emp.id);
-    
-    const { data: allDaysData, error: allDaysError } = await supabase
-      .from('processed_daily_records')
-      .select('*')
-      .in('employee_id', employeeIds);
+    // Step 2: For each employee, fetch their daily records
+    const employeeRecords: EmployeeRecord[] = [];
 
-    if (allDaysError) {
-      console.error(`Error fetching daily records:`, allDaysError);
-      throw allDaysError;
-    }
+    for (const emp of employeesData) {
+      const { data: daysData, error: daysError } = await supabase
+        .from('processed_daily_records')
+        .select('*')
+        .eq('employee_id', emp.id);
 
-    // Step 3: Create a map of employee ID to days
-    const daysMap: Record<string, DailyRecord[]> = {};
-    
-    // Process all days data
-    (allDaysData || []).forEach(day => {
-      if (!daysMap[day.employee_id]) {
-        daysMap[day.employee_id] = [];
+      if (daysError) {
+        console.error(`Error fetching daily records for employee ${emp.id}:`, daysError);
+        continue;
       }
-      
-      // Convert database record to DailyRecord format
-      const dailyRecord: DailyRecord = {
+
+      // Convert database records to DailyRecord format
+      const days: DailyRecord[] = (daysData || []).map(day => ({
         date: day.date,
         firstCheckIn: day.first_check_in ? new Date(day.first_check_in) : null,
         lastCheckOut: day.last_check_out ? new Date(day.last_check_out) : null,
@@ -316,20 +276,17 @@ export const getProcessedEmployees = async (fileId: string): Promise<EmployeeRec
         working_week_start: day.working_week_start,
         allTimeRecords: day.all_time_records ? JSON.parse(day.all_time_records) : [],
         hasMultipleRecords: (day.all_time_records && JSON.parse(day.all_time_records).length > 1) || false
-      };
-      
-      daysMap[day.employee_id].push(dailyRecord);
-    });
+      }));
 
-    // Step 4: Assemble the employee records with their days
-    const employeeRecords: EmployeeRecord[] = employeesData.map(emp => ({
-      employeeNumber: emp.employee_number,
-      name: emp.name,
-      department: emp.department,
-      days: daysMap[emp.id] || [],
-      totalDays: emp.total_days,
-      expanded: false
-    }));
+      employeeRecords.push({
+        employeeNumber: emp.employee_number,
+        name: emp.name,
+        department: emp.department,
+        days,
+        totalDays: emp.total_days,
+        expanded: false
+      });
+    }
 
     return employeeRecords;
   } catch (error) {
@@ -384,7 +341,7 @@ export const updateProcessedEmployeeData = async (
       }
       
       // Add delay after creating the file
-      await delay(500);
+      await delay(1500);
       
       // Verify file was created
       const newFileExists = await checkFileExists(actualFileId);
@@ -394,84 +351,120 @@ export const updateProcessedEmployeeData = async (
       }
     }
     
-    // Delete existing employee data for this file before inserting new data
-    try {
-      await supabase
-        .from('processed_employee_data')
-        .delete()
-        .eq('file_id', actualFileId);
-    } catch (error) {
-      console.error('Error deleting existing employee data:', error);
-      // Continue with the update process
-    }
-    
-    // Prepare batch data for insert
-    const employeeDataBatch = employeeRecords.map(employee => ({
-      file_id: actualFileId,
-      employee_number: employee.employeeNumber,
-      name: employee.name,
-      department: employee.department || '',
-      total_days: employee.days.length
-    }));
-    
-    // Insert employee data in batches
-    const batchSize = 50;
-    const employeeIdMap: Record<string, string> = {};
-    
-    for (let i = 0; i < employeeDataBatch.length; i += batchSize) {
-      const batch = employeeDataBatch.slice(i, i + batchSize);
-      
+    // For each employee, ensure their record exists before updating daily records
+    for (const employee of employeeRecords) {
       try {
-        const { data, error } = await supabase
+        // Look for existing employee
+        const { data: existingEmployee, error: lookupError } = await supabase
           .from('processed_employee_data')
-          .insert(batch)
-          .select('id, employee_number');
+          .select('id')
+          .eq('file_id', actualFileId)
+          .eq('employee_number', employee.employeeNumber)
+          .maybeSingle();
           
-        if (error) {
-          console.error('Error inserting employee batch:', error);
-          // Try inserting one by one
-          for (const emp of batch) {
-            try {
-              const { data: singleData, error: singleError } = await supabase
-                .from('processed_employee_data')
-                .insert([emp])
-                .select('id, employee_number');
-                
-              if (!singleError && singleData && singleData.length > 0) {
-                employeeIdMap[singleData[0].employee_number] = singleData[0].id;
-              }
-            } catch (singleErr) {
-              console.error('Error inserting single employee:', singleErr);
-            }
-          }
-        } else if (data) {
-          // Map employee numbers to their IDs
-          data.forEach(emp => {
-            employeeIdMap[emp.employee_number] = emp.id;
-          });
+        if (lookupError) {
+          console.error('Error looking up employee:', lookupError);
+          continue;
         }
-      } catch (err) {
-        console.error('Exception inserting employee batch:', err);
-        // Continue with next batch
-      }
-      
-      if (i + batchSize < employeeDataBatch.length) {
-        await delay(100);  // Small delay between batches
-      }
-    }
-    
-    // Prepare daily records batch
-    const dailyRecordsBatch: any[] = [];
-    
-    employeeRecords.forEach(employee => {
-      const employeeId = employeeIdMap[employee.employeeNumber];
-      if (!employeeId) {
-        console.error(`Could not find ID for employee ${employee.employeeNumber}`);
-        return;
-      }
-      
-      employee.days.forEach(day => {
-        dailyRecordsBatch.push({
+        
+        let employeeId: string;
+        
+        if (existingEmployee) {
+          // Use existing employee ID
+          employeeId = existingEmployee.id;
+          
+          // Update employee details
+          const { error: updateError } = await supabase
+            .from('processed_employee_data')
+            .update({
+              name: employee.name,
+              department: employee.department || '',
+              total_days: employee.days.length
+            })
+            .eq('id', employeeId);
+            
+          if (updateError) {
+            console.error('Error updating employee:', updateError);
+            continue;
+          }
+        } else {
+          // Create new employee record
+          let newEmployee;
+          try {
+            // Verify file still exists before creating employee
+            const fileStillExists = await checkFileExists(actualFileId);
+            if (!fileStillExists) {
+              console.error(`File ${actualFileId} no longer exists, cannot create employee`);
+              continue;
+            }
+            
+            const { data, error } = await supabase
+              .from('processed_employee_data')
+              .insert({
+                file_id: actualFileId,
+                employee_number: employee.employeeNumber,
+                name: employee.name,
+                department: employee.department || '',
+                total_days: employee.days.length
+              })
+              .select('id')
+              .single();
+              
+            if (error) {
+              console.error('Error creating employee:', error);
+              continue;
+            }
+            
+            newEmployee = data;
+          } catch (err) {
+            console.error('Exception creating employee:', err);
+            continue;
+          }
+          
+          if (!newEmployee || !newEmployee.id) {
+            console.error('Failed to create employee record');
+            continue;
+          }
+          
+          employeeId = newEmployee.id;
+        }
+        
+        // Add a delay before manipulating daily records
+        await delay(500);
+        
+        // Verify employee record still exists
+        const { data: empCheck, error: empCheckError } = await supabase
+          .from('processed_employee_data')
+          .select('id')
+          .eq('id', employeeId)
+          .maybeSingle();
+          
+        if (empCheckError || !empCheck) {
+          console.error(`Employee ${employeeId} no longer exists, skipping daily records`);
+          continue;
+        }
+        
+        // Delete existing daily records for this employee
+        try {
+          const { error: deleteError } = await supabase
+            .from('processed_daily_records')
+            .delete()
+            .eq('employee_id', employeeId);
+            
+          if (deleteError) {
+            console.error('Error deleting daily records:', deleteError);
+            // Continue anyway to attempt insertion
+          }
+          
+          // Wait for delete to complete
+          await delay(500);
+        } catch (err) {
+          console.error('Exception deleting daily records:', err);
+          // Continue to try insertions
+        }
+        
+        // Insert new daily records in small batches
+        const dailyRecordsToInsert = employee.days.map(day => ({
           employee_id: employeeId,
           date: day.date,
           first_check_in: day.firstCheckIn?.toISOString() || null,
@@ -491,39 +484,46 @@ export const updateProcessedEmployeeData = async (
           display_check_out: day.displayCheckOut || null,
           working_week_start: day.working_week_start || null,
           all_time_records: day.allTimeRecords ? JSON.stringify(day.allTimeRecords) : null
-        });
-      });
-    });
-    
-    // Insert daily records in batches
-    const dailyRecordsBatchSize = 100;
-    for (let i = 0; i < dailyRecordsBatch.length; i += dailyRecordsBatchSize) {
-      const batch = dailyRecordsBatch.slice(i, i + dailyRecordsBatchSize);
-      
-      try {
-        const { error } = await supabase
-          .from('processed_daily_records')
-          .insert(batch);
-          
-        if (error) {
-          console.error('Error inserting daily records batch:', error);
-          // Try inserting one by one for this batch
-          for (const record of batch) {
+        }));
+        
+        if (dailyRecordsToInsert.length > 0) {
+          const batchSize = 10; // Smaller batch size
+          for (let i = 0; i < dailyRecordsToInsert.length; i += batchSize) {
+            const batch = dailyRecordsToInsert.slice(i, i + batchSize);
+            
             try {
-              await supabase
+              // Final check before insert to ensure employee exists
+              const { data: empFinalCheck } = await supabase
+                .from('processed_employee_data')
+                .select('id')
+                .eq('id', employeeId)
+                .maybeSingle();
+                
+              if (!empFinalCheck) {
+                console.error(`Employee ${employeeId} no longer exists before batch insert`);
+                break;
+              }
+              
+              const { error: insertError } = await supabase
                 .from('processed_daily_records')
-                .insert([record]);
-            } catch (recordErr) {
-              console.error('Error inserting single daily record:', recordErr);
+                .insert(batch);
+                
+              if (insertError) {
+                console.error('Error inserting daily records batch:', insertError);
+                // Continue with next batch
+              }
+              
+              // Delay between batches
+              await delay(300);
+            } catch (err) {
+              console.error('Exception inserting daily records batch:', err);
+              // Continue with next batch
             }
           }
         }
-      } catch (err) {
-        console.error('Exception inserting daily records batch:', err);
-      }
-      
-      if (i + dailyRecordsBatchSize < dailyRecordsBatch.length) {
-        await delay(100);  // Small delay between batches
+      } catch (employeeError) {
+        console.error('Error processing employee:', employeeError);
+        // Continue with next employee
       }
     }
     
@@ -582,7 +582,7 @@ export const deleteProcessedExcelData = async (fileId?: string): Promise<boolean
           .neq('employee_id', '00000000-0000-0000-0000-000000000000');
           
         // Wait for deletion to complete
-        await delay(500);
+        await delay(1000);
         
         console.log('Deleting all processed employee data...');
         await supabase
@@ -591,7 +591,7 @@ export const deleteProcessedExcelData = async (fileId?: string): Promise<boolean
           .neq('file_id', '00000000-0000-0000-0000-000000000000');
           
         // Wait for deletion to complete
-        await delay(500);
+        await delay(1000);
         
         console.log('Deleting all processed excel files...');
         const { error } = await supabase
