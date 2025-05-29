@@ -65,6 +65,37 @@ const checkFileExists = async (fileId: string): Promise<boolean> => {
   }
 };
 
+// Helper to check if a file exists with retries
+const checkFileExistsWithRetry = async (
+  fileId: string, 
+  maxRetries = 5, 
+  initialDelay = 500
+): Promise<boolean> => {
+  let attempts = 0;
+  let currentDelay = initialDelay;
+  
+  while (attempts < maxRetries) {
+    const exists = await checkFileExists(fileId);
+    if (exists) {
+      return true;
+    }
+    
+    attempts++;
+    if (attempts >= maxRetries) {
+      console.log(`File ${fileId} not found after ${maxRetries} attempts`);
+      return false;
+    }
+    
+    console.log(`File verification attempt ${attempts} - waiting ${currentDelay}ms before retry`);
+    await delay(currentDelay);
+    
+    // Increase delay with each retry (exponential backoff)
+    currentDelay = Math.min(currentDelay * 1.5, 3000);
+  }
+  
+  return false;
+};
+
 // Save a new processed Excel file with its data
 export const saveProcessedExcelFile = async (
   fileName: string,
@@ -342,13 +373,13 @@ export const updateProcessedEmployeeData = async (
       }
       
       // Add delay after creating the file
-      await delay(1500);
+      await delay(1000);
       
-      // Verify file was created
-      const newFileExists = await checkFileExists(actualFileId);
+      // Verify file was created with retry mechanism
+      const newFileExists = await checkFileExistsWithRetry(actualFileId, 5, 500);
       if (!newFileExists) {
-        console.error('New file record was not created successfully');
-        return { success: false, fileId: actualFileId };
+        console.warn('New file record may not be immediately accessible, but proceeding anyway');
+        // Continue despite the verification failure, as the file might still be in the process of becoming visible
       }
     }
     
@@ -392,11 +423,11 @@ export const updateProcessedEmployeeData = async (
           // Create new employee record
           let newEmployee;
           try {
-            // Verify file still exists before creating employee
-            const fileStillExists = await checkFileExists(actualFileId);
+            // Verify file still exists before creating employee - with retry mechanism
+            const fileStillExists = await checkFileExistsWithRetry(actualFileId, 3, 300);
             if (!fileStillExists) {
-              console.error(`File ${actualFileId} no longer exists, cannot create employee`);
-              continue;
+              console.warn(`File ${actualFileId} verification failed, but attempting to create employee anyway`);
+              // Continue despite verification failure
             }
             
             const { data, error } = await supabase
@@ -412,11 +443,37 @@ export const updateProcessedEmployeeData = async (
               .single();
               
             if (error) {
-              console.error('Error creating employee:', error);
-              continue;
+              // If this is a foreign key error, it might be due to eventual consistency
+              if (error.message && error.message.includes('foreign key constraint')) {
+                console.warn('Foreign key constraint error, retrying employee creation after delay');
+                await delay(1000);
+                
+                // Try one more time with a retry function
+                const result = await retry(async () => {
+                  const { data: retryData, error: retryError } = await supabase
+                    .from('processed_employee_data')
+                    .insert({
+                      file_id: actualFileId,
+                      employee_number: employee.employeeNumber,
+                      name: employee.name,
+                      department: employee.department || '',
+                      total_days: employee.days.length
+                    })
+                    .select('id')
+                    .single();
+                    
+                  if (retryError) throw retryError;
+                  return retryData;
+                }, 3, 800);
+                
+                newEmployee = result;
+              } else {
+                console.error('Error creating employee:', error);
+                continue;
+              }
+            } else {
+              newEmployee = data;
             }
-            
-            newEmployee = data;
           } catch (err) {
             console.error('Exception creating employee:', err);
             continue;
