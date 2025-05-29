@@ -22,303 +22,73 @@ export const handleExcelFile = async (file: File): Promise<EmployeeRecord[]> => 
     reader.onload = async (e) => {
       try {
         const data = new Uint8Array(e.target?.result as ArrayBuffer);
-        
-        // Try to read the Excel file with different options to improve compatibility
-        let workbook;
-        try {
-          // First attempt with standard options
-          workbook = XLSX.read(data, { type: 'array', cellDates: true, dateNF: 'yyyy-mm-dd hh:mm:ss' });
-        } catch (readError) {
-          console.error('First attempt to read Excel file failed, trying with alternative options:', readError);
-          // Second attempt with more permissive options
-          workbook = XLSX.read(data, { type: 'array', raw: true });
-        }
-
-        if (!workbook || !workbook.SheetNames || workbook.SheetNames.length === 0) {
-          reject(new Error('Invalid Excel file format or empty file'));
-          return;
-        }
+        const workbook = XLSX.read(data, { type: 'array', cellDates: true, dateNF: 'yyyy-mm-dd hh:mm:ss' });
 
         // Use the first sheet (assuming Face ID Data is there)
         const firstSheetName = workbook.SheetNames[0];
         const worksheet = workbook.Sheets[firstSheetName];
 
-        if (!worksheet) {
-          reject(new Error('Worksheet not found in the Excel file'));
-          return;
-        }
-
-        // Convert to JSON with more robust options
-        const jsonData: any[] = XLSX.utils.sheet_to_json(worksheet, { 
-          raw: false, 
-          dateNF: 'yyyy-mm-dd hh:mm:ss',
-          defval: '', // Use empty string for empty cells
-          blankrows: false // Skip blank rows
-        });
+        // Convert to JSON
+        const jsonData: any[] = XLSX.utils.sheet_to_json(worksheet, { raw: false, dateNF: 'yyyy-mm-dd hh:mm:ss' });
         
         // Log the total number of records for progress tracking
         processingStats.totalRecords = jsonData.length;
         console.log(`Processing ${processingStats.totalRecords} records from Excel file...`);
 
         if (jsonData.length === 0) {
-          // Provide more detailed error information
-          const headers = XLSX.utils.sheet_to_json(worksheet, { header: 1 })[0];
-          console.error('No data found in Excel file. Headers:', headers);
-          reject(new Error('No data found in the Excel file. Please check the file format and ensure it contains valid data.'));
+          reject(new Error('No data found in the Excel file'));
           return;
         }
 
-        // Analyze the first few rows to determine column structure
-        console.log('Sample of first row:', JSON.stringify(jsonData[0]));
-        
         // Process the data using a more efficient algorithm
         const processedData = processExcelData(jsonData);
         console.log(`Processing completed in ${(Date.now() - processingStats.startTime) / 1000} seconds.`);
         
-        if (processedData.length === 0) {
-          reject(new Error('Could not extract any employee records from the file. Please check that the file contains required columns: Department, Name, Number/ID, Datetime, and Status.'));
-          return;
-        }
-        
         resolve(processedData);
       } catch (error) {
         console.error('Error processing Excel file:', error);
-        reject(error instanceof Error 
-          ? error 
-          : new Error('Unknown error processing Excel file. Please try a different file format.'));
+        reject(error);
       }
     };
 
     reader.onerror = (e) => {
       console.error('Error reading file:', e);
-      reject(new Error('Error reading file. The file may be corrupted or access denied.'));
+      reject(new Error('Error reading file'));
     };
 
     reader.readAsArrayBuffer(file);
   });
 };
 
-// Helper function to normalize column names for robust parsing
-const normalizeColumnName = (name: string): string => {
-  if (!name) return '';
-  return String(name)
-    .toLowerCase()
-    .trim()
-    .replace(/\s+/g, '') // Remove all spaces
-    .replace(/[^a-z0-9]/g, ''); // Remove non-alphanumeric chars
-};
-
-// Helper function to get value from row with normalized column name
-const getColumnValue = (row: any, columnName: string): string | null => {
-  // Normalize the column name we're looking for
-  const normalizedColumnName = normalizeColumnName(columnName);
-  
-  // If empty column name, return null
-  if (!normalizedColumnName) return null;
-  
-  // Find the matching column in the row
-  for (const key in row) {
-    if (normalizeColumnName(key) === normalizedColumnName) {
-      return row[key] !== undefined && row[key] !== null ? String(row[key]).trim() : null;
-    }
-  }
-  
-  return null;
-};
-
-// Function to detect column names in the data
-const detectColumnNames = (jsonData: any[]): {
-  departmentCol: string | null;
-  nameCol: string | null;
-  employeeNumberCol: string | null;
-  datetimeCol: string | null;
-  statusCol: string | null;
-} => {
-  // If no data, return all null
-  if (!jsonData || jsonData.length === 0 || !jsonData[0]) {
-    return {
-      departmentCol: null,
-      nameCol: null,
-      employeeNumberCol: null,
-      datetimeCol: null,
-      statusCol: null
-    };
-  }
-  
-  const firstRow = jsonData[0];
-  
-  // Common variations of column names
-  const departmentVariations = ['Department', 'Dept', 'dept', 'department', 'DEPARTMENT', 'Division'];
-  const nameVariations = ['Name', 'name', 'NAME', 'EmployeeName', 'Employee Name', 'Full Name', 'Staff Name'];
-  const employeeNumberVariations = ['Number', 'Employee Number', 'ID', 'EmployeeID', 'Staff ID', 'Employee ID', 'EmpNo', 'Emp No'];
-  const datetimeVariations = ['Datetime', 'Date Time', 'DateTime', 'Time', 'Timestamp', 'Date', 'CheckTime', 'Check Time', 'Time Stamp'];
-  const statusVariations = ['Status', 'Check Type', 'CheckType', 'Type', 'In/Out', 'InOut', 'Direction'];
-  
-  // Find matching columns
-  let departmentCol = null;
-  for (const col of departmentVariations) {
-    if (getColumnValue(firstRow, col) !== null || firstRow[col] !== undefined) {
-      departmentCol = col;
-      break;
-    }
-  }
-  
-  let nameCol = null;
-  for (const col of nameVariations) {
-    if (getColumnValue(firstRow, col) !== null || firstRow[col] !== undefined) {
-      nameCol = col;
-      break;
-    }
-  }
-  
-  let employeeNumberCol = null;
-  for (const col of employeeNumberVariations) {
-    if (getColumnValue(firstRow, col) !== null || firstRow[col] !== undefined) {
-      employeeNumberCol = col;
-      break;
-    }
-  }
-  
-  let datetimeCol = null;
-  for (const col of datetimeVariations) {
-    if (getColumnValue(firstRow, col) !== null || firstRow[col] !== undefined) {
-      datetimeCol = col;
-      break;
-    }
-  }
-  
-  let statusCol = null;
-  for (const col of statusVariations) {
-    if (getColumnValue(firstRow, col) !== null || firstRow[col] !== undefined) {
-      statusCol = col;
-      break;
-    }
-  }
-  
-  console.log('Detected columns:', {
-    departmentCol,
-    nameCol,
-    employeeNumberCol,
-    datetimeCol,
-    statusCol
-  });
-  
-  return {
-    departmentCol,
-    nameCol,
-    employeeNumberCol,
-    datetimeCol,
-    statusCol
-  };
-};
-
 // More efficient data processing algorithm
 const processExcelData = (jsonData: any[]): EmployeeRecord[] => {
-  if (!jsonData || jsonData.length === 0) {
-    console.error('No data provided to process');
-    return [];
-  }
-  
-  // First, detect the column names in the data
-  const { 
-    departmentCol, 
-    nameCol, 
-    employeeNumberCol, 
-    datetimeCol, 
-    statusCol 
-  } = detectColumnNames(jsonData);
-  
-  // Validate that we have the required columns
-  if (!departmentCol || !nameCol || !employeeNumberCol || !datetimeCol || !statusCol) {
-    console.error('Missing required columns in Excel file', {
-      departmentCol,
-      nameCol,
-      employeeNumberCol,
-      datetimeCol,
-      statusCol
-    });
-    return [];
-  }
-  
   // Step 1: Prepare raw records by department
   const recordsByDepartment = new Map<string, Map<string, TimeRecord[]>>();
 
   // Pre-processing to normalize and organize data
-  let processedRows = 0;
-  let validRows = 0;
-  let skippedRows = 0;
-  
   jsonData.forEach((row, index) => {
     processingStats.processedRecords++;
-    processedRows++;
     
     // Log progress every 500 records
     if (processingStats.processedRecords % 500 === 0) {
       console.log(`Processed ${processingStats.processedRecords}/${processingStats.totalRecords} records...`);
     }
     
-    // Get values using the detected column names
-    const departmentValue = getColumnValue(row, departmentCol);
-    const nameValue = getColumnValue(row, nameCol);
-    const employeeNumberValue = getColumnValue(row, employeeNumberCol);
-    const datetimeValue = getColumnValue(row, datetimeCol);
-    const statusValue = getColumnValue(row, statusCol);
-    
-    // Skip rows with missing values, but log them for debugging
-    if (!departmentValue || !nameValue || !employeeNumberValue || !datetimeValue || !statusValue) {
-      skippedRows++;
-      if (skippedRows < 10) { // Limit logging to prevent console flood
-        console.log(`Skipping row ${index + 1} due to missing required values:`, {
-          department: departmentValue,
-          name: nameValue,
-          employeeNumber: employeeNumberValue,
-          datetime: datetimeValue,
-          status: statusValue,
-          row: row
-        });
-      }
-      return;
+    // Check if this is a valid row with required fields
+    if (!row || !row['Department'] || !row['Name'] || !row['Number'] || !row['Datetime'] || !row['Status']) {
+      return; // Skip this row
     }
-    
-    // Normalize values
-    const department = String(departmentValue).trim();
-    const name = String(nameValue).trim();
-    const employeeNumber = String(employeeNumberValue).trim();
-    
-    // Try multiple date parsing approaches
-    let timestamp = parseDateTime(String(datetimeValue));
-    
-    // If first attempt fails, try alternative approaches
-    if (!timestamp && typeof datetimeValue === 'string') {
-      // Try extracting date part only
-      const dateMatch = datetimeValue.match(/(\d{1,4})[\/\-](\d{1,2})[\/\-](\d{1,4})/);
-      if (dateMatch) {
-        // Try to parse with different date formats
-        const dateFormats = ['MM/dd/yyyy', 'yyyy-MM-dd', 'dd/MM/yyyy'];
-        for (const format of dateFormats) {
-          try {
-            timestamp = parseDateTime(`${datetimeValue} 12:00:00`);
-            if (timestamp) break;
-          } catch (e) {
-            // Continue trying other formats
-          }
-        }
-      }
-    }
-    
-    // Skip if timestamp is still invalid after multiple attempts
+
+    const department = String(row['Department']).trim();
+    const name = String(row['Name']).trim();
+    const employeeNumber = String(row['Number']).trim();
+    const timestamp = parseDateTime(String(row['Datetime']));
+    const status = String(row['Status']).toLowerCase().includes('check in') ? 'check_in' : 'check_out';
+
+    // Skip if timestamp is invalid
     if (!timestamp) {
-      skippedRows++;
-      console.log(`Skipping row ${index + 1} due to invalid timestamp: ${datetimeValue}`);
       return;
     }
-    
-    // Determine status (check-in vs check-out)
-    const status = statusValue.toLowerCase().includes('in') || 
-                   statusValue.toLowerCase() === 'i' ? 
-                   'check_in' : 'check_out';
-    
-    validRows++;
     
     // Create a unique key for the employee
     const employeeKey = `${department}|${employeeNumber}`;
@@ -345,14 +115,6 @@ const processExcelData = (jsonData: any[]): EmployeeRecord[] => {
       originalStatus: status
     });
   });
-
-  console.log(`Processing stats: Total rows: ${processedRows}, Valid: ${validRows}, Skipped: ${skippedRows}`);
-  
-  // If no valid rows were processed, return empty array
-  if (validRows === 0) {
-    console.error('No valid rows found in Excel file');
-    return [];
-  }
 
   // Step 2: Process each employee's records to create daily records
   const employeeRecords: EmployeeRecord[] = [];
@@ -389,12 +151,6 @@ const processExcelData = (jsonData: any[]): EmployeeRecord[] => {
         expanded: false
       });
     }
-  }
-  
-  // Log the result
-  console.log(`Processed ${employeeRecords.length} employees with time records.`);
-  if (employeeRecords.length === 0) {
-    console.warn('Warning: No employee records were processed. Check Excel file format.');
   }
   
   return employeeRecords;
@@ -685,8 +441,8 @@ export const exportApprovedHoursToExcel = (data: any): void => {
         record.working_week_start || (record.timestamp ? record.timestamp.split('T')[0] : ''),
         record.employees?.name || '',
         record.employees?.employee_number || '',
-        record.display_check_in || (record.status === 'check_in' ? record.timestamp?.split('T')[1]?.substring(0, 5) : ''),
-        record.display_check_out || (record.status === 'check_out' ? record.timestamp?.split('T')[1]?.substring(0, 5) : ''),
+        record.display_check_in || (record.status === 'check_in' ? record.timestamp?.split('T')[1].substring(0, 5) : ''),
+        record.display_check_out || (record.status === 'check_out' ? record.timestamp?.split('T')[1].substring(0, 5) : ''),
         record.shift_type || '',
         hours.toFixed(2),
         doubleTimeHours.toFixed(2),
@@ -704,6 +460,6 @@ export const exportApprovedHoursToExcel = (data: any): void => {
   
   // Generate Excel file with date in filename
   const date = new Date();
-  const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+  const dateStr = format(date, 'yyyy-MM-dd');
   XLSX.writeFile(wb, `ApprovedHours_${dateStr}.xlsx`);
 };
