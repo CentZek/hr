@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Upload, Clock, AlertCircle, CheckCircle, Download, RefreshCw, PlusCircle, Database, KeyRound, Home, AlertTriangle, Calendar } from 'lucide-react';
+import { Upload, Clock, AlertCircle, CheckCircle, Download, RefreshCw, PlusCircle, Database, KeyRound, Home, AlertTriangle, Calendar, X } from 'lucide-react';
 import toast, { Toaster } from 'react-hot-toast';
 
 // Import types
@@ -152,6 +152,12 @@ function HrPage() {
   };
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    // Prevent file upload during reset operation
+    if (isResetting) {
+      toast.error('Please wait for the reset operation to complete');
+      return;
+    }
+    
     const file = event.target.files?.[0];
     if (!file) {
       toast.error('No file selected');
@@ -375,8 +381,11 @@ function HrPage() {
       toast.dismiss(loadingToast);
       toast.error('An unexpected error occurred during reset.');
     } finally {
-      setIsResetting(false);
-      setIsResetConfirmOpen(false);
+      // Add a small delay before setting isResetting to false to ensure all operations are completed
+      setTimeout(() => {
+        setIsResetting(false);
+        setIsResetConfirmOpen(false);
+      }, 1000);
     }
   };
 
@@ -386,6 +395,12 @@ function HrPage() {
   };
 
   const handleSaveToDatabase = async () => {
+    // Prevent saving during reset operation
+    if (isResetting) {
+      toast.error('Please wait for the reset operation to complete');
+      return;
+    }
+    
     // Check connection first
     const isConnected = await checkConnection();
     if (!isConnected) {
@@ -509,6 +524,12 @@ function HrPage() {
 
   // Handle employee shift request approval
   const handleEmployeeShiftApproved = async (employeeData: any, shiftData: any) => {
+    // Prevent operation during reset
+    if (isResetting) {
+      toast.error('Please wait for the reset operation to complete');
+      return;
+    }
+    
     // Create a daily record in the format expected by the app
     const dailyRecord: DailyRecord = {
       date: shiftData.date,
@@ -588,6 +609,12 @@ function HrPage() {
 
   // Handle saving manual time entry
   const handleManualEntrySave = async (recordData: any) => {
+    // Prevent manual entry during reset
+    if (isResetting) {
+      toast.error('Please wait for the reset operation to complete');
+      return;
+    }
+    
     setIsManualEntryOpen(false);
     
     try {
@@ -686,6 +713,7 @@ function HrPage() {
                 <button
                   onClick={() => setIsUserCredentialsOpen(true)}
                   className="text-green-600 hover:text-green-800 font-medium flex items-center"
+                  disabled={isResetting}
                 >
                   <KeyRound className="w-4 h-4 mr-1" />
                   <span className="hidden sm:inline">Manage User Credentials</span>
@@ -693,7 +721,7 @@ function HrPage() {
                 </button>
                 <button
                   onClick={handleRunMigrations}
-                  disabled={isMigrating}
+                  disabled={isMigrating || isResetting}
                   className="text-blue-600 hover:text-blue-800 font-medium flex items-center disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Database className="w-4 h-4 mr-1" />
@@ -733,6 +761,21 @@ function HrPage() {
                   >
                     Retry Connection
                   </button>
+                </div>
+              </div>
+            )}
+
+            {/* Reset in progress warning */}
+            {isResetting && (
+              <div className="bg-orange-50 border border-orange-200 rounded-md p-4 flex items-start">
+                <AlertTriangle className="w-5 h-5 text-orange-500 mr-3 mt-0.5 flex-shrink-0" />
+                <div className="text-sm text-orange-700">
+                  <p className="font-medium">Reset Operation in Progress</p>
+                  <p>Please wait for the reset operation to complete before uploading files or making changes.</p>
+                  <div className="mt-2 flex items-center">
+                    <div className="animate-spin w-4 h-4 border-2 border-orange-500 border-t-transparent rounded-full mr-2"></div>
+                    <span>Resetting database...</span>
+                  </div>
                 </div>
               </div>
             )}
@@ -824,6 +867,7 @@ function HrPage() {
                 <button
                   onClick={() => setIsManualEntryOpen(true)}
                   className="text-blue-600 hover:text-blue-800 flex items-center text-sm font-medium"
+                  disabled={isUploading || isResetting}
                 >
                   <PlusCircle className="w-4 h-4 mr-1" />
                   <span className="hidden sm:inline">Add Record Manually</span>
@@ -832,7 +876,7 @@ function HrPage() {
               </div>
               <button 
                 onClick={() => document.getElementById('file-upload')?.click()}
-                disabled={isUploading}
+                disabled={isUploading || isResetting}
                 className="w-full bg-purple-600 hover:bg-purple-700 focus:ring-4 focus:ring-purple-200 
                   text-white rounded-md py-2.5 px-4 flex items-center justify-center
                   disabled:opacity-70 disabled:cursor-not-allowed transition-colors"
@@ -846,7 +890,7 @@ function HrPage() {
                 onChange={handleFileUpload}
                 className="hidden"
                 id="file-upload"
-                disabled={isUploading}
+                disabled={isUploading || isResetting}
               />
               {currentFileName && (
                 <div className="mt-2 text-sm text-gray-500 text-right text-wrap-balance">
@@ -889,15 +933,21 @@ function HrPage() {
                     <div className="col-span-2 flex gap-2 sm:hidden">
                       <button
                         onClick={handleReset}
-                        className="flex-1 inline-flex items-center justify-center px-3 py-1.5 border border-gray-300 text-sm leading-5 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
+                        disabled={isResetting}
+                        className="flex-1 inline-flex items-center justify-center px-3 py-1.5 border border-gray-300 text-sm leading-5 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
-                        <RefreshCw className="w-4 h-4 mr-1" />
+                        {isResetting ? (
+                          <span className="inline-block h-4 w-4 rounded-full border-2 border-gray-400 border-t-transparent animate-spin mr-1"></span>
+                        ) : (
+                          <RefreshCw className="w-4 h-4 mr-1" />
+                        )}
                         Reset
                       </button>
                       
                       <button
                         onClick={() => setIsManualEntryOpen(true)}
-                        className="flex-1 inline-flex items-center justify-center px-3 py-1.5 border border-transparent text-sm leading-5 font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                        disabled={isResetting}
+                        className="flex-1 inline-flex items-center justify-center px-3 py-1.5 border border-transparent text-sm leading-5 font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         <PlusCircle className="w-4 h-4 mr-1" />
                         Add
@@ -908,7 +958,8 @@ function HrPage() {
                     <div className="col-span-2 flex gap-2 sm:hidden">
                       <button
                         onClick={handleExportAll}
-                        className="flex-1 inline-flex items-center justify-center px-3 py-1.5 border border-gray-300 text-sm leading-5 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
+                        disabled={isResetting}
+                        className="flex-1 inline-flex items-center justify-center px-3 py-1.5 border border-gray-300 text-sm leading-5 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         <Download className="w-4 h-4 mr-1" />
                         Export
@@ -916,7 +967,8 @@ function HrPage() {
                       
                       <button
                         onClick={() => setIsApproveAllDialogOpen(true)}
-                        className="flex-1 inline-flex items-center justify-center px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white text-sm rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+                        disabled={isResetting}
+                        className="flex-1 inline-flex items-center justify-center px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white text-sm rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         <CheckCircle className="w-4 h-4 mr-1" />
                         Approve
@@ -926,7 +978,7 @@ function HrPage() {
                     {/* Third row (full-width Save button on mobile) */}
                     <button
                       onClick={handleSaveToDatabase}
-                      disabled={isSaving || !employeeRecords.some(emp => emp.days.some(d => d.approved)) || !!connectionError}
+                      disabled={isSaving || !employeeRecords.some(emp => emp.days.some(d => d.approved)) || !!connectionError || isResetting}
                       className="col-span-2 sm:col-span-1 inline-flex items-center justify-center px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white text-sm rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       {isSaving ? (
@@ -942,15 +994,21 @@ function HrPage() {
                     {/* Desktop-only buttons */}
                     <button
                       onClick={handleReset}
-                      className="hidden sm:inline-flex items-center px-3 py-1.5 border border-gray-300 text-sm leading-5 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
+                      disabled={isResetting}
+                      className="hidden sm:inline-flex items-center px-3 py-1.5 border border-gray-300 text-sm leading-5 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      <RefreshCw className="w-4 h-4 mr-1" />
+                      {isResetting ? (
+                        <span className="inline-block h-4 w-4 rounded-full border-2 border-gray-400 border-t-transparent animate-spin mr-2"></span>
+                      ) : (
+                        <RefreshCw className="w-4 h-4 mr-1" />
+                      )}
                       Reset
                     </button>
                     
                     <button
                       onClick={() => setIsManualEntryOpen(true)}
-                      className="hidden sm:inline-flex items-center px-3 py-1.5 border border-transparent text-sm leading-5 font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                      disabled={isResetting}
+                      className="hidden sm:inline-flex items-center px-3 py-1.5 border border-transparent text-sm leading-5 font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <PlusCircle className="w-4 h-4 mr-1" />
                       Add Manual Entry
@@ -958,7 +1016,8 @@ function HrPage() {
                     
                     <button
                       onClick={handleExportAll}
-                      className="hidden sm:inline-flex items-center px-3 py-1.5 border border-gray-300 text-sm leading-5 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
+                      disabled={isResetting}
+                      className="hidden sm:inline-flex items-center px-3 py-1.5 border border-gray-300 text-sm leading-5 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <Download className="w-4 h-4 mr-1" />
                       Export All
@@ -966,7 +1025,8 @@ function HrPage() {
                     
                     <button
                       onClick={() => setIsApproveAllDialogOpen(true)}
-                      className="hidden sm:inline-flex items-center px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white text-sm rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+                      disabled={isResetting}
+                      className="hidden sm:inline-flex items-center px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white text-sm rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <CheckCircle className="w-4 h-4 mr-1" />
                       Approve All
