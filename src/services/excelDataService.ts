@@ -236,7 +236,8 @@ export const getProcessedEmployees = async (fileId: string): Promise<EmployeeRec
     const { data: employeesData, error: employeesError } = await supabase
       .from('processed_employee_data')
       .select('id, employee_number, name, department, total_days')
-      .eq('file_id', fileId);
+      .eq('file_id', fileId)
+      .order('name', { ascending: true });  // Sort alphabetically by name
 
     if (employeesError) throw employeesError;
     if (!employeesData || employeesData.length === 0) return [];
