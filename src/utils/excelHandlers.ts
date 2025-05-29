@@ -60,6 +60,26 @@ export const handleExcelFile = async (file: File): Promise<EmployeeRecord[]> => 
   });
 };
 
+// Helper function to normalize column names for robust parsing
+const normalizeColumnName = (name: string): string => {
+  return String(name).toLowerCase().trim();
+};
+
+// Helper function to get value from row with normalized column name
+const getColumnValue = (row: any, columnName: string): string | null => {
+  // Normalize the column name we're looking for
+  const normalizedColumnName = normalizeColumnName(columnName);
+  
+  // Find the matching column in the row
+  for (const key in row) {
+    if (normalizeColumnName(key) === normalizedColumnName) {
+      return row[key] !== undefined && row[key] !== null ? String(row[key]).trim() : null;
+    }
+  }
+  
+  return null;
+};
+
 // More efficient data processing algorithm
 const processExcelData = (jsonData: any[]): EmployeeRecord[] => {
   // Step 1: Prepare raw records by department
@@ -74,19 +94,38 @@ const processExcelData = (jsonData: any[]): EmployeeRecord[] => {
       console.log(`Processed ${processingStats.processedRecords}/${processingStats.totalRecords} records...`);
     }
     
+    // Get normalized column values
+    const department = getColumnValue(row, 'Department');
+    const name = getColumnValue(row, 'Name');
+    const employeeNumber = getColumnValue(row, 'Number');
+    const datetimeStr = getColumnValue(row, 'Datetime');
+    const statusValue = getColumnValue(row, 'Status');
+    
     // Check if this is a valid row with required fields
-    if (!row || !row['Department'] || !row['Name'] || !row['Number'] || !row['Datetime'] || !row['Status']) {
-      return; // Skip this row
+    if (!department || !name || !employeeNumber || !datetimeStr || !statusValue) {
+      // Try alternative column names for common variations
+      const altDepartment = getColumnValue(row, 'Dept') || getColumnValue(row, 'dept');
+      const altEmployeeNumber = getColumnValue(row, 'Employee Number') || getColumnValue(row, 'ID');
+      const altDatetime = getColumnValue(row, 'Date Time') || getColumnValue(row, 'DateTime');
+      
+      // Use alternatives if found
+      if (!(altDepartment && name && (altEmployeeNumber || employeeNumber) && (altDatetime || datetimeStr) && statusValue)) {
+        console.log('Skipping row due to missing required fields:', row);
+        return; // Skip this row
+      }
+      
+      // Use alternative values if primary ones are missing
+      if (!department) department = altDepartment;
+      if (!employeeNumber) employeeNumber = altEmployeeNumber;
+      if (!datetimeStr) datetimeStr = altDatetime;
     }
-
-    const department = String(row['Department']).trim();
-    const name = String(row['Name']).trim();
-    const employeeNumber = String(row['Number']).trim();
-    const timestamp = parseDateTime(String(row['Datetime']));
-    const status = String(row['Status']).toLowerCase().includes('check in') ? 'check_in' : 'check_out';
+    
+    const timestamp = parseDateTime(datetimeStr);
+    const status = statusValue.toLowerCase().includes('check in') ? 'check_in' : 'check_out';
 
     // Skip if timestamp is invalid
     if (!timestamp) {
+      console.log('Skipping row due to invalid timestamp:', datetimeStr);
       return;
     }
     
@@ -151,6 +190,12 @@ const processExcelData = (jsonData: any[]): EmployeeRecord[] => {
         expanded: false
       });
     }
+  }
+  
+  // Log the result
+  console.log(`Processed ${employeeRecords.length} employees with time records.`);
+  if (employeeRecords.length === 0) {
+    console.warn('Warning: No employee records were processed. Check Excel file format.');
   }
   
   return employeeRecords;
@@ -460,6 +505,6 @@ export const exportApprovedHoursToExcel = (data: any): void => {
   
   // Generate Excel file with date in filename
   const date = new Date();
-  const dateStr = format(date, 'yyyy-MM-dd');
+  const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
   XLSX.writeFile(wb, `ApprovedHours_${dateStr}.xlsx`);
 };
