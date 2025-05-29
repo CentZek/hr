@@ -48,8 +48,8 @@ export const fetchApprovedHours = async (dateFilter: string = ''): Promise<{
           if (year && month) {
             const monthDate = new Date(parseInt(year), parseInt(month) - 1, 1);
             if (isValid(monthDate)) {
-              const startDate = format(startOfMonth(monthDate), 'yyyy-MM-dd');
-              const endDate = format(endOfMonth(monthDate), 'yyyy-MM-dd');
+              const startDate = startOfMonth(monthDate);
+              const endDate = endOfMonth(monthDate);
               
               if (isValid(startDate) && isValid(endDate)) {
                 const startStr = format(startDate, 'yyyy-MM-dd');
@@ -288,8 +288,7 @@ export const fetchApprovedHours = async (dateFilter: string = ''): Promise<{
         
         if (isDoubletime) {
           const dateHours = emp.hours_by_date?.[date] || 0;
-          doubleTimeHours += dateHours; // Add the bonus hours (base hours already counted)
-          regularHours += dateHours; // Base hours
+          doubleTimeHours += dateHours; // Add the bonus hours (base hours already included in total_hours)
         }
       });
       
@@ -408,6 +407,15 @@ export const checkExistingTimeRecord = async (
   workingWeekStart: string
 ): Promise<string | null> => {
   try {
+    // Log the search parameters for debugging
+    console.log('Checking for existing record with:', {
+      employeeId,
+      shiftType,
+      status,
+      workingWeekStart,
+      is_manual_entry: true
+    });
+
     const { data, error } = await supabase
       .from('time_records')
       .select('id')
@@ -419,6 +427,12 @@ export const checkExistingTimeRecord = async (
       .maybeSingle();
 
     if (error) throw error;
+    
+    if (data) {
+      console.log('Found existing record with ID:', data.id);
+    } else {
+      console.log('No existing record found');
+    }
     
     return data ? data.id : null;
   } catch (error) {
@@ -432,6 +446,7 @@ export const safeUpsertTimeRecord = async (recordData: any, existingId: string |
   try {
     // If we have an existing ID, update the record
     if (existingId) {
+      console.log('Updating existing record with ID:', existingId);
       const { error } = await supabase
         .from('time_records')
         .update(recordData)
@@ -443,6 +458,7 @@ export const safeUpsertTimeRecord = async (recordData: any, existingId: string |
     
     // Otherwise try to insert, but be prepared to handle conflict
     try {
+      console.log('Attempting to insert new record');
       const { error } = await supabase
         .from('time_records')
         .insert([recordData]);
@@ -450,6 +466,7 @@ export const safeUpsertTimeRecord = async (recordData: any, existingId: string |
       if (error) {
         // If we get a conflict error (409), try to find the record again and update it
         if (error.code === '23505' || (error.message && error.message.includes('duplicate key value'))) {
+          console.log('Duplicate key detected, attempting to find and update record');
           
           // Try to find the record based on the unique constraint
           const existingRecord = await checkExistingTimeRecord(
@@ -460,6 +477,7 @@ export const safeUpsertTimeRecord = async (recordData: any, existingId: string |
           );
           
           if (existingRecord) {
+            console.log('Found conflicting record, updating instead:', existingRecord);
             const { error: updateError } = await supabase
               .from('time_records')
               .update(recordData)
@@ -510,57 +528,43 @@ export const saveRecordsToDatabase = async (employeeRecords: EmployeeRecord[]): 
   
   // Get all double-time days in this date range
   const doubleDays = await getDoubleTimeDays(startDate, endDate);
+  console.log('Double-time days in range:', doubleDays);
   
-  // Prepare a map to cache employee IDs to reduce database lookups
-  const employeeIdMap: Record<string, string> = {};
-  
-  // Create batch operations for better performance
-  const checkInBatch: any[] = [];
-  const checkOutBatch: any[] = [];
-  const offDayBatch: any[] = [];
-  
-  // Prepare all records for batch operations
+  // Process each employee's approved days
   for (const employee of employeeRecords) {
     const approvedDays = employee.days.filter(day => day.approved);
-    
-    let employeeId: string;
-    
-    // Use cached ID or fetch from database
-    if (employeeIdMap[employee.employeeNumber]) {
-      employeeId = employeeIdMap[employee.employeeNumber];
-    } else {
-      try {
-        employeeId = await getEmployeeId(employee.employeeNumber);
-        employeeIdMap[employee.employeeNumber] = employeeId;
-      } catch (error) {
-        console.error(`Error getting employee ID for ${employee.name}:`, error);
-        errorCount += approvedDays.length;
-        approvedDays.forEach(day => {
-          errorDetails.push({
-            employeeName: employee.name,
-            date: day.date,
-            error: 'Failed to get employee ID'
-          });
-        });
-        continue;
-      }
-    }
     
     for (const day of approvedDays) {
       try {
         // Skip if this is an OFF-DAY with no hours
         if (day.notes === 'OFF-DAY' && day.hoursWorked === 0) {
-          offDayBatch.push({
-            employee_id: employeeId,
-            timestamp: `${day.date}T12:00:00`,
+          // Check if OFF-DAY record already exists
+          const existingOffDayId = await checkExistingTimeRecord(
+            await getEmployeeId(employee.employeeNumber),
+            'off_day',
+            'off_day',
+            day.date
+          );
+
+          const offDayData = {
+            employee_id: await getEmployeeId(employee.employeeNumber),
+            timestamp: `${day.date}T12:00:00`, // Use local date-time string
             status: 'off_day',
             shift_type: 'off_day',
             notes: 'OFF-DAY',
-            is_manual_entry: false,
+            is_manual_entry: false, // Mark as non-manual entry since it's from Excel
             exact_hours: 0,
-            working_week_start: day.date
-          });
-          successCount++;
+            working_week_start: day.date // Set working_week_start for proper grouping
+          };
+
+          // Use the safe upsert function
+          const success = await safeUpsertTimeRecord(offDayData, existingOffDayId);
+          
+          if (success) {
+            successCount++;
+          } else {
+            throw new Error('Failed to save OFF-DAY record');
+          }
           continue;
         }
         
@@ -575,6 +579,9 @@ export const saveRecordsToDatabase = async (employeeRecords: EmployeeRecord[]): 
           continue;
         }
         
+        // Get employee ID
+        const employeeId = await getEmployeeId(employee.employeeNumber);
+        
         // Check if this is a double-time day (Friday or holiday)
         const isDoubletime = doubleDays.includes(day.date) || isFriday(parseISO(day.date));
         
@@ -586,13 +593,21 @@ export const saveRecordsToDatabase = async (employeeRecords: EmployeeRecord[]): 
           // Use date-fns format directly with the Date object
           const checkInTimestamp = format(day.firstCheckIn, "yyyy-MM-dd'T'HH:mm:ss");
           
+          // Check if check-in record already exists
+          const existingCheckInId = await checkExistingTimeRecord(
+            employeeId,
+            day.shiftType || '',
+            'check_in',
+            day.date
+          );
+          
           // Add double-time indicator to notes if applicable
           let notes = day.notes ? `${day.notes}; hours:${day.hoursWorked.toFixed(2)}` : `hours:${day.hoursWorked.toFixed(2)}`;
           if (isDoubletime) {
             notes = `${notes}; double-time:true`;
           }
 
-          checkInBatch.push({
+          const checkInData = {
             employee_id: employeeId,
             timestamp: checkInTimestamp,
             status: 'check_in',
@@ -609,7 +624,14 @@ export const saveRecordsToDatabase = async (employeeRecords: EmployeeRecord[]): 
             mislabeled: false,
             is_manual_entry: false, // Mark as non-manual entry since it's from Excel
             working_week_start: day.date
-          });
+          };
+
+          // Use the safe upsert function
+          const success = await safeUpsertTimeRecord(checkInData, existingCheckInId);
+          
+          if (!success) {
+            throw new Error('Failed to save check-in record');
+          }
         }
         
         // Add check-out record if available
@@ -620,13 +642,21 @@ export const saveRecordsToDatabase = async (employeeRecords: EmployeeRecord[]): 
           // Use date-fns format directly with the Date object
           const checkOutTimestamp = format(day.lastCheckOut, "yyyy-MM-dd'T'HH:mm:ss");
           
+          // Check if check-out record already exists
+          const existingCheckOutId = await checkExistingTimeRecord(
+            employeeId,
+            day.shiftType || '',
+            'check_out',
+            day.date
+          );
+          
           // Add double-time indicator to notes if applicable
           let notes = day.notes ? `${day.notes}; hours:${day.hoursWorked.toFixed(2)}` : `hours:${day.hoursWorked.toFixed(2)}`;
           if (isDoubletime) {
             notes = `${notes}; double-time:true`;
           }
 
-          checkOutBatch.push({
+          const checkOutData = {
             employee_id: employeeId,
             timestamp: checkOutTimestamp,
             status: 'check_out',
@@ -643,15 +673,19 @@ export const saveRecordsToDatabase = async (employeeRecords: EmployeeRecord[]): 
             mislabeled: false,
             is_manual_entry: false, // Mark as non-manual entry since it's from Excel
             working_week_start: day.date
-          });
+          };
+
+          // Use the safe upsert function
+          const success = await safeUpsertTimeRecord(checkOutData, existingCheckOutId);
+          
+          if (!success) {
+            throw new Error('Failed to save check-out record');
+          }
         }
         
-        // Count the day as a success if at least one record was added
-        if (day.firstCheckIn || day.lastCheckOut) {
-          successCount++;
-        }
+        successCount++;
       } catch (error) {
-        console.error(`Error preparing record for ${employee.name} on ${day.date}:`, error);
+        console.error(`Error saving record for ${employee.name} on ${day.date}:`, error);
         errorCount++;
         errorDetails.push({
           employeeName: employee.name,
@@ -660,92 +694,6 @@ export const saveRecordsToDatabase = async (employeeRecords: EmployeeRecord[]): 
         });
       }
     }
-  }
-  
-  // Execute batch operations
-  const batchSize = 50; // Process in smaller chunks to avoid timeouts
-  
-  try {
-    // Process off-day records
-    if (offDayBatch.length > 0) {
-      for (let i = 0; i < offDayBatch.length; i += batchSize) {
-        const batch = offDayBatch.slice(i, i + batchSize);
-        const { error } = await supabase.from('time_records').upsert(batch, { 
-          onConflict: 'employee_id,working_week_start,status', 
-          ignoreDuplicates: false
-        });
-        
-        if (error) {
-          console.error("Error inserting off-day batch:", error);
-          // Handle individual records on error
-          for (const record of batch) {
-            try {
-              await supabase.from('time_records').upsert([record], { 
-                onConflict: 'employee_id,working_week_start,status', 
-                ignoreDuplicates: false
-              });
-            } catch (err) {
-              console.error(`Failed to insert individual off-day record:`, err);
-            }
-          }
-        }
-      }
-    }
-    
-    // Process check-in records
-    if (checkInBatch.length > 0) {
-      for (let i = 0; i < checkInBatch.length; i += batchSize) {
-        const batch = checkInBatch.slice(i, i + batchSize);
-        const { error } = await supabase.from('time_records').upsert(batch, { 
-          onConflict: 'employee_id,working_week_start,status,shift_type', 
-          ignoreDuplicates: false 
-        });
-        
-        if (error) {
-          console.error("Error inserting check-in batch:", error);
-          // Handle individual records on error
-          for (const record of batch) {
-            try {
-              await supabase.from('time_records').upsert([record], { 
-                onConflict: 'employee_id,working_week_start,status,shift_type', 
-                ignoreDuplicates: false 
-              });
-            } catch (err) {
-              console.error(`Failed to insert individual check-in record:`, err);
-            }
-          }
-        }
-      }
-    }
-    
-    // Process check-out records
-    if (checkOutBatch.length > 0) {
-      for (let i = 0; i < checkOutBatch.length; i += batchSize) {
-        const batch = checkOutBatch.slice(i, i + batchSize);
-        const { error } = await supabase.from('time_records').upsert(batch, { 
-          onConflict: 'employee_id,working_week_start,status,shift_type', 
-          ignoreDuplicates: false 
-        });
-        
-        if (error) {
-          console.error("Error inserting check-out batch:", error);
-          // Handle individual records on error
-          for (const record of batch) {
-            try {
-              await supabase.from('time_records').upsert([record], { 
-                onConflict: 'employee_id,working_week_start,status,shift_type', 
-                ignoreDuplicates: false 
-              });
-            } catch (err) {
-              console.error(`Failed to insert individual check-out record:`, err);
-            }
-          }
-        }
-      }
-    }
-  } catch (error) {
-    console.error('Error in batch operations:', error);
-    // We already counted successes/errors for each record, so just log the overall error
   }
   
   return { successCount, errorCount, errorDetails };
@@ -926,8 +874,8 @@ export const deleteAllTimeRecords = async (dateFilter: string = '', employeeFilt
                 .lte('working_week_start', endDate);
             }
           }
-        } catch (error) {
-          console.error('Error parsing month filter:', error);
+        } catch (err) {
+          console.error('Error parsing month filter:', err);
           throw new Error('Invalid month format');
         }
       }
@@ -963,6 +911,7 @@ export const deleteAllTimeRecords = async (dateFilter: string = '', employeeFilt
     
     if (preserveApproved) {
       // Get approved records - find records with exact_hours that aren't null
+      // FIXED: Removed the filter that excluded double-time records
       const { data: approvedRecords, error: approvedError } = await supabase
         .from('time_records')
         .select('id')
@@ -971,6 +920,7 @@ export const deleteAllTimeRecords = async (dateFilter: string = '', employeeFilt
       if (approvedError) throw approvedError;
       
       preserveIds = approvedRecords ? approvedRecords.map(record => record.id) : [];
+      console.log(`Found ${preserveIds.length} approved records to preserve`);
     }
     
     // Create a Set of IDs to delete by filtering out preserved IDs
@@ -988,7 +938,7 @@ export const deleteAllTimeRecords = async (dateFilter: string = '', employeeFilt
     }
     
     // Process deletions in chunks to avoid URL length limitations
-    const chunkSize = 100; // Optimized chunk size for better performance
+    const chunkSize = 50; // Smaller chunk size to avoid URL length issues
     let deletedCount = 0;
     
     for (let i = 0; i < idsToDelete.length; i += chunkSize) {

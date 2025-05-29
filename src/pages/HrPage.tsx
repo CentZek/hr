@@ -433,7 +433,7 @@ function HrPage() {
         await saveToSupabase(currentFileName, updatedRecords);
       }
 
-      // Refresh manually approved records from database
+      // FIXED: Refresh manually approved records from database instead of manually updating state
       await refreshData();
       
       toast.dismiss(loadingToast);
@@ -579,7 +579,7 @@ function HrPage() {
     // Save to Supabase
     await saveToSupabase(currentFileName || 'Employee Shift Approvals', updatedRecords);
     
-    // Refresh manual records - Get fresh data from database
+    // FIXED: Refresh manual records - Get fresh data from database instead of manually updating state
     await refreshData();
     
     // Show success message
@@ -761,7 +761,7 @@ function HrPage() {
                   </h3>
                   <button 
                     onClick={() => setShowDateRangePicker(false)}
-                    className="text-gray-400 hover:text-gray-600"
+                    className="text-gray-400 hover:text-gray-500"
                   >
                     <X className="w-5 h-5" />
                   </button>
