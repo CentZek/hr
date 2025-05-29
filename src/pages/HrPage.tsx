@@ -72,6 +72,9 @@ function HrPage() {
   // Reset confirmation dialog state
   const [isResetConfirmOpen, setIsResetConfirmOpen] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
+  
+  // Upload error state
+  const [uploadError, setUploadError] = useState<string | null>(null);
 
   // Check if screen is mobile
   useEffect(() => {
@@ -161,6 +164,7 @@ function HrPage() {
     setIsUploading(true);
     setHasUploadedFile(true);
     setCurrentFileName(file.name);
+    setUploadError(null);
     const loadingToast = toast.loading('Processing file...');
     
     try {
@@ -172,6 +176,7 @@ function HrPage() {
         toast.error('No valid data found in the Excel file. Please check the file format and try again.');
         setHasUploadedFile(false);
         setCurrentFileName('');
+        setUploadError('No valid data could be extracted. Make sure the file contains the required columns: Department, Name, Number, Datetime, and Status.');
         return;
       }
       
@@ -190,7 +195,12 @@ function HrPage() {
     } catch (error) {
       console.error('Error processing file:', error);
       toast.dismiss(loadingToast);
-      toast.error(error instanceof Error ? error.message : 'Error processing file');
+      
+      const errorMessage = error instanceof Error ? error.message : 'Error processing file';
+      toast.error(errorMessage);
+      setUploadError(errorMessage);
+      setHasUploadedFile(false);
+      setCurrentFileName('');
     } finally {
       setIsUploading(false);
       // Reset the file input
@@ -861,6 +871,29 @@ function HrPage() {
               {currentFileName && (
                 <div className="mt-2 text-sm text-gray-500 text-right text-wrap-balance">
                   {currentFileName}
+                </div>
+              )}
+              
+              {/* Upload error message */}
+              {uploadError && (
+                <div className="mt-2 p-3 bg-red-50 border border-red-100 rounded-md">
+                  <div className="flex items-start">
+                    <AlertCircle className="w-5 h-5 text-red-500 mr-2 mt-0.5 flex-shrink-0" />
+                    <div className="text-sm text-red-700">
+                      <p className="font-medium">Error processing Excel file:</p>
+                      <p>{uploadError}</p>
+                      <p className="mt-1 text-xs">
+                        Make sure your Excel file has the following columns:
+                      </p>
+                      <ul className="list-disc pl-5 mt-1 text-xs space-y-0.5">
+                        <li>Department or Dept</li>
+                        <li>Name or Employee Name</li>
+                        <li>Number, ID, or Employee Number</li>
+                        <li>Datetime, Date Time, or Timestamp</li>
+                        <li>Status or Check Type</li>
+                      </ul>
+                    </div>
+                  </div>
                 </div>
               )}
             </div>
