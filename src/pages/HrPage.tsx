@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Upload, Clock, AlertCircle, CheckCircle, Download, RefreshCw, PlusCircle, Database, KeyRound, Home, AlertTriangle, Calendar } from 'lucide-react';
+import { Upload, Clock, AlertCircle, CheckCircle, Download, RefreshCw, PlusCircle, Database, KeyRound, Home, AlertTriangle, Calendar, X } from 'lucide-react';
 import toast, { Toaster } from 'react-hot-toast';
 
 // Import types
@@ -165,6 +165,16 @@ function HrPage() {
     
     try {
       const records = await handleExcelFile(file);
+      
+      // Check if the records array is empty before proceeding
+      if (!records || records.length === 0) {
+        toast.dismiss(loadingToast);
+        toast.error('No valid data found in the Excel file. Please check the file format and try again.');
+        setHasUploadedFile(false);
+        setCurrentFileName('');
+        return;
+      }
+      
       setEmployeeRecords(records);
       
       // Calculate statistics
