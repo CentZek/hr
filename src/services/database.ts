@@ -5,10 +5,6 @@ import toast from 'react-hot-toast';
 import { parseShiftTimes } from '../utils/dateTimeHelper';
 import { isDoubleTimeDay, getDoubleTimeDays, backupCurrentHolidays, refreshDoubleTimeDaysCache } from '../services/holidayService';
 
-// Create a cache for employee IDs to reduce DB lookups
-const employeeIdCache: Record<string, string> = {};
-const BATCH_SIZE = 50;
-
 // Fetch approved hours summary
 export const fetchApprovedHours = async (dateFilter: string = ''): Promise<{
   data: any[];
@@ -705,11 +701,6 @@ export const saveRecordsToDatabase = async (employeeRecords: EmployeeRecord[]): 
 
 // Helper function to get employee ID from employee number
 const getEmployeeId = async (employeeNumber: string): Promise<string> => {
-  // Check cache first
-  if (employeeIdCache[employeeNumber]) {
-    return employeeIdCache[employeeNumber];
-  }
-
   // Check if employee exists
   const { data, error } = await supabase
     .from('employees')
@@ -720,8 +711,6 @@ const getEmployeeId = async (employeeNumber: string): Promise<string> => {
   if (error) throw error;
   
   if (data) {
-    // Cache the result
-    employeeIdCache[employeeNumber] = data.id;
     return data.id;
   }
   
@@ -736,8 +725,6 @@ const getEmployeeId = async (employeeNumber: string): Promise<string> => {
   
   if (createError) throw createError;
   
-  // Cache the new employee ID
-  employeeIdCache[employeeNumber] = newEmployee.id;
   return newEmployee.id;
 };
 
