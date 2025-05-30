@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { X, User, KeyRound, AlertCircle, Check, Search, Plus, Eye, EyeOff, Edit } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { User, KeyRound, AlertCircle, Check, Search, Plus, Eye, EyeOff, Edit, Trash2 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import toast from 'react-hot-toast';
 
@@ -24,21 +24,24 @@ interface Credential {
 }
 
 const UserCredentialsModal: React.FC<UserCredentialsModalProps> = ({ isOpen, onClose }) => {
-  // State for employees and credentials
-  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [employees, setEmployees] = useState<any[]>([]);
   const [credentials, setCredentials] = useState<Credential[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [isDeleting, setIsDeleting] = useState<Record<string, boolean>>({});
   
-  // State for form
-  const [selectedEmployeeId, setSelectedEmployeeId] = useState('');
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
-  const [searchQuery, setSearchQuery] = useState('');
+  // Form state
+  const [selectedEmployee, setSelectedEmployee] = useState<string>('');
+  const [username, setUsername] = useState<string>('');
+  const [password, setPassword] = useState<string>('');
+  const [searchQuery, setSearchQuery] = useState<string>('');
   const [showPassword, setShowPassword] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editingCredentialId, setEditingCredentialId] = useState('');
   const [usernameExists, setUsernameExists] = useState(false);
+  
+  // State for delete confirmation
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
   
   // State for errors
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -49,20 +52,25 @@ const UserCredentialsModal: React.FC<UserCredentialsModalProps> = ({ isOpen, onC
       fetchData();
     }
   }, [isOpen]);
-  
+
   const fetchData = async () => {
     setIsLoading(true);
     try {
       // Fetch employees
-      const { data: employeesData, error: employeesError } = await supabase
+      const { data, error } = await supabase
         .from('employees')
         .select('id, name, employee_number')
         .order('name');
-      
-      if (employeesError) throw employeesError;
-      
+
+      if (error) throw error;
+      setEmployees(data || []);
+    } catch (error) {
+      console.error('Error fetching employees:', error);
+    }
+
+    try {
       // Fetch credentials with employee names
-      const { data: credentialsData, error: credentialsError } = await supabase
+      const { data, error } = await supabase
         .from('user_credentials')
         .select(`
           id, 
@@ -75,11 +83,11 @@ const UserCredentialsModal: React.FC<UserCredentialsModalProps> = ({ isOpen, onC
           )
         `)
         .order('created_at', { ascending: false });
-      
-      if (credentialsError) throw credentialsError;
+
+      if (error) throw error;
       
       // Format credentials data with employee names
-      const formattedCredentials: Credential[] = credentialsData?.map(cred => ({
+      const formattedCredentials: Credential[] = data?.map(cred => ({
         id: cred.id,
         employee_id: cred.employee_id,
         username: cred.username,
@@ -88,19 +96,17 @@ const UserCredentialsModal: React.FC<UserCredentialsModalProps> = ({ isOpen, onC
         employee_number: cred.employees?.employee_number
       })) || [];
       
-      setEmployees(employeesData || []);
       setCredentials(formattedCredentials);
-      
     } catch (error) {
-      console.error('Error fetching data:', error);
-      toast.error('Failed to load employee data');
+      console.error('Error fetching credentials:', error);
+      toast.error('Failed to load credential data');
     } finally {
       setIsLoading(false);
     }
   };
 
   const resetForm = () => {
-    setSelectedEmployeeId('');
+    setSelectedEmployee('');
     setUsername('');
     setPassword('');
     setErrors({});
@@ -112,10 +118,44 @@ const UserCredentialsModal: React.FC<UserCredentialsModalProps> = ({ isOpen, onC
   const handleEdit = (credential: Credential) => {
     setIsEditing(true);
     setEditingCredentialId(credential.id);
-    setSelectedEmployeeId(credential.employee_id);
+    setSelectedEmployee(credential.employee_id);
     setUsername(credential.username);
     setPassword(credential.password);
     setUsernameExists(false); // Reset when editing existing credential
+  };
+
+  // Handle deleting a credential
+  const handleDelete = async (credentialId: string) => {
+    // If not in confirmation mode, show confirmation first
+    if (showDeleteConfirm !== credentialId) {
+      setShowDeleteConfirm(credentialId);
+      return;
+    }
+    
+    setIsDeleting(prev => ({ ...prev, [credentialId]: true }));
+    try {
+      const { error } = await supabase
+        .from('user_credentials')
+        .delete()
+        .eq('id', credentialId);
+        
+      if (error) throw error;
+      
+      // Update the local state
+      setCredentials(prev => prev.filter(cred => cred.id !== credentialId));
+      toast.success('Credentials deleted successfully');
+    } catch (error) {
+      console.error('Error deleting credentials:', error);
+      toast.error('Failed to delete credentials');
+    } finally {
+      setIsDeleting(prev => ({ ...prev, [credentialId]: false }));
+      setShowDeleteConfirm(null);
+    }
+  };
+
+  // Cancel delete confirmation
+  const cancelDelete = () => {
+    setShowDeleteConfirm(null);
   };
 
   // Check if username already exists (excluding the current editing credential)
@@ -166,31 +206,47 @@ const UserCredentialsModal: React.FC<UserCredentialsModalProps> = ({ isOpen, onC
   }, [username, isEditing, editingCredentialId]);
 
   // Generate unique username based on employee name
-  const generateUniqueUsername = (baseName: string) => {
-    // Get list of existing usernames that start with this base name
-    const existingNames = credentials.map(c => c.username)
-      .filter(name => name.startsWith(baseName));
-    
-    if (existingNames.length === 0) {
-      return baseName;
-    }
-    
-    // Try adding a number suffix
+  const generateUniqueUsername = async (baseName: string, employeeNumber: string) => {
+    // First try with employee number as part of the username for uniqueness
+    let candidateUsername = `${baseName}_${employeeNumber}`;
     let counter = 1;
-    let candidate = `${baseName}${counter}`;
+    let isUnique = false;
     
-    while (existingNames.includes(candidate)) {
-      counter++;
-      candidate = `${baseName}${counter}`;
+    while (!isUnique && counter < 100) {
+      // Check if this username exists - case insensitive
+      const { data, error } = await supabase
+        .from('user_credentials')
+        .select('username')
+        .ilike('username', candidateUsername)
+        .maybeSingle();
+      
+      if (error) {
+        console.error('Error checking username uniqueness:', error);
+        throw new Error('Failed to verify username uniqueness');
+      }
+      
+      // If no data returned, username is unique
+      if (!data) {
+        isUnique = true;
+      } else {
+        // Try next candidate with a counter
+        candidateUsername = `${baseName}_${counter}`;
+        counter++;
+      }
     }
     
-    return candidate;
+    // Safety check to prevent infinite loops
+    if (counter >= 100) {
+      throw new Error('Failed to generate a unique username after multiple attempts');
+    }
+    
+    return candidateUsername;
   };
 
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
     
-    if (!selectedEmployeeId) {
+    if (!selectedEmployee) {
       newErrors.employee = 'Please select an employee';
     }
     
@@ -208,8 +264,12 @@ const UserCredentialsModal: React.FC<UserCredentialsModalProps> = ({ isOpen, onC
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSubmit = async () => {
-    if (!validateForm()) return;
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!validateForm()) {
+      return;
+    }
     
     setIsSaving(true);
     try {
@@ -230,7 +290,7 @@ const UserCredentialsModal: React.FC<UserCredentialsModalProps> = ({ isOpen, onC
         const { data: existingCred, error: checkError } = await supabase
           .from('user_credentials')
           .select('id')
-          .eq('employee_id', selectedEmployeeId)
+          .eq('employee_id', selectedEmployee)
           .maybeSingle();
         
         if (checkError) throw checkError;
@@ -252,7 +312,7 @@ const UserCredentialsModal: React.FC<UserCredentialsModalProps> = ({ isOpen, onC
           const { error } = await supabase
             .from('user_credentials')
             .insert({
-              employee_id: selectedEmployeeId,
+              employee_id: selectedEmployee,
               username,
               password
             });
@@ -312,7 +372,7 @@ const UserCredentialsModal: React.FC<UserCredentialsModalProps> = ({ isOpen, onC
             </h4>
             
             {/* Form */}
-            <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); handleSubmit(); }}>
+            <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); handleSubmit(e); }}>
               {/* Employee Selection */}
               <div>
                 <label htmlFor="employee" className="block text-sm font-medium text-gray-700 mb-1">
@@ -324,17 +384,20 @@ const UserCredentialsModal: React.FC<UserCredentialsModalProps> = ({ isOpen, onC
                   </div>
                   <select
                     id="employee"
-                    value={selectedEmployeeId}
+                    value={selectedEmployee}
                     onChange={(e) => {
-                      setSelectedEmployeeId(e.target.value);
+                      setSelectedEmployee(e.target.value);
                       
                       // If we're creating a new user, pre-fill the username with the employee name
                       if (!isEditing) {
                         const selectedEmployee = employees.find(emp => emp.id === e.target.value);
                         if (selectedEmployee) {
                           // Generate a unique username based on employee name
-                          const uniqueName = generateUniqueUsername(selectedEmployee.name);
-                          setUsername(uniqueName);
+                          const sanitizedName = selectedEmployee.name
+                            .toLowerCase()
+                            .replace(/[^a-z0-9]/g, ''); // Remove special characters
+                            
+                          setUsername(`${sanitizedName}_${selectedEmployee.employee_number}`);
                         }
                       }
                       
@@ -498,8 +561,8 @@ const UserCredentialsModal: React.FC<UserCredentialsModalProps> = ({ isOpen, onC
               </div>
             </div>
             
-            {/* Credentials list */}
-            <div className="flex-1 overflow-y-auto">
+            {/* Credentials list with scrolling */}
+            <div className="flex-1 overflow-y-auto max-h-full">
               {isLoading ? (
                 <div className="flex justify-center items-center h-full">
                   <div className="animate-spin w-8 h-8 border-4 border-green-500 border-t-transparent rounded-full"></div>
@@ -547,13 +610,50 @@ const UserCredentialsModal: React.FC<UserCredentialsModalProps> = ({ isOpen, onC
                             </div>
                           </div>
                         </div>
-                        <button
-                          onClick={() => handleEdit(cred)}
-                          className="p-1.5 text-sm bg-green-50 text-green-600 rounded-md hover:bg-green-100 flex items-center"
-                        >
-                          <Edit className="h-4 w-4 mr-1" />
-                          Edit
-                        </button>
+                        <div className="flex space-x-2">
+                          <button
+                            onClick={() => handleEdit(cred)}
+                            className="p-1.5 text-sm bg-green-50 text-green-600 rounded-md hover:bg-green-100 flex items-center"
+                            disabled={isSaving}
+                          >
+                            <Edit className="h-4 w-4 mr-1" />
+                            Edit
+                          </button>
+                          
+                          {/* Delete button with confirmation */}
+                          {showDeleteConfirm === cred.id ? (
+                            <div className="flex items-center space-x-1">
+                              <button
+                                onClick={() => handleDelete(cred.id)}
+                                disabled={isDeleting[cred.id]}
+                                className="p-1.5 text-sm bg-red-500 text-white rounded-md hover:bg-red-600 flex items-center whitespace-nowrap"
+                              >
+                                {isDeleting[cred.id] ? (
+                                  <span className="inline-block animate-spin h-3 w-3 border-2 border-t-transparent border-white rounded-full mr-1"></span>
+                                ) : (
+                                  <Check className="h-3 w-3 mr-1" />
+                                )}
+                                Confirm
+                              </button>
+                              <button
+                                onClick={cancelDelete}
+                                disabled={isDeleting[cred.id]}
+                                className="p-1.5 text-sm bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => handleDelete(cred.id)}
+                              className="p-1.5 text-sm bg-red-50 text-red-600 rounded-md hover:bg-red-100 flex items-center"
+                              disabled={isSaving || isDeleting[cred.id]}
+                            >
+                              <Trash2 className="h-4 w-4 mr-1" />
+                              Delete
+                            </button>
+                          )}
+                        </div>
                       </div>
                     </div>
                   ))}
