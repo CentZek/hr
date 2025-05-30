@@ -53,6 +53,7 @@ const UserCredentialsModal: React.FC<UserCredentialsModalProps> = ({ isOpen, onC
   useEffect(() => {
     if (isOpen) {
       fetchData();
+      resetForm();
     }
   }, [isOpen]);
 
@@ -277,7 +278,7 @@ const UserCredentialsModal: React.FC<UserCredentialsModalProps> = ({ isOpen, onC
     setIsSaving(true);
     try {
       if (isEditing) {
-        // Update existing credentials - removed unnecessary select()
+        // Update existing credentials
         const { error } = await supabase
           .from('user_credentials')
           .update({
@@ -299,7 +300,7 @@ const UserCredentialsModal: React.FC<UserCredentialsModalProps> = ({ isOpen, onC
         if (checkError) throw checkError;
         
         if (existingCred) {
-          // Update existing - removed unnecessary select()
+          // Update existing
           const { error } = await supabase
             .from('user_credentials')
             .update({
@@ -311,7 +312,7 @@ const UserCredentialsModal: React.FC<UserCredentialsModalProps> = ({ isOpen, onC
           if (error) throw error;
           toast.success('Credentials updated successfully');
         } else {
-          // Create new - removed unnecessary select()
+          // Create new
           const { error } = await supabase
             .from('user_credentials')
             .insert({
@@ -547,7 +548,7 @@ const UserCredentialsModal: React.FC<UserCredentialsModalProps> = ({ isOpen, onC
           </div>
           
           {/* Right panel - Credentials list */}
-          <div className="md:col-span-2 border-l border-gray-200 flex flex-col">
+          <div className="md:col-span-2 border-l border-gray-200 flex flex-col h-full">
             {/* Search */}
             <div className="p-4 border-b border-gray-200">
               <div className="relative">
