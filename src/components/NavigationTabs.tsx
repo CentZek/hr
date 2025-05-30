@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { FileSpreadsheet, Clock, Home, Menu, X } from 'lucide-react';
+import { FileSpreadsheet, Clock, Home, Menu, X, LogOut } from 'lucide-react';
 import Tab from './Tab';
+import { useHrAuth } from '../context/HrAuthContext';
 
 const NavigationTabs: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  const { isAuthenticated, logout } = useHrAuth();
   const currentPath = location.pathname;
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
@@ -16,6 +18,13 @@ const NavigationTabs: React.FC = () => {
     window.addEventListener('resize', checkIfMobile);
     return () => window.removeEventListener('resize', checkIfMobile);
   }, []);
+
+  const handleLogout = () => {
+    if (isAuthenticated) {
+      logout();
+      navigate('/hr-login', { replace: true });
+    }
+  };
 
   const routes = [
     { path: '/', label: 'Home', icon: <Home className="w-5 h-5" /> },
@@ -36,6 +45,7 @@ const NavigationTabs: React.FC = () => {
                 {(currentPath === '/approved-hours' || currentPath === '/approved/approved-hours') && 'Approved Hours'}
                 {currentPath === '/login' && 'Login'}
                 {currentPath === '/employee' && 'Dashboard'}
+                {currentPath === '/hr-login' && 'HR Login'}
               </span>
             </div>
             <button onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} className="text-gray-500 hover:text-gray-700 p-2">
@@ -63,6 +73,19 @@ const NavigationTabs: React.FC = () => {
                   {route.label}
                 </button>
               ))}
+              
+              {isAuthenticated && (
+                <button 
+                  onClick={() => {
+                    handleLogout();
+                    setIsMobileMenuOpen(false);
+                  }}
+                  className="w-full flex items-center px-4 py-3 text-sm text-red-600 hover:bg-red-50"
+                >
+                  <LogOut className="w-5 h-5 mr-3" />
+                  Logout
+                </button>
+              )}
             </div>
           )}
         </div>
@@ -73,19 +96,31 @@ const NavigationTabs: React.FC = () => {
   return (
     <div className="border-b border-gray-200 bg-white">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex">
-          {routes.map(route => (
-            <Tab 
-              key={route.path}
-              icon={route.icon} 
-              label={route.label} 
-              active={
-                currentPath === route.path || 
-                (currentPath === '/approved/approved-hours' && route.path === '/approved-hours')
-              } 
-              onClick={() => navigate(route.path)} 
-            />
-          ))}
+        <div className="flex justify-between items-center">
+          <div className="flex">
+            {routes.map(route => (
+              <Tab 
+                key={route.path}
+                icon={route.icon} 
+                label={route.label} 
+                active={
+                  currentPath === route.path || 
+                  (currentPath === '/approved/approved-hours' && route.path === '/approved-hours')
+                } 
+                onClick={() => navigate(route.path)} 
+              />
+            ))}
+          </div>
+          
+          {isAuthenticated && (
+            <button
+              onClick={handleLogout}
+              className="flex items-center text-red-600 hover:text-red-800 px-3 py-3"
+            >
+              <LogOut className="w-4 h-4 mr-1" />
+              Logout
+            </button>
+          )}
         </div>
       </div>
     </div>

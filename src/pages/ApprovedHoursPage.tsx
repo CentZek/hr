@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { format, subMonths, isSameDay, startOfMonth, endOfMonth, parseISO, isValid } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
-import { Clock, ArrowLeft, Download, Users, Calendar, Filter, Trash2, Home, Calendar as Calendar2, User, X, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Clock, ArrowLeft, Download, Users, Calendar, Filter, Trash2, Home, Calendar as Calendar2, User, X, ChevronLeft, ChevronRight, LogOut } from 'lucide-react';
 import toast, { Toaster } from 'react-hot-toast';
 import { fetchApprovedHours, fetchEmployeeDetails, deleteAllTimeRecords } from '../services/database';
 import { exportApprovedHoursToExcel } from '../utils/excelHandlers';
@@ -15,6 +15,7 @@ import EmployeeFilter from '../components/ApprovedHours/EmployeeFilter';
 import EmployeeDetailCard from '../components/ApprovedHours/EmployeeDetailCard';
 import MultiEmployeeFilter from '../components/ApprovedHours/MultiEmployeeFilter';
 import DateRangePicker from '../components/DateRangePicker';
+import { useHrAuth } from '../context/HrAuthContext';
 
 // Safely format a date - handles invalid dates
 const safeFormat = (date: Date | string | null | undefined, formatStr: string, defaultValue = ''): string => {
@@ -38,6 +39,7 @@ const safeFormat = (date: Date | string | null | undefined, formatStr: string, d
 
 const ApprovedHoursPage: React.FC = () => {
   const navigate = useNavigate();
+  const { isAuthenticated, username, logout } = useHrAuth();
   const [isLoading, setIsLoading] = useState(true);
   const [employees, setEmployees] = useState<any[]>([]);
   const [allEmployees, setAllEmployees] = useState<any[]>([]);
@@ -365,6 +367,7 @@ const ApprovedHoursPage: React.FC = () => {
         setDailyRecords([]);
         setExpandedEmployee(null);
       } else {
+        toast.dismiss(loadingToast);
         toast.error(`Failed to delete records: ${message}`);
       }
     } catch (error) {
@@ -559,6 +562,12 @@ const ApprovedHoursPage: React.FC = () => {
       }
     }
   };
+
+  // Handle logout
+  const handleLogout = () => {
+    logout();
+    navigate('/hr-login', { replace: true });
+  };
   
   // Generate calendar days for the current month
   const renderCalendarDays = () => {
@@ -626,6 +635,11 @@ const ApprovedHoursPage: React.FC = () => {
                 <h1 className="text-lg font-medium text-gray-800">
                   Approved Hours
                 </h1>
+                {username && (
+                  <span className="ml-2 text-sm text-gray-600">
+                    (Logged in as: {username})
+                  </span>
+                )}
               </div>
               <div className="flex items-center space-x-4">
                 <button
@@ -641,6 +655,13 @@ const ApprovedHoursPage: React.FC = () => {
                 >
                   <ArrowLeft className="w-4 h-4 mr-1" />
                   Back to Face ID Data
+                </button>
+                <button
+                  onClick={handleLogout}
+                  className="flex items-center text-red-600 hover:text-red-800"
+                >
+                  <LogOut className="w-4 h-4 mr-1" />
+                  Logout
                 </button>
               </div>
             </div>
@@ -769,7 +790,7 @@ const ApprovedHoursPage: React.FC = () => {
             {showDateRangePicker && (
               <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-4">
                 <div className="flex justify-between items-center mb-4">
-                  <h3 className="text-sm font-medium text-gray-700 flex items-center">
+                  <h3 className="text-sm font-medium flex items-center text-gray-700">
                     <Calendar className="w-4 h-4 mr-2 text-purple-500" />
                     Select Date Range
                   </h3>

@@ -1,9 +1,11 @@
 import React from 'react';
-import { Link } from 'react-router-dom';
-import { Users, FileText, DollarSign, User } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
+import { Users, FileText, DollarSign, User, Shield } from 'lucide-react';
 import AnimatedClock from '../components/AnimatedClock';
 
 const LandingPage: React.FC = () => {
+  const navigate = useNavigate();
+
   return (
     <div className="min-h-screen bg-[#e6eaff] flex flex-col items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
       <div className="w-full max-w-4xl">
@@ -42,11 +44,11 @@ const LandingPage: React.FC = () => {
               </div>
             </div>
 
-            {/* HR Card with link to app */}
-            <Link to="/hr" className="bg-gradient-to-b from-[#1a237e] to-[#0d1452] rounded-lg shadow-md overflow-hidden transition-all duration-300 hover:shadow-lg">
+            {/* HR Card with link to HR login */}
+            <Link to="/hr-login" className="bg-gradient-to-b from-[#1a237e] to-[#0d1452] rounded-lg shadow-md overflow-hidden transition-all duration-300 hover:shadow-lg">
               <div className="p-6 flex flex-col items-center text-center text-white">
                 <div className="w-12 h-12 rounded-full bg-white bg-opacity-20 flex items-center justify-center mb-4">
-                  <FileText className="w-6 h-6 text-white" />
+                  <Shield className="w-6 h-6 text-white" />
                 </div>
                 <h2 className="text-lg font-semibold mb-2">HR</h2>
                 <p className="text-sm">Manage Face ID data and system settings</p>

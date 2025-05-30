@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Upload, Clock, AlertCircle, CheckCircle, Download, RefreshCw, PlusCircle, Database, KeyRound, Home, AlertTriangle, Calendar, X } from 'lucide-react';
+import { Upload, Clock, AlertCircle, CheckCircle, Download, RefreshCw, PlusCircle, Database, KeyRound, Home, AlertTriangle, Calendar, X, LogOut } from 'lucide-react';
 import toast, { Toaster } from 'react-hot-toast';
 
 // Import types
@@ -30,9 +30,12 @@ import DateRangePicker from '../components/DateRangePicker';
 
 // Import context
 import { useAppContext } from '../context/AppContext';
+import { useHrAuth } from '../context/HrAuthContext';
 
 function HrPage() {
   const navigate = useNavigate();
+  const { isAuthenticated, username, logout } = useHrAuth();
+  
   const {
     employeeRecords, setEmployeeRecords,
     hasUploadedFile, setHasUploadedFile,
@@ -632,6 +635,12 @@ function HrPage() {
     setShowDateRangePicker(false); // Close the picker after selection
   };
 
+  // Handle logout
+  const handleLogout = () => {
+    logout();
+    navigate('/hr-login', { replace: true });
+  };
+
   // If still loading from context, show loading state
   if (isContextLoading) {
     return (
@@ -660,6 +669,11 @@ function HrPage() {
                 <h1 className="text-lg font-medium text-gray-800">
                   Face ID Data Processor
                 </h1>
+                {username && (
+                  <span className="ml-2 text-sm text-gray-600">
+                    (Logged in as: {username})
+                  </span>
+                )}
               </div>
               <div className="flex flex-wrap items-center gap-3">
                 <button
@@ -700,6 +714,14 @@ function HrPage() {
                 >
                   <span className="hidden sm:inline">View Approved Hours</span>
                   <span className="sm:hidden">Approved</span>
+                </button>
+                <button
+                  onClick={handleLogout}
+                  className="text-red-600 hover:text-red-800 font-medium flex items-center"
+                >
+                  <LogOut className="w-4 h-4 mr-1" />
+                  <span className="hidden sm:inline">Logout</span>
+                  <span className="sm:hidden">Logout</span>
                 </button>
               </div>
             </div>
