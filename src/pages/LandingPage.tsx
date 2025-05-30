@@ -12,8 +12,8 @@ const LandingPage: React.FC = () => {
           <div className="mb-6">
             <AnimatedClock />
           </div>
-          <h1 className="text-3xl sm:text-4xl font-bold text-gray-900 mb-2 text-center">Employee Work Hour Tracker</h1>
-          <p className="text-base text-gray-700 font-medium text-center">Select your role to continue to the platform</p>
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2 text-center">Employee Work Hour Tracker</h1>
+          <p className="text-sm text-gray-600 text-center">Select your role to continue to the platform</p>
         </div>
 
         {/* Main Card Layout */}
@@ -24,8 +24,8 @@ const LandingPage: React.FC = () => {
               <div className="w-14 h-14 rounded-full bg-white bg-opacity-20 flex items-center justify-center mb-4">
                 <User className="w-7 h-7 text-white" />
               </div>
-              <h2 className="text-2xl sm:text-3xl font-bold mb-2">Employee</h2>
-              <p className="text-base sm:text-lg font-medium">Track your work hours and shifts</p>
+              <h2 className="text-xl sm:text-2xl font-semibold mb-2">Employee</h2>
+              <p className="text-sm sm:text-base">Track your work hours and shifts</p>
             </div>
           </Link>
           
@@ -37,8 +37,8 @@ const LandingPage: React.FC = () => {
                 <div className="w-12 h-12 rounded-full bg-white bg-opacity-20 flex items-center justify-center mb-4">
                   <Users className="w-6 h-6 text-white" />
                 </div>
-                <h2 className="text-xl font-bold mb-2">Operational Manager</h2>
-                <p className="text-base font-medium">View operational schedules</p>
+                <h2 className="text-lg font-semibold mb-2">Operational Manager</h2>
+                <p className="text-sm">View operational schedules</p>
               </div>
             </div>
 
@@ -48,8 +48,8 @@ const LandingPage: React.FC = () => {
                 <div className="w-12 h-12 rounded-full bg-white bg-opacity-20 flex items-center justify-center mb-4">
                   <FileText className="w-6 h-6 text-white" />
                 </div>
-                <h2 className="text-xl font-bold mb-2">HR</h2>
-                <p className="text-base font-medium">Manage Face ID data and system settings</p>
+                <h2 className="text-lg font-semibold mb-2">HR</h2>
+                <p className="text-sm">Manage Face ID data and system settings</p>
               </div>
             </Link>
 
@@ -59,15 +59,15 @@ const LandingPage: React.FC = () => {
                 <div className="w-12 h-12 rounded-full bg-white bg-opacity-20 flex items-center justify-center mb-4">
                   <DollarSign className="w-6 h-6 text-white" />
                 </div>
-                <h2 className="text-xl font-bold mb-2">Accountant</h2>
-                <p className="text-base font-medium">Manage salaries and generate payslips</p>
+                <h2 className="text-lg font-semibold mb-2">Accountant</h2>
+                <p className="text-sm">Manage salaries and generate payslips</p>
               </div>
             </div>
           </div>
         </div>
 
         {/* Footer */}
-        <div className="text-center text-sm text-gray-600 font-medium mt-10">
+        <div className="text-center text-xs text-gray-500 mt-10">
           © 2025 Employee Work Hour Tracker. All rights reserved.
         </div>
       </div>

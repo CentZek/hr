@@ -152,38 +152,38 @@ const EmployeeList: React.FC<EmployeeListProps> = ({
 
   const renderRawDataTable = (day: DailyRecord, empIndex: number, dayIndex: number) => {
     if (!day.allTimeRecords || day.allTimeRecords.length === 0) {
-      return <div className="px-4 py-2 text-center text-base text-gray-600 font-medium">No raw Excel data available</div>;
+      return <div className="px-4 py-2 text-center text-sm text-gray-500">No raw Excel data available</div>;
     }
 
     return (
       <div className="px-4 py-2 bg-gray-50">
-        <div className="text-base font-semibold text-gray-700 mb-2">Raw Excel Data for {day.date}</div>
+        <div className="text-sm font-medium text-gray-700 mb-2">Raw Excel Data for {day.date}</div>
         <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200 text-base">
+          <table className="min-w-full divide-y divide-gray-200 text-sm">
             <thead className="bg-gray-100">
               <tr>
-                <th className="px-3 py-2 text-left text-sm font-semibold text-gray-600 uppercase tracking-wider">Index</th>
-                <th className="px-3 py-2 text-left text-sm font-semibold text-gray-600 uppercase tracking-wider">Date/Time</th>
-                <th className="px-3 py-2 text-left text-sm font-semibold text-gray-600 uppercase tracking-wider">Status</th>
-                <th className="px-3 py-2 text-left text-sm font-semibold text-gray-600 uppercase tracking-wider">Processed</th>
-                <th className="px-3 py-2 text-left text-sm font-semibold text-gray-600 uppercase tracking-wider">Shift Type</th>
-                <th className="px-3 py-2 text-left text-sm font-semibold text-gray-600 uppercase tracking-wider">Notes</th>
+                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Index</th>
+                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date/Time</th>
+                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Processed</th>
+                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Shift Type</th>
+                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Notes</th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
               {day.allTimeRecords.sort((a, b) => (a.originalIndex || 0) - (b.originalIndex || 0)).map((record, index) => (
                 <tr key={index} className={record.mislabeled ? 'bg-amber-50' : ''}>
-                  <td className="px-3 py-2 whitespace-nowrap font-medium">{record.originalIndex || index}</td>
-                  <td className="px-3 py-2 whitespace-nowrap font-medium">{format(record.timestamp, 'MM/dd/yyyy HH:mm:ss')}</td>
-                  <td className={`px-3 py-2 whitespace-nowrap ${record.mislabeled ? 'text-amber-600 font-semibold' : 'font-medium'}`}>
+                  <td className="px-3 py-2 whitespace-nowrap">{record.originalIndex || index}</td>
+                  <td className="px-3 py-2 whitespace-nowrap">{format(record.timestamp, 'MM/dd/yyyy HH:mm:ss')}</td>
+                  <td className={`px-3 py-2 whitespace-nowrap ${record.mislabeled ? 'text-amber-600 font-medium' : ''}`}>
                     {record.status === 'check_in' ? 'C/In' : 'C/Out'}
                     {record.mislabeled && record.originalStatus && 
-                      <span className="ml-2 text-xs text-amber-600 font-medium">(Corrected)</span>
+                      <span className="ml-2 text-xs text-amber-600">(Corrected)</span>
                     }
                   </td>
-                  <td className="px-3 py-2 whitespace-nowrap font-medium">{record.processed ? 'Yes' : 'No'}</td>
-                  <td className="px-3 py-2 whitespace-nowrap font-medium">{record.shift_type || 'unknown'}</td>
-                  <td className="px-3 py-2 font-medium">{record.notes || ''}</td>
+                  <td className="px-3 py-2 whitespace-nowrap">{record.processed ? 'Yes' : 'No'}</td>
+                  <td className="px-3 py-2 whitespace-nowrap">{record.shift_type || 'unknown'}</td>
+                  <td className="px-3 py-2">{record.notes || ''}</td>
                 </tr>
               ))}
             </tbody>
@@ -233,16 +233,16 @@ const EmployeeList: React.FC<EmployeeListProps> = ({
       >
         <div className="flex justify-between items-start mb-2">
           <div>
-            <div className="font-semibold text-gray-800 text-wrap-balance text-base">
+            <div className="font-medium text-gray-800 text-wrap-balance">
               {format(new Date(day.date), 'MM/dd/yyyy')}
-              {isManualEntry && <span className="ml-1 text-sm px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded-full font-semibold">Manual</span>}
-              {wasCorrected && <span className="ml-1 text-sm px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded-full font-semibold" title="Original C/In or C/Out was corrected">Fixed</span>}
-              {isOffDay && <span className="ml-1 text-sm px-1.5 py-0.5 bg-gray-100 text-gray-700 rounded-full font-semibold">OFF-DAY</span>}
+              {isManualEntry && <span className="ml-1 text-xs px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded-full">Manual</span>}
+              {wasCorrected && <span className="ml-1 text-xs px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded-full" title="Original C/In or C/Out was corrected">Fixed</span>}
+              {isOffDay && <span className="ml-1 text-xs px-1.5 py-0.5 bg-gray-100 text-gray-700 rounded-full">OFF-DAY</span>}
             </div>
             <div className="mt-1 mb-2">
-              <span className={`px-2 py-1 text-sm font-semibold rounded-full ${shiftDisplay.color}`}>{shiftDisplay.name}</span>
-              <span className="ml-1 px-2 py-1 text-sm font-semibold rounded-full bg-gray-100 text-gray-700">{day.hoursWorked.toFixed(2)} hrs</span>
-              <span className={`ml-1 px-2 py-1 text-sm font-semibold rounded-full ${day.approved ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
+              <span className={`px-2 py-1 text-xs font-medium rounded-full ${shiftDisplay.color}`}>{shiftDisplay.name}</span>
+              <span className="ml-1 px-2 py-1 text-xs font-medium rounded-full bg-gray-100 text-gray-600">{day.hoursWorked.toFixed(2)} hrs</span>
+              <span className={`ml-1 px-2 py-1 text-xs font-medium rounded-full ${day.approved ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
                 {day.approved ? 'Approved' : 'Pending'}
               </span>
             </div>
@@ -271,19 +271,19 @@ const EmployeeList: React.FC<EmployeeListProps> = ({
         {(hasSinglePoint || hasThreeDatapoints || hasExcessiveHours) && (
           <div className="flex flex-wrap gap-1 mb-2">
             {hasSinglePoint && (
-              <span className="px-2 py-0.5 text-sm bg-red-100 text-red-800 rounded-full flex items-center font-semibold">
+              <span className="px-2 py-0.5 text-xs bg-red-100 text-red-800 rounded-full flex items-center">
                 <AlertTriangle className="w-3 h-3 mr-1" />
                 {day.missingCheckIn ? (day.missingCheckOut ? 'Missing both' : 'Missing check-in') : 'Missing check-out'}
               </span>
             )}
             {hasThreeDatapoints && (
-              <span className="px-2 py-0.5 text-sm bg-orange-100 text-orange-800 rounded-full flex items-center font-semibold">
+              <span className="px-2 py-0.5 text-xs bg-orange-100 text-orange-800 rounded-full flex items-center">
                 <AlertTriangle className="w-3 h-3 mr-1" />
                 3 records (non-night)
               </span>
             )}
             {hasExcessiveHours && (
-              <span className="px-2 py-0.5 text-sm bg-blue-100 text-blue-800 rounded-full flex items-center font-semibold">
+              <span className="px-2 py-0.5 text-xs bg-blue-100 text-blue-800 rounded-full flex items-center">
                 <Clock className="w-3 h-3 mr-1" />
                 {day.hoursWorked.toFixed(1)}+ hours
               </span>
@@ -293,38 +293,38 @@ const EmployeeList: React.FC<EmployeeListProps> = ({
         
         <div className="grid grid-cols-2 gap-2 mb-1">
           <div>
-            <div className="text-sm text-gray-600 font-semibold">Check In</div>
-            <div className={`text-base mt-1 font-semibold ${day.missingCheckIn ? 'text-red-500' : (day.isLate || isLateNightCheckIn) ? 'text-amber-600' : 'text-gray-700'}`}>
+            <div className="text-xs text-gray-500">Check In</div>
+            <div className={`text-sm mt-1 ${day.missingCheckIn ? 'text-red-500' : (day.isLate || isLateNightCheckIn) ? 'text-amber-600' : 'text-gray-700'}`}>
               {day.firstCheckIn ? 
                 <>{(day.isLate || isLateNightCheckIn) && <AlertTriangle className="inline w-3 h-3 mr-1 text-amber-500" />}
                 {checkInDisplay}
-                {day.shiftType === 'canteen' && <span className="ml-1 text-sm bg-yellow-100 text-yellow-800 px-1 rounded font-semibold">{day.firstCheckIn.getHours() === 7 ? '07:00' : '08:00'}</span>}</> : 
-                isOffDay ? 'OFF-DAY' : <span className="text-red-500 font-semibold">Missing</span>}
+                {day.shiftType === 'canteen' && <span className="ml-1 text-xs bg-yellow-100 text-yellow-800 px-1 rounded">{day.firstCheckIn.getHours() === 7 ? '07:00' : '08:00'}</span>}</> : 
+                isOffDay ? 'OFF-DAY' : <span className="text-red-500">Missing</span>}
             </div>
           </div>
           <div>
-            <div className="text-sm text-gray-600 font-semibold">Check Out</div>
-            <div className={`text-base mt-1 font-semibold ${day.missingCheckOut ? 'text-red-500' : day.earlyLeave ? 'text-amber-600' : day.excessiveOvertime ? 'text-blue-600' : 'text-gray-700'}`}>
+            <div className="text-xs text-gray-500">Check Out</div>
+            <div className={`text-sm mt-1 ${day.missingCheckOut ? 'text-red-500' : day.earlyLeave ? 'text-amber-600' : day.excessiveOvertime ? 'text-blue-600' : 'text-gray-700'}`}>
               {day.lastCheckOut ? 
                 <>{day.earlyLeave && <AlertTriangle className="inline w-3 h-3 mr-1 text-amber-500" />}
                 {day.excessiveOvertime && <Clock className="inline w-3 h-3 mr-1 text-blue-500" />}
                 {checkOutDisplay}</> : 
-                isOffDay ? 'OFF-DAY' : <span className="text-red-500 font-semibold">Missing</span>}
+                isOffDay ? 'OFF-DAY' : <span className="text-red-500">Missing</span>}
             </div>
           </div>
         </div>
 
-        {day.penaltyMinutes > 0 && <div className="text-sm text-red-600 font-semibold mt-1">Penalty: {(day.penaltyMinutes / 60).toFixed(2)} hr</div>}
+        {day.penaltyMinutes > 0 && <div className="text-xs text-red-600 mt-1">Penalty: {(day.penaltyMinutes / 60).toFixed(2)} hr</div>}
 
         {hasRawData && (
           <div className="mt-2">
             <button 
               onClick={() => toggleRawData(empIndex, dayIndex)}
-              className="w-full flex items-center justify-center text-sm py-1 px-2 rounded bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold"
+              className="w-full flex items-center justify-center text-xs py-1 px-2 rounded bg-gray-100 hover:bg-gray-200 text-gray-700"
             >
               <FileSpreadsheet className="w-3 h-3 mr-1" />
               {isRawDataExpanded ? 'Hide Raw Data' : 'Show Raw Data'} 
-              <span className="ml-1 text-sm bg-gray-200 text-gray-700 px-1.5 rounded-full font-semibold">
+              <span className="ml-1 text-xs bg-gray-200 text-gray-700 px-1.5 rounded-full">
                 {day.allTimeRecords!.length}
               </span>
             </button>
@@ -349,13 +349,13 @@ const EmployeeList: React.FC<EmployeeListProps> = ({
                   {employee.expanded ? <ChevronDown className="h-5 w-5" /> : <ChevronRight className="h-5 w-5" />}
                 </span>
                 <div>
-                  <h3 className="text-base font-semibold text-gray-900 text-wrap-balance">{employee.name}</h3>
-                  <p className="text-sm text-gray-600 font-medium">Employee No: {employee.employeeNumber} • {employee.days.length} days</p>
+                  <h3 className="text-sm font-medium text-gray-900 text-wrap-balance">{employee.name}</h3>
+                  <p className="text-xs text-gray-500">Employee No: {employee.employeeNumber} • {employee.days.length} days</p>
                 </div>
               </div>
               <button 
                 onClick={(e) => confirmApproveAllForEmployee(empIndex, e)} 
-                className="px-3 py-1.5 text-sm font-semibold rounded bg-green-50 text-green-700 hover:bg-green-100"
+                className="px-2 py-1 text-xs font-medium rounded bg-green-50 text-green-700 hover:bg-green-100"
               >
                 Approve All
               </button>
@@ -363,7 +363,7 @@ const EmployeeList: React.FC<EmployeeListProps> = ({
             
             {employee.expanded && (
               <div className="border-t border-gray-200">
-                <div className="hidden sm:grid sm:grid-cols-9 gap-4 px-6 py-3 bg-gray-50 text-sm font-semibold text-gray-600 uppercase tracking-wider">
+                <div className="hidden sm:grid sm:grid-cols-9 gap-4 px-6 py-3 bg-gray-50 text-xs font-medium text-gray-500 uppercase tracking-wider">
                   <div>Date</div>
                   <div>Check In</div>
                   <div>Check Out</div>
@@ -410,7 +410,7 @@ const EmployeeList: React.FC<EmployeeListProps> = ({
                     
                     return (
                       <React.Fragment key={day.date}>
-                        <div className={`grid grid-cols-9 gap-4 px-6 py-4 text-base font-medium
+                        <div className={`grid grid-cols-9 gap-4 px-6 py-4 text-sm 
                           ${day.approved ? 'bg-green-50' : ''} 
                           ${isManualEntry ? 'bg-blue-50' : ''}
                           ${day.notes === 'Manual entry' && day.approved ? 'bg-teal-50' : ''}
@@ -422,76 +422,76 @@ const EmployeeList: React.FC<EmployeeListProps> = ({
                           ${day.earlyLeave && !day.missingCheckOut ? 'border-l-4 border-amber-300' : ''}
                           ${day.excessiveOvertime && !day.earlyLeave && !day.missingCheckOut ? 'border-l-4 border-blue-300' : ''}`}
                         >
-                          <div className="text-gray-900 font-semibold">
+                          <div className="text-gray-900 font-medium">
                             {format(new Date(day.date), 'MM/dd/yyyy')}
-                            {isManualEntry && <span className="ml-1 text-sm px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded-full font-semibold">Manual</span>}
-                            {wasCorrected && <span className="ml-1 text-sm px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded-full font-semibold" title="Original C/In or C/Out was corrected">Fixed</span>}
-                            {isOffDay && <span className="ml-1 text-sm px-1.5 py-0.5 bg-gray-100 text-gray-700 rounded-full font-semibold">OFF-DAY</span>}
+                            {isManualEntry && <span className="ml-1 text-xs px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded-full">Manual</span>}
+                            {wasCorrected && <span className="ml-1 text-xs px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded-full" title="Original C/In or C/Out was corrected">Fixed</span>}
+                            {isOffDay && <span className="ml-1 text-xs px-1.5 py-0.5 bg-gray-100 text-gray-700 rounded-full">OFF-DAY</span>}
                             
                             {/* Flag indicators as badges */}
                             {hasSinglePoint && (
-                              <span className="ml-1 text-sm px-1.5 py-0.5 bg-red-100 text-red-700 rounded-full flex items-center inline-flex font-semibold">
+                              <span className="ml-1 text-xs px-1.5 py-0.5 bg-red-100 text-red-700 rounded-full flex items-center inline-flex">
                                 <AlertTriangle className="w-3 h-3 mr-1" />
                                 {day.missingCheckIn && day.missingCheckOut ? 'Both missing' : 
                                  day.missingCheckIn ? 'Missing C/In' : 'Missing C/Out'}
                               </span>
                             )}
                             {hasThreeDatapoints && !hasSinglePoint && (
-                              <span className="ml-1 text-sm px-1.5 py-0.5 bg-orange-100 text-orange-700 rounded-full flex items-center inline-flex font-semibold">
+                              <span className="ml-1 text-xs px-1.5 py-0.5 bg-orange-100 text-orange-700 rounded-full flex items-center inline-flex">
                                 <AlertTriangle className="w-3 h-3 mr-1" />
                                 3 records
                               </span>
                             )}
                             {hasExcessiveHours && !hasSinglePoint && !hasThreeDatapoints && (
-                              <span className="ml-1 text-sm px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded-full flex items-center inline-flex font-semibold">
+                              <span className="ml-1 text-xs px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded-full flex items-center inline-flex">
                                 <Clock className="w-3 h-3 mr-1" />
                                 {day.hoursWorked.toFixed(1)}h
                               </span>
                             )}
                           </div>
-                          <div className={`flex items-center ${day.missingCheckIn ? 'text-red-500 font-semibold' : (day.isLate || isLateNightCheckIn) ? 'text-amber-600 font-semibold' : 'text-gray-700 font-medium'}`}>
+                          <div className={`flex items-center ${day.missingCheckIn ? 'text-red-500' : (day.isLate || isLateNightCheckIn) ? 'text-amber-600' : 'text-gray-700'}`}>
                             {day.firstCheckIn ? 
-                              <>{(day.isLate || isLateNightCheckIn) && <AlertTriangle className="w-4 h-4 mr-1 text-amber-500\" title="Late check-in" />}
+                              <>{(day.isLate || isLateNightCheckIn) && <AlertTriangle className="w-4 h-4 mr-1 text-amber-500" title="Late check-in" />}
                               {checkInDisplay}
                               {day.shiftType === 'canteen' && 
-                                <span className="ml-1 text-sm bg-yellow-100 text-yellow-800 px-1 rounded font-semibold">
+                                <span className="ml-1 text-xs bg-yellow-100 text-yellow-800 px-1 rounded">
                                   {day.firstCheckIn.getHours() === 7 ? '07:00' : '08:00'}
                                 </span>}</> : 
-                              (isOffDay ? 'OFF-DAY' : <span className="text-red-500 font-semibold">Missing</span>)}
+                              (isOffDay ? 'OFF-DAY' : <span className="text-red-500">Missing</span>)}
                           </div>
-                          <div className={`flex items-center ${day.missingCheckOut ? 'text-red-500 font-semibold' : day.earlyLeave ? 'text-amber-600 font-semibold' : day.excessiveOvertime ? 'text-blue-600 font-semibold' : 'text-gray-700 font-medium'}`}>
+                          <div className={`flex items-center ${day.missingCheckOut ? 'text-red-500' : day.earlyLeave ? 'text-amber-600' : day.excessiveOvertime ? 'text-blue-600' : 'text-gray-700'}`}>
                             {day.lastCheckOut ? 
                               <>{day.earlyLeave && <AlertTriangle className="w-4 h-4 mr-1 text-amber-500" />}
                               {day.excessiveOvertime && <Clock className="w-4 h-4 mr-1 text-blue-500" />}
                               {checkOutDisplay}</> : 
-                              (isOffDay ? 'OFF-DAY' : <span className="text-red-500 font-semibold">Missing</span>)}
+                              (isOffDay ? 'OFF-DAY' : <span className="text-red-500">Missing</span>)}
                           </div>
-                          <div className="font-semibold text-gray-900">{isOffDay ? '0.00' : day.hoursWorked.toFixed(2)}</div>
-                          <div><span className={`px-2 py-1 text-sm font-semibold rounded-full ${shiftDisplay.color}`}>{shiftDisplay.name}</span></div>
+                          <div className="font-medium text-gray-900">{isOffDay ? '0.00' : day.hoursWorked.toFixed(2)}</div>
+                          <div><span className={`px-2 py-1 text-xs font-medium rounded-full ${shiftDisplay.color}`}>{shiftDisplay.name}</span></div>
                           <div>
-                            <span className={`px-2 py-1 text-sm font-semibold rounded-full ${day.approved ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
+                            <span className={`px-2 py-1 text-xs font-medium rounded-full ${day.approved ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
                               {day.approved ? 'Approved' : 'Pending'}
                             </span>
                           </div>
                           <div>
                             {day.penaltyMinutes > 0 ? 
-                              <span className="px-2 py-1 text-sm font-semibold rounded-full bg-red-100 text-red-800">{(day.penaltyMinutes / 60).toFixed(2)} hr</span> : 
-                              <span className="px-2 py-1 text-sm font-semibold rounded-full bg-gray-100 text-gray-600">None</span>}
+                              <span className="px-2 py-1 text-xs font-medium rounded-full bg-red-100 text-red-800">{(day.penaltyMinutes / 60).toFixed(2)} hr</span> : 
+                              <span className="px-2 py-1 text-xs font-medium rounded-full bg-gray-100 text-gray-600">None</span>}
                           </div>
                           <div>
                             {hasRawData ? (
                               <button 
                                 onClick={() => toggleRawData(empIndex, dayIndex)} 
-                                className="flex items-center px-2 py-1 text-sm rounded bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold"
+                                className="flex items-center px-2 py-1 text-xs rounded bg-gray-100 hover:bg-gray-200 text-gray-700"
                               >
                                 <FileSpreadsheet className="w-3 h-3 mr-1" />
                                 {isRawDataExpanded ? 'Hide' : 'Show'} 
-                                <span className="ml-1 text-sm bg-gray-200 text-gray-700 px-1.5 rounded-full font-semibold">
+                                <span className="ml-1 text-xs bg-gray-200 text-gray-700 px-1.5 rounded-full">
                                   {day.allTimeRecords!.length}
                                 </span>
                               </button>
                             ) : (
-                              <span className="text-sm text-gray-400 font-medium">No data</span>
+                              <span className="text-xs text-gray-400">No data</span>
                             )}
                           </div>
                           <div className="flex space-x-2">

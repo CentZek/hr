@@ -30,7 +30,7 @@ const NavigationTabs: React.FC = () => {
           <div className="flex justify-between items-center h-14">
             <div className="flex items-center">
               {routes.find(r => r.path === currentPath)?.icon || <Home className="w-5 h-5 text-purple-600 mr-1.5" />}
-              <span className="font-semibold text-gray-800">
+              <span className="font-medium text-gray-800">
                 {currentPath === '/' && 'Home'}
                 {currentPath === '/hr' && 'Face ID Data'}
                 {(currentPath === '/approved-hours' || currentPath === '/approved/approved-hours') && 'Approved Hours'}
@@ -52,11 +52,11 @@ const NavigationTabs: React.FC = () => {
                     navigate(route.path);
                     setIsMobileMenuOpen(false);
                   }}
-                  className={`w-full flex items-center px-4 py-3 text-base ${
+                  className={`w-full flex items-center px-4 py-3 text-sm ${
                     currentPath === route.path || 
                     (currentPath === '/approved/approved-hours' && route.path === '/approved-hours')
-                      ? 'text-purple-600 font-semibold bg-purple-50' 
-                      : 'text-gray-600 hover:bg-gray-50 font-medium'
+                      ? 'text-purple-600 font-medium bg-purple-50' 
+                      : 'text-gray-600 hover:bg-gray-50'
                   }`}
                 >
                   {React.cloneElement(route.icon, { className: "w-5 h-5 mr-3" })}

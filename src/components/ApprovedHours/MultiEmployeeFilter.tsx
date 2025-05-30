@@ -71,7 +71,7 @@ const MultiEmployeeFilter: React.FC<MultiEmployeeFilterProps> = ({
       {/* Main button */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center gap-2 px-3 py-1.5 border border-gray-300 rounded text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-purple-500"
+        className="flex items-center gap-2 px-3 py-1.5 border border-gray-300 rounded text-sm text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-purple-500"
       >
         <User className="w-4 h-4 text-gray-500" />
         <span>
@@ -100,7 +100,7 @@ const MultiEmployeeFilter: React.FC<MultiEmployeeFilterProps> = ({
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Search employees..."
-                className="block w-full pl-8 pr-8 py-1.5 text-base border border-gray-300 rounded-md focus:outline-none focus:ring-purple-500 focus:border-purple-500 font-medium"
+                className="block w-full pl-8 pr-8 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-purple-500 focus:border-purple-500"
               />
               {searchQuery && (
                 <button
@@ -118,7 +118,7 @@ const MultiEmployeeFilter: React.FC<MultiEmployeeFilterProps> = ({
                   onSelectAll();
                   // Keep the dropdown open after selecting all
                 }}
-                className="text-sm px-2 py-1 bg-purple-100 text-purple-700 rounded hover:bg-purple-200 font-semibold"
+                className="text-xs px-2 py-1 bg-purple-100 text-purple-700 rounded hover:bg-purple-200"
               >
                 {selectedEmployees.length === employees.length ? 'Deselect All' : 'Select All'}
               </button>
@@ -129,7 +129,7 @@ const MultiEmployeeFilter: React.FC<MultiEmployeeFilterProps> = ({
                     onClear();
                     // Keep the dropdown open after clearing
                   }}
-                  className="text-sm px-2 py-1 bg-gray-100 text-gray-700 rounded hover:bg-gray-200 font-semibold"
+                  className="text-xs px-2 py-1 bg-gray-100 text-gray-700 rounded hover:bg-gray-200"
                 >
                   Clear ({selectedEmployees.length})
                 </button>
@@ -140,7 +140,7 @@ const MultiEmployeeFilter: React.FC<MultiEmployeeFilterProps> = ({
           {/* Employee list */}
           <div className="max-h-60 overflow-y-auto py-1">
             {filteredEmployees.length === 0 ? (
-              <div className="text-center py-2 text-base text-gray-500 font-medium">
+              <div className="text-center py-2 text-sm text-gray-500">
                 No employees found
               </div>
             ) : (
@@ -161,11 +161,11 @@ const MultiEmployeeFilter: React.FC<MultiEmployeeFilterProps> = ({
                     />
                     <label 
                       htmlFor={`emp-${employee.id}`} 
-                      className="ml-2 block text-base text-gray-900 truncate flex-1 cursor-pointer font-medium"
+                      className="ml-2 block text-sm text-gray-900 truncate flex-1 cursor-pointer"
                       onClick={(e) => e.preventDefault()} // Prevent label click from triggering default checkbox behavior
                     >
                       {employee.name}
-                      <span className="text-sm text-gray-500 ml-1 font-medium">#{employee.employee_number}</span>
+                      <span className="text-xs text-gray-500 ml-1">#{employee.employee_number}</span>
                     </label>
                   </div>
                 </div>
@@ -175,7 +175,7 @@ const MultiEmployeeFilter: React.FC<MultiEmployeeFilterProps> = ({
           
           {/* Footer with selected count */}
           {selectedEmployees.length > 0 && (
-            <div className="border-t border-gray-200 px-3 py-2 text-sm text-gray-500 font-medium">
+            <div className="border-t border-gray-200 px-3 py-2 text-xs text-gray-500">
               {selectedEmployees.length} employee{selectedEmployees.length !== 1 ? 's' : ''} selected
             </div>
           )}

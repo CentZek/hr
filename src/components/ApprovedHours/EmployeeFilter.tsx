@@ -1,5 +1,5 @@
-import React from 'react';
-import { User } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { User, Search, X, Check, ChevronDown } from 'lucide-react';
 
 interface EmployeeFilterProps {
   employees: any[];
@@ -25,7 +25,7 @@ const EmployeeFilter: React.FC<EmployeeFilterProps> = ({
       <select
         value={selectedEmployeeId}
         onChange={(e) => onChange(e.target.value)}
-        className="border border-gray-300 rounded px-3 py-1.5 text-base font-medium focus:outline-none focus:ring-2 focus:ring-purple-500"
+        className="border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
       >
         <option value="all">All Employees</option>
         {sortedEmployees.map((employee) => (

@@ -2,19 +2,6 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Add base typography adjustments */
-@layer base {
-  html {
-    @apply text-base;
-  }
-  h1, h2, h3, h4, h5, h6 {
-    @apply font-semibold;
-  }
-  p {
-    @apply font-medium;
-  }
-}
-
 /* Custom responsive utility classes */
 @layer utilities {
   .text-wrap-balance {
@@ -63,10 +50,10 @@
   }
   
   .mobile-card-label {
-    @apply text-sm text-gray-500 w-1/3 font-medium;
+    @apply text-xs text-gray-500 w-1/3;
   }
   
   .mobile-card-value {
-    @apply text-base font-medium text-gray-800 w-2/3 text-right break-words;
+    @apply text-sm font-medium text-gray-800 w-2/3 text-right break-words;
   }
 }
