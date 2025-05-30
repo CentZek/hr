@@ -160,11 +160,10 @@ const processExcelData = (jsonData: any[]): EmployeeRecord[] => {
           .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
         
         // Add or update the employee in our records
-        const employeeKey = empNumber;
-        
-        if (processedEmployees.has(employeeKey)) {
+        // Using empNumber directly instead of redeclaring employeeKey
+        if (processedEmployees.has(empNumber)) {
           // Update existing employee
-          const index = processedEmployees.get(employeeKey)!;
+          const index = processedEmployees.get(empNumber)!;
           employeeRecords[index].days = days;
           employeeRecords[index].totalDays = days.length;
         } else {
@@ -178,7 +177,7 @@ const processExcelData = (jsonData: any[]): EmployeeRecord[] => {
             totalDays: days.length,
             expanded: false
           });
-          processedEmployees.set(employeeKey, newIndex);
+          processedEmployees.set(empNumber, newIndex);
         }
       });
     });
