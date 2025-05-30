@@ -47,7 +47,7 @@ const HrRoute: React.FC<{ children: React.ReactElement }> = ({ children }) => {
 const AppRouter: React.FC = () => {
   return (
     <Routes>
-      <Route path="/" element={<LandingPage />} />
+      <Route path="/\" element={<LandingPage />} />
       
       {/* HR routes with authentication */}
       <Route path="/hr-login" element={<HrLoginPage />} />
@@ -67,7 +67,7 @@ const AppRouter: React.FC = () => {
           </HrRoute>
         } 
       />
-      <Route path="/approved/approved-hours" element={<Navigate to="/approved-hours" replace />} />
+      <Route path="/approved/approved-hours" element={<Navigate to="/approved-hours\" replace />} />
       
       {/* Employee routes */}
       <Route path="/login" element={<EmployeeLoginPage />} />
@@ -80,7 +80,7 @@ const AppRouter: React.FC = () => {
         } 
       />
       {/* Redirect any unknown paths to the landing page */}
-      <Route path="*" element={<Navigate to="/" replace />} />
+      <Route path="*" element={<Navigate to="/\" replace />} />
     </Routes>
   );
 };
