@@ -192,68 +192,6 @@ const TimeEditModal: React.FC<TimeEditModalProps> = ({ employee, day, onClose, o
     }
   };
 
-  // Get shift specific notes or instructions
-  const getShiftSpecificNotes = () => {
-    if (!day.shiftType) return null;
-    
-    if (day.shiftType === 'morning') {
-      return (
-        <div className="mt-3 bg-blue-50 border border-blue-100 rounded-md p-3 text-sm text-blue-800">
-          <p className="font-medium flex items-center">
-            <Info className="w-4 h-4 mr-1" /> Morning Shift Schedule
-          </p>
-          <p>Standard hours: 05:00 - 14:00</p>
-          <p>Late threshold: 0 minutes (05:00)</p>
-          <p>Early leave allowed from: 13:30</p>
-        </div>
-      );
-    }
-    
-    if (day.shiftType === 'evening') {
-      return (
-        <div className="mt-3 bg-orange-50 border border-orange-100 rounded-md p-3 text-sm text-orange-800">
-          <p className="font-medium flex items-center">
-            <Info className="w-4 h-4 mr-1" /> Evening Shift Schedule
-          </p>
-          <p>Standard hours: 13:00 - 22:00</p>
-          <p>Late threshold: 0 minutes (13:00)</p>
-          <p>Early leave allowed from: 21:30</p>
-        </div>
-      );
-    }
-    
-    if (day.shiftType === 'canteen') {
-      // Check if this is early (7AM) or late (8AM) canteen shift
-      const checkInHour = day.firstCheckIn?.getHours();
-      
-      return (
-        <div className="mt-3 bg-blue-50 border border-blue-100 rounded-md p-3 text-sm text-blue-800">
-          <p className="font-medium flex items-center">
-            <Info className="w-4 h-4 mr-1" /> Canteen Staff Schedule
-          </p>
-          <p>Standard hours: {checkInHour === 7 ? '07:00 - 16:00' : '08:00 - 17:00'}</p>
-          <p>Late threshold: 10 minutes ({checkInHour === 7 ? '07:10' : '08:10'})</p>
-          <p>Early leave allowed from: {checkInHour === 7 ? '15:30' : '16:30'}</p>
-        </div>
-      );
-    }
-    
-    if (day.shiftType === 'night' || isNightShift()) {
-      return (
-        <div className="mt-3 bg-purple-50 border border-purple-100 rounded-md p-3 text-sm text-purple-800">
-          <p className="font-medium flex items-center">
-            <Info className="w-4 h-4 mr-1" /> Night Shift Schedule
-          </p>
-          <p>Standard hours: 21:00 - 06:00 (next day)</p>
-          <p>Late threshold: 30 minutes (21:30)</p>
-          <p>Early leave allowed from: 05:30 (next day)</p>
-        </div>
-      );
-    }
-    
-    return null;
-  };
-
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
       <div className="bg-white rounded-lg shadow-xl w-full max-w-md mx-4">
@@ -296,9 +234,6 @@ const TimeEditModal: React.FC<TimeEditModalProps> = ({ employee, day, onClose, o
                 </p>
               </div>
             </div>
-            
-            {/* Shift-specific information */}
-            {getShiftSpecificNotes()}
           </div>
           
           {/* Corrected records info */}
@@ -314,43 +249,6 @@ const TimeEditModal: React.FC<TimeEditModalProps> = ({ employee, day, onClose, o
               </p>
             </div>
           )}
-          
-          {/* Time format information */}
-          <div className="mb-4 p-3 bg-blue-50 border border-blue-100 rounded-md flex items-start">
-            <AlertCircle className="w-5 h-5 text-blue-500 mr-2 mt-0.5 flex-shrink-0" />
-            <div className="text-sm text-blue-700">
-              <p className="font-medium">24-hour time format</p>
-              <p>Enter times in 24-hour format. For example:</p>
-              <ul className="list-disc pl-5 mt-1 space-y-0.5">
-                <li>5:00 AM = 05:00</li>
-                <li>7:00 AM = 07:00 (Early canteen)</li>
-                <li>8:00 AM = 08:00 (Late canteen)</li>
-                <li>1:30 PM = 13:30</li>
-                <li>4:00 PM = 16:00 (Early canteen checkout)</li>
-                <li>5:00 PM = 17:00 (Late canteen checkout)</li>
-                <li>9:00 PM = 21:00 (Night shift start)</li>
-                <li>6:00 AM = 06:00 (Night shift end)</li>
-              </ul>
-              
-              {isCanteenShift() && (
-                <p className="mt-1 text-green-700 font-medium">
-                  {day.firstCheckIn?.getHours() === 7 ? 
-                    "Canteen hours (07:00 - 16:00) will be used with 10-minute late threshold." : 
-                    "Canteen hours (08:00 - 17:00) will be used with 10-minute late threshold."}
-                </p>
-              )}
-              
-              {(isNightShift() || day.shiftType === 'night') && (
-                <p className="mt-1 font-medium">
-                  For night shifts: Morning check-out times (like 06:00) will automatically be recognized as next-day times.
-                </p>
-              )}
-              
-              <p className="mt-1 text-amber-600 font-medium">
-                Note: Removing both times will mark this as an OFF-DAY.
-              </p>
-            </div>
-          </div>
           
           <div className="space-y-4">
             <div>
@@ -460,12 +358,10 @@ const TimeEditModal: React.FC<TimeEditModalProps> = ({ employee, day, onClose, o
               {(isNightShift() || day.shiftType === 'night') && (
                 <p className="mt-1 text-xs text-gray-500">Expected around 06:00 (next day)</p>
               )}
-              
-              {(isNightShift() || day.shiftType === 'night') && (
-                <p className="mt-1 text-xs font-medium text-purple-600">
-                  For night shift: Early morning hours (00:00-12:00) will automatically be treated as next-day times.
-                </p>
-              )}
+            </div>
+            
+            <div className="text-amber-600 text-xs text-center">
+              Note: Removing both times will mark this as an OFF-DAY
             </div>
             
             {/* Swap times button for mislabeled records */}
