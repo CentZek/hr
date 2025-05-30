@@ -42,7 +42,7 @@ export const fetchApprovedHours = async (dateFilter: string = ''): Promise<{
         const [startDate, endDate] = dateFilter.split('|');
         
         if (startDate && endDate && isValid(parseISO(startDate)) && isValid(parseISO(endDate))) {
-          // Fix: Use AND filtering instead of OR filtering
+          // Fix: Use working_week_start for consistent filtering
           query = query
             .gte('working_week_start', startDate)
             .lte('working_week_start', endDate);
@@ -54,18 +54,16 @@ export const fetchApprovedHours = async (dateFilter: string = ''): Promise<{
           if (year && month) {
             const monthDate = new Date(parseInt(year), parseInt(month) - 1, 1);
             if (isValid(monthDate)) {
-              const startDate = format(startOfMonth(monthDate), 'yyyy-MM-dd');
-              const endDate = format(endOfMonth(monthDate), 'yyyy-MM-dd');
+              const startDate = startOfMonth(monthDate);
+              const endDate = endOfMonth(monthDate);
               
-              if (isValid(startDate) && isValid(endDate)) {
-                const startStr = format(startDate, 'yyyy-MM-dd');
-                const endStr = format(endDate, 'yyyy-MM-dd');
-                
-                // Fix: Use AND filtering instead of OR filtering
-                query = query
-                  .gte('working_week_start', startStr)
-                  .lte('working_week_start', endStr);
-              }
+              const startStr = format(startDate, 'yyyy-MM-dd');
+              const endStr = format(endDate, 'yyyy-MM-dd');
+              
+              // Fix: Use working_week_start for consistent filtering
+              query = query
+                .gte('working_week_start', startStr)
+                .lte('working_week_start', endStr);
             }
           }
         } catch (error) {
@@ -175,7 +173,7 @@ export const fetchApprovedHours = async (dateFilter: string = ''): Promise<{
         const [startDate, endDate] = dateFilter.split('|');
         
         if (startDate && endDate && isValid(parseISO(startDate)) && isValid(parseISO(endDate))) {
-          // Fix: Use AND filtering instead of OR filtering
+          // Fix: Use working_week_start for consistent filtering
           offDayQuery = offDayQuery
             .gte('working_week_start', startDate)
             .lte('working_week_start', endDate);
@@ -187,13 +185,13 @@ export const fetchApprovedHours = async (dateFilter: string = ''): Promise<{
           if (year && month) {
             const monthDate = new Date(parseInt(year), parseInt(month) - 1, 1);
             if (isValid(monthDate)) {
-              const startDate = format(startOfMonth(monthDate), 'yyyy-MM-dd');
-              const endDate = format(endOfMonth(monthDate), 'yyyy-MM-dd');
+              const startDate = startOfMonth(monthDate);
+              const endDate = endOfMonth(monthDate);
               
-              // Fix: Use AND filtering instead of OR filtering
+              // Fix: Use working_week_start for consistent filtering
               offDayQuery = offDayQuery
-                .gte('working_week_start', startDate)
-                .lte('working_week_start', endDate);
+                .gte('working_week_start', format(startDate, 'yyyy-MM-dd'))
+                .lte('working_week_start', format(endDate, 'yyyy-MM-dd'));
             }
           }
         } catch (err) {
@@ -368,7 +366,7 @@ export const fetchEmployeeDetails = async (employeeId: string, dateFilter: strin
         const [startDate, endDate] = dateFilter.split('|');
         
         if (startDate && endDate && isValid(parseISO(startDate)) && isValid(parseISO(endDate))) {
-          // Fix: Use AND filtering instead of OR filtering
+          // Fix: Use working_week_start for consistent filtering
           query = query
             .gte('working_week_start', startDate)
             .lte('working_week_start', endDate);
@@ -380,13 +378,13 @@ export const fetchEmployeeDetails = async (employeeId: string, dateFilter: strin
           if (year && month) {
             const monthDate = new Date(parseInt(year), parseInt(month) - 1, 1);
             if (isValid(monthDate)) {
-              const startDate = format(startOfMonth(monthDate), 'yyyy-MM-dd');
-              const endDate = format(endOfMonth(monthDate), 'yyyy-MM-dd');
+              const startDate = startOfMonth(monthDate);
+              const endDate = endOfMonth(monthDate);
               
-              // Fix: Use AND filtering instead of OR filtering
+              // Fix: Use working_week_start for consistent filtering
               query = query
-                .gte('working_week_start', startDate)
-                .lte('working_week_start', endDate);
+                .gte('working_week_start', format(startDate, 'yyyy-MM-dd'))
+                .lte('working_week_start', format(endDate, 'yyyy-MM-dd'));
             }
           }
         } catch (err) {
@@ -999,12 +997,12 @@ export const deleteAllTimeRecords = async (dateFilter: string = '', employeeFilt
           if (year && month) {
             const monthDate = new Date(parseInt(year), parseInt(month) - 1, 1);
             if (isValid(monthDate)) {
-              const startDate = format(startOfMonth(monthDate), 'yyyy-MM-dd');
-              const endDate = format(endOfMonth(monthDate), 'yyyy-MM-dd');
+              const startDate = startOfMonth(monthDate);
+              const endDate = endOfMonth(monthDate);
               
               query = query
-                .gte('working_week_start', startDate)
-                .lte('working_week_start', endDate);
+                .gte('working_week_start', format(startDate, 'yyyy-MM-dd'))
+                .lte('working_week_start', format(endDate, 'yyyy-MM-dd'));
             }
           }
         } catch (err) {

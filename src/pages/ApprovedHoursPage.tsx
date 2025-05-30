@@ -45,7 +45,9 @@ const ApprovedHoursPage: React.FC = () => {
   const [allEmployees, setAllEmployees] = useState<any[]>([]);
   const [expandedEmployee, setExpandedEmployee] = useState<string | null>(null);
   const [dailyRecords, setDailyRecords] = useState<any[]>([]);
-  const [filterMonth, setFilterMonth] = useState<string>("all");
+  // Set default filter to current month instead of "all"
+  const currentMonthValue = format(new Date(), 'yyyy-MM');
+  const [filterMonth, setFilterMonth] = useState<string>(currentMonthValue);
   const [filterEmployee, setFilterEmployee] = useState<string>("all");
   const [selectedEmployees, setSelectedEmployees] = useState<string[]>([]);
   const [dailyRecordsLoading, setDailyRecordsLoading] = useState(false);
@@ -796,7 +798,7 @@ const ApprovedHoursPage: React.FC = () => {
                   </h3>
                   <button 
                     onClick={() => setShowDateRangePicker(false)}
-                    className="text-gray-400 hover:text-gray-600"
+                    className="text-gray-400 hover:text-gray-500"
                   >
                     <X className="w-5 h-5" />
                   </button>
