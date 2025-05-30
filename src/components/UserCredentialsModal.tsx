@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { User, KeyRound, AlertCircle, Check, Search, Plus, Eye, EyeOff, Edit, Trash2 } from 'lucide-react';
+import { User, KeyRound, AlertCircle, Check, Search, Plus, Eye, EyeOff, Edit, Trash2, X } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import toast from 'react-hot-toast';
 
