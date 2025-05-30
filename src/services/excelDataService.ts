@@ -99,8 +99,8 @@ const checkFileExistsWithRetry = async (
 // Helper to check if an employee exists with retries
 const checkEmployeeExistsWithRetry = async (
   employeeId: string,
-  maxRetries = 10,
-  initialDelay = 800
+  maxRetries = 15, // Increased from 10 to 15
+  initialDelay = 1000 // Increased from 800 to 1000
 ): Promise<boolean> => {
   let attempts = 0;
   let currentDelay = initialDelay;
@@ -211,7 +211,7 @@ export const saveProcessedExcelFile = async (
       await delay(1000);  // Increased delay for record commitment
 
       // Verify employee exists before proceeding
-      const employeeExists = await checkEmployeeExistsWithRetry(employeeId, 10, 800);
+      const employeeExists = await checkEmployeeExistsWithRetry(employeeId, 15, 1000); // Increased retries and initialDelay
       if (!employeeExists) {
         console.error(`Employee ${employeeId} not found after creation, skipping daily records`);
         continue;
@@ -538,7 +538,7 @@ export const updateProcessedEmployeeData = async (
         
         // Verify employee record still exists before proceeding with daily records
         // Use the retry helper for this check
-        const employeeExists = await checkEmployeeExistsWithRetry(employeeId, 10, 800);
+        const employeeExists = await checkEmployeeExistsWithRetry(employeeId, 15, 1000); // Increased from 10 to 15, and from 800 to 1000
         if (!employeeExists) {
           console.error(`Employee ${employeeId} no longer exists, skipping daily records`);
           continue;
@@ -593,7 +593,7 @@ export const updateProcessedEmployeeData = async (
             
             try {
               // Final check before insert to ensure employee exists
-              const employeeStillExists = await checkEmployeeExistsWithRetry(employeeId, 5, 500);
+              const employeeStillExists = await checkEmployeeExistsWithRetry(employeeId, 10, 800); // Increased from 5 to 10, and from 500 to 800
               if (!employeeStillExists) {
                 console.error(`Employee ${employeeId} no longer exists before batch insert`);
                 break;
