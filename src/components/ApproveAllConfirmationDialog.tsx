@@ -19,7 +19,7 @@ const ApproveAllConfirmationDialog: React.FC<ApproveAllConfirmationDialogProps> 
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50\" onClick={onClose}>
       <div className="bg-white rounded-lg shadow-xl w-full max-w-md mx-4 overflow-hidden" onClick={e => e.stopPropagation()}>
         <div className="bg-green-600 p-4 flex items-center">
           <CheckCircle className="w-6 h-6 text-white mr-2" />
