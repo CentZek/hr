@@ -11,6 +11,7 @@ import { useHrAuth } from './context/HrAuthContext';
 // Route guard component for employee routes
 const EmployeeRoute: React.FC<{ children: React.ReactElement }> = ({ children }) => {
   const navigate = useNavigate();
+  const location = useLocation();
   const employeeId = localStorage.getItem('employeeId');
   
   useEffect(() => {
@@ -26,50 +27,65 @@ const EmployeeRoute: React.FC<{ children: React.ReactElement }> = ({ children })
   return children;
 };
 
-// Route guard component for HR routes
-const HrRoute: React.FC<{ children: React.ReactElement }> = ({ children }) => {
-  const navigate = useNavigate();
+// Route guard for HR protected routes
+const HrProtectedRoute: React.FC<{ children: React.ReactElement }> = ({ children }) => {
   const { isAuthenticated } = useHrAuth();
-  
-  useEffect(() => {
-    if (!isAuthenticated) {
-      navigate('/hr-login', { replace: true });
-    }
-  }, [navigate, isAuthenticated]);
+  const location = useLocation();
   
   if (!isAuthenticated) {
-    return null;
+    // Using a simple component instead of Navigate
+    return <div className="hidden">Redirecting...</div>;
   }
   
   return children;
 };
 
 const AppRouter: React.FC = () => {
+  const { isAuthenticated } = useHrAuth();
+  const location = useLocation();
+  const navigate = useNavigate();
+  
+  // Handle redirects based on auth state
+  useEffect(() => {
+    if (!isAuthenticated && (location.pathname === '/hr' || location.pathname === '/approved-hours')) {
+      navigate('/hr-login', { replace: true });
+    }
+    
+    // If user is authenticated and tries to access login page, redirect to HR
+    if (isAuthenticated && location.pathname === '/hr-login') {
+      navigate('/hr', { replace: true });
+    }
+  }, [isAuthenticated, location.pathname, navigate]);
+  
   return (
     <Routes>
-      <Route path="/\" element={<LandingPage />} />
-      
-      {/* HR routes with authentication */}
+      <Route path="/" element={<LandingPage />} />
       <Route path="/hr-login" element={<HrLoginPage />} />
       <Route 
         path="/hr" 
         element={
-          <HrRoute>
+          <HrProtectedRoute>
             <HrPage />
-          </HrRoute>
+          </HrProtectedRoute>
         } 
       />
       <Route 
         path="/approved-hours" 
         element={
-          <HrRoute>
+          <HrProtectedRoute>
             <ApprovedHoursPage />
-          </HrRoute>
+          </HrProtectedRoute>
         } 
       />
-      <Route path="/approved/approved-hours" element={<Navigate to="/approved-hours\" replace />} />
-      
-      {/* Employee routes */}
+      {/* Legacy route support */}
+      <Route 
+        path="/approved/approved-hours" 
+        element={
+          <HrProtectedRoute>
+            <ApprovedHoursPage />
+          </HrProtectedRoute>
+        } 
+      />
       <Route path="/login" element={<EmployeeLoginPage />} />
       <Route 
         path="/employee" 
@@ -79,8 +95,8 @@ const AppRouter: React.FC = () => {
           </EmployeeRoute>
         } 
       />
-      {/* Redirect any unknown paths to the landing page */}
-      <Route path="*" element={<Navigate to="/\" replace />} />
+      {/* Handle unknown paths - render LandingPage instead of using Navigate */}
+      <Route path="*" element={<LandingPage />} />
     </Routes>
   );
 };

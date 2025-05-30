@@ -1,24 +1,16 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Clock, User, KeyRound, AlertCircle, Home, Shield, Lock } from 'lucide-react';
+import { Shield, User, KeyRound, AlertCircle, Home, LogIn } from 'lucide-react';
 import { useHrAuth } from '../context/HrAuthContext';
 import toast, { Toaster } from 'react-hot-toast';
-import AnimatedClock from '../components/AnimatedClock';
 
 const HrLoginPage: React.FC = () => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
-  const { login, isAuthenticated } = useHrAuth();
+  const { login } = useHrAuth();
   const navigate = useNavigate();
-
-  useEffect(() => {
-    // Redirect to HR page if already authenticated
-    if (isAuthenticated) {
-      navigate('/hr', { replace: true });
-    }
-  }, [isAuthenticated, navigate]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -26,17 +18,20 @@ const HrLoginPage: React.FC = () => {
     setIsLoading(true);
 
     try {
-      const success = await login(username, password);
+      const { success, message } = await login(username, password);
       
       if (success) {
-        toast.success('Login successful!');
-        navigate('/hr', { replace: true });
+        toast.success('Login successful');
+        // Use setTimeout to avoid immediate navigation which can cause issues
+        setTimeout(() => {
+          navigate('/hr', { replace: true });
+        }, 100);
       } else {
-        setError('Invalid username or password');
+        setError(message);
       }
     } catch (error) {
+      setError('An unexpected error occurred');
       console.error('Login error:', error);
-      setError('An unexpected error occurred. Please try again.');
     } finally {
       setIsLoading(false);
     }
@@ -47,14 +42,14 @@ const HrLoginPage: React.FC = () => {
       <div className="w-full max-w-md">
         {/* Header Section */}
         <div className="flex flex-col items-center mb-8">
-          <div className="mb-4">
-            <AnimatedClock />
+          <div className="mb-4 flex items-center justify-center w-16 h-16 rounded-full bg-purple-600">
+            <Shield className="h-8 w-8 text-white" />
           </div>
           <h2 className="text-2xl font-bold text-gray-900 mb-2 text-center">
-            HR Admin Portal
+            HR Portal Login
           </h2>
           <p className="text-sm text-gray-600 text-center">
-            Please log in with your HR credentials to access the admin features
+            Secure access for Human Resources personnel
           </p>
         </div>
 
@@ -85,7 +80,7 @@ const HrLoginPage: React.FC = () => {
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   className="block w-full pl-10 pr-3 py-2 sm:text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-purple-500 focus:border-purple-500"
-                  placeholder="Enter your username"
+                  placeholder="Enter your HR username"
                 />
               </div>
             </div>
@@ -107,7 +102,7 @@ const HrLoginPage: React.FC = () => {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   className="block w-full pl-10 pr-3 py-2 sm:text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-purple-500 focus:border-purple-500"
-                  placeholder="Enter your password"
+                  placeholder="Enter your HR password"
                 />
               </div>
             </div>
@@ -122,16 +117,16 @@ const HrLoginPage: React.FC = () => {
               >
                 {isLoading ? (
                   <>
-                    <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white\" xmlns="http://www.w3.org/2000/svg\" fill="none\" viewBox="0 0 24 24">
-                      <circle className="opacity-25\" cx="12\" cy="12\" r="10\" stroke="currentColor\" strokeWidth="4"></circle>
+                    <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                     </svg>
-                    Logging in...
+                    Signing in...
                   </>
                 ) : (
                   <>
-                    <Shield className="w-4 h-4 mr-2" />
-                    Log In to HR Portal
+                    <LogIn className="mr-2 h-4 w-4" />
+                    Sign in
                   </>
                 )}
               </button>
@@ -141,9 +136,6 @@ const HrLoginPage: React.FC = () => {
 
         {/* Help text and back to home link */}
         <div className="mt-6 text-center">
-          <p className="text-sm text-gray-600 mb-2">
-            Need help? Contact the system administrator.
-          </p>
           <button
             onClick={() => navigate('/')} 
             className="text-purple-600 hover:text-purple-800 flex items-center justify-center mx-auto mt-2"
