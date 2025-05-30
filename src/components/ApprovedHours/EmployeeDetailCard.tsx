@@ -23,7 +23,7 @@ const EmployeeDetailCard: React.FC<EmployeeDetailCardProps> = ({ employee, doubl
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
         <div>
           <h3 className="text-xl font-bold text-gray-800">{employee.name}</h3>
-          <p className="text-gray-500">Employee #{employee.employee_number}</p>
+          <p className="text-base font-bold text-gray-500">Employee #{employee.employee_number}</p>
         </div>
         
         <div className="flex flex-wrap gap-4">
@@ -73,10 +73,10 @@ const EmployeeDetailCard: React.FC<EmployeeDetailCardProps> = ({ employee, doubl
             .sort()
             .map((date: string) => (
               <div key={date} className="flex justify-between items-center text-sm">
-                <span className="text-gray-600">
+                <span className="text-gray-600 font-bold">
                   {format(new Date(date), 'EEE, MMM d, yyyy')}
                 </span>
-                <span className="font-medium text-amber-600">
+                <span className="font-bold text-amber-600">
                   {(employee.hours_by_date?.[date] || 0).toFixed(2)} × 2 = {((employee.hours_by_date?.[date] || 0) * 2).toFixed(2)} hrs
                 </span>
               </div>

@@ -233,7 +233,7 @@ const EmployeeList: React.FC<EmployeeListProps> = ({
       >
         <div className="flex justify-between items-start mb-2">
           <div>
-            <div className="font-medium text-gray-800 text-wrap-balance">
+            <div className="font-bold text-gray-800 text-wrap-balance text-lg">
               {format(new Date(day.date), 'MM/dd/yyyy')}
               {isManualEntry && <span className="ml-1 text-xs px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded-full">Manual</span>}
               {wasCorrected && <span className="ml-1 text-xs px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded-full" title="Original C/In or C/Out was corrected">Fixed</span>}
@@ -294,7 +294,7 @@ const EmployeeList: React.FC<EmployeeListProps> = ({
         <div className="grid grid-cols-2 gap-2 mb-1">
           <div>
             <div className="text-xs text-gray-500">Check In</div>
-            <div className={`text-sm mt-1 ${day.missingCheckIn ? 'text-red-500' : (day.isLate || isLateNightCheckIn) ? 'text-amber-600' : 'text-gray-700'}`}>
+            <div className={`text-base font-bold mt-1 ${day.missingCheckIn ? 'text-red-500' : (day.isLate || isLateNightCheckIn) ? 'text-amber-600' : 'text-gray-700'}`}>
               {day.firstCheckIn ? 
                 <>{(day.isLate || isLateNightCheckIn) && <AlertTriangle className="inline w-3 h-3 mr-1 text-amber-500" />}
                 {checkInDisplay}
@@ -304,7 +304,7 @@ const EmployeeList: React.FC<EmployeeListProps> = ({
           </div>
           <div>
             <div className="text-xs text-gray-500">Check Out</div>
-            <div className={`text-sm mt-1 ${day.missingCheckOut ? 'text-red-500' : day.earlyLeave ? 'text-amber-600' : day.excessiveOvertime ? 'text-blue-600' : 'text-gray-700'}`}>
+            <div className={`text-base font-bold mt-1 ${day.missingCheckOut ? 'text-red-500' : day.earlyLeave ? 'text-amber-600' : day.excessiveOvertime ? 'text-blue-600' : 'text-gray-700'}`}>
               {day.lastCheckOut ? 
                 <>{day.earlyLeave && <AlertTriangle className="inline w-3 h-3 mr-1 text-amber-500" />}
                 {day.excessiveOvertime && <Clock className="inline w-3 h-3 mr-1 text-blue-500" />}
@@ -349,8 +349,8 @@ const EmployeeList: React.FC<EmployeeListProps> = ({
                   {employee.expanded ? <ChevronDown className="h-5 w-5" /> : <ChevronRight className="h-5 w-5" />}
                 </span>
                 <div>
-                  <h3 className="text-sm font-medium text-gray-900 text-wrap-balance">{employee.name}</h3>
-                  <p className="text-xs text-gray-500">Employee No: {employee.employeeNumber} • {employee.days.length} days</p>
+                  <h3 className="text-lg font-bold text-gray-900 text-wrap-balance">{employee.name}</h3>
+                  <p className="text-sm font-bold text-gray-500">Employee No: {employee.employeeNumber} • {employee.days.length} days</p>
                 </div>
               </div>
               <button 
@@ -422,7 +422,7 @@ const EmployeeList: React.FC<EmployeeListProps> = ({
                           ${day.earlyLeave && !day.missingCheckOut ? 'border-l-4 border-amber-300' : ''}
                           ${day.excessiveOvertime && !day.earlyLeave && !day.missingCheckOut ? 'border-l-4 border-blue-300' : ''}`}
                         >
-                          <div className="text-gray-900 font-medium">
+                          <div className="text-gray-900 font-bold">
                             {format(new Date(day.date), 'MM/dd/yyyy')}
                             {isManualEntry && <span className="ml-1 text-xs px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded-full">Manual</span>}
                             {wasCorrected && <span className="ml-1 text-xs px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded-full" title="Original C/In or C/Out was corrected">Fixed</span>}
@@ -449,7 +449,7 @@ const EmployeeList: React.FC<EmployeeListProps> = ({
                               </span>
                             )}
                           </div>
-                          <div className={`flex items-center ${day.missingCheckIn ? 'text-red-500' : (day.isLate || isLateNightCheckIn) ? 'text-amber-600' : 'text-gray-700'}`}>
+                          <div className={`flex items-center ${day.missingCheckIn ? 'text-red-500' : (day.isLate || isLateNightCheckIn) ? 'text-amber-600' : 'text-gray-700'} font-bold`}>
                             {day.firstCheckIn ? 
                               <>{(day.isLate || isLateNightCheckIn) && <AlertTriangle className="w-4 h-4 mr-1 text-amber-500" title="Late check-in" />}
                               {checkInDisplay}
@@ -459,14 +459,14 @@ const EmployeeList: React.FC<EmployeeListProps> = ({
                                 </span>}</> : 
                               (isOffDay ? 'OFF-DAY' : <span className="text-red-500">Missing</span>)}
                           </div>
-                          <div className={`flex items-center ${day.missingCheckOut ? 'text-red-500' : day.earlyLeave ? 'text-amber-600' : day.excessiveOvertime ? 'text-blue-600' : 'text-gray-700'}`}>
+                          <div className={`flex items-center ${day.missingCheckOut ? 'text-red-500' : day.earlyLeave ? 'text-amber-600' : day.excessiveOvertime ? 'text-blue-600' : 'text-gray-700'} font-bold`}>
                             {day.lastCheckOut ? 
                               <>{day.earlyLeave && <AlertTriangle className="w-4 h-4 mr-1 text-amber-500" />}
                               {day.excessiveOvertime && <Clock className="w-4 h-4 mr-1 text-blue-500" />}
                               {checkOutDisplay}</> : 
                               (isOffDay ? 'OFF-DAY' : <span className="text-red-500">Missing</span>)}
                           </div>
-                          <div className="font-medium text-gray-900">{isOffDay ? '0.00' : day.hoursWorked.toFixed(2)}</div>
+                          <div className="font-bold text-gray-900">{isOffDay ? '0.00' : day.hoursWorked.toFixed(2)}</div>
                           <div><span className={`px-2 py-1 text-xs font-medium rounded-full ${shiftDisplay.color}`}>{shiftDisplay.name}</span></div>
                           <div>
                             <span className={`px-2 py-1 text-xs font-medium rounded-full ${day.approved ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
