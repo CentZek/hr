@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { User, Search, X, Check, Search as SearchIcon, Plus, Eye, EyeOff, Edit } from 'lucide-react';
+import { X, User, KeyRound, AlertCircle, Check, Search, Plus, Eye, EyeOff, Edit } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import toast from 'react-hot-toast';
 
@@ -43,8 +43,9 @@ const UserCredentialsModal: React.FC<UserCredentialsModalProps> = ({ isOpen, onC
   // State for errors
   const [errors, setErrors] = useState<Record<string, string>>({});
   
-  // Ref for the credentials list
+  // Refs for scrollable areas
   const credentialsListRef = useRef<HTMLDivElement>(null);
+  const modalRef = useRef<HTMLDivElement>(null);
   
   // Fetch employees and credentials on load
   useEffect(() => {
@@ -171,7 +172,7 @@ const UserCredentialsModal: React.FC<UserCredentialsModalProps> = ({ isOpen, onC
   // Generate unique username based on employee name
   const generateUniqueUsername = async (baseName: string, employeeNumber: string) => {
     // First try with employee number as part of the username for uniqueness
-    let candidateUsername = `${baseName}_${employeeNumber}`;
+    let candidateUsername = `${baseName}_${employeeNumber}`.toLowerCase();
     let counter = 1;
     let isUnique = false;
     
@@ -287,7 +288,7 @@ const UserCredentialsModal: React.FC<UserCredentialsModalProps> = ({ isOpen, onC
       await fetchData();
       resetForm();
       
-      // Scroll to the top of the credentials list to show new entry
+      // Scroll to top of credentials list to show new/updated entry
       if (credentialsListRef.current) {
         credentialsListRef.current.scrollTop = 0;
       }
@@ -313,12 +314,15 @@ const UserCredentialsModal: React.FC<UserCredentialsModalProps> = ({ isOpen, onC
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 overflow-auto">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl mx-4 overflow-hidden max-h-[90vh]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 overflow-hidden">
+      <div 
+        ref={modalRef} 
+        className="bg-white rounded-lg shadow-xl w-full max-w-4xl mx-4 max-h-[90vh] flex flex-col"
+      >
         {/* Header */}
-        <div className="p-4 border-b border-gray-200 flex justify-between items-center bg-green-600 text-white">
+        <div className="p-4 border-b border-gray-200 flex justify-between items-center bg-green-600 text-white flex-shrink-0">
           <h3 className="text-lg font-semibold flex items-center">
-            <User className="w-5 h-5 mr-2" />
+            <KeyRound className="w-5 h-5 mr-2" />
             Manage Employee Credentials
           </h3>
           <button 
@@ -331,7 +335,7 @@ const UserCredentialsModal: React.FC<UserCredentialsModalProps> = ({ isOpen, onC
         </div>
         
         {/* Body */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-0 h-[75vh] max-h-[75vh]">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-0 flex-grow overflow-hidden">
           {/* Left panel - Create/Edit form */}
           <div className="p-6 border-r border-gray-200 overflow-y-auto">
             <h4 className="font-medium text-lg mb-4">
@@ -414,7 +418,7 @@ const UserCredentialsModal: React.FC<UserCredentialsModalProps> = ({ isOpen, onC
                   />
                   {usernameExists && (
                     <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
-                      <X className="h-5 w-5 text-red-500" />
+                      <AlertCircle className="h-5 w-5 text-red-500" />
                     </div>
                   )}
                 </div>
@@ -433,7 +437,7 @@ const UserCredentialsModal: React.FC<UserCredentialsModalProps> = ({ isOpen, onC
                 </label>
                 <div className="relative">
                   <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <User className="h-5 w-5 text-gray-400" />
+                    <KeyRound className="h-5 w-5 text-gray-400" />
                   </div>
                   <input
                     type={showPassword ? "text" : "password"}
@@ -454,6 +458,7 @@ const UserCredentialsModal: React.FC<UserCredentialsModalProps> = ({ isOpen, onC
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
                       className="text-gray-400 hover:text-gray-500"
+                      aria-label={showPassword ? "Hide password" : "Show password"}
                     >
                       {showPassword ? (
                         <EyeOff className="h-5 w-5" />
@@ -497,7 +502,7 @@ const UserCredentialsModal: React.FC<UserCredentialsModalProps> = ({ isOpen, onC
             {/* Help text */}
             <div className="mt-6 border-t border-gray-200 pt-4">
               <div className="bg-yellow-50 border border-yellow-100 rounded-md p-4 flex items-start">
-                <Plus className="w-5 h-5 text-yellow-500 mr-3 mt-0.5 flex-shrink-0" />
+                <AlertCircle className="w-5 h-5 text-yellow-500 mr-3 mt-0.5 flex-shrink-0" />
                 <div className="text-sm text-yellow-800">
                   <p className="font-medium mb-1">Important Security Notes</p>
                   <ul className="list-disc pl-5 space-y-1">
@@ -516,21 +521,22 @@ const UserCredentialsModal: React.FC<UserCredentialsModalProps> = ({ isOpen, onC
             <div className="p-4 border-b border-gray-200 flex-shrink-0">
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <SearchIcon className="h-5 w-5 text-gray-400" />
+                  <Search className="h-5 w-5 text-gray-400" />
                 </div>
                 <input
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder="Search by name, employee number or username..."
-                  className="block w-full pl-10 pr-3 py-2 text-base border border-gray-300 rounded-md focus:outline-none focus:ring-green-500 focus:border-green-500"
+                  className="block w-full pl-10 pr-10 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-green-500 focus:border-green-500"
                 />
                 {searchQuery && (
                   <button
                     onClick={() => setSearchQuery('')}
                     className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600"
+                    aria-label="Clear search"
                   >
-                    <X className="h-5 w-5" />
+                    <X className="h-4 w-4" />
                   </button>
                 )}
               </div>
@@ -540,39 +546,42 @@ const UserCredentialsModal: React.FC<UserCredentialsModalProps> = ({ isOpen, onC
             <div 
               ref={credentialsListRef}
               className="flex-1 overflow-y-auto"
-              style={{ maxHeight: 'calc(75vh - 65px)' }} // Adjust for header height
+              style={{ height: 'calc(75vh - 130px)' }}
             >
               {isLoading ? (
-                <div className="flex justify-center items-center h-full">
+                <div className="flex justify-center items-center h-full p-8">
                   <div className="animate-spin w-8 h-8 border-4 border-green-500 border-t-transparent rounded-full"></div>
                 </div>
               ) : filteredCredentials.length === 0 ? (
-                <div className="flex flex-col items-center justify-center h-full text-gray-500 py-10">
+                <div className="flex flex-col items-center justify-center h-full p-8 text-gray-500">
                   {searchQuery ? (
                     <>
-                      <Search className="h-12 w-12 text-gray-300 mb-2" />
-                      <p>No results found for "{searchQuery}"</p>
+                      <Search className="h-12 w-12 text-gray-300 mb-4" />
+                      <p className="text-lg font-medium mb-2">No results found</p>
+                      <p className="text-sm mb-4">No employees matching "{searchQuery}"</p>
                       <button 
                         onClick={() => setSearchQuery('')}
-                        className="mt-3 text-sm text-green-600 hover:text-green-700"
+                        className="px-4 py-2 bg-green-100 text-green-700 rounded-md hover:bg-green-200 text-sm"
                       >
                         Clear search
                       </button>
                     </>
                   ) : (
                     <>
-                      <User className="h-12 w-12 text-gray-300 mb-2" />
-                      <p>No credentials created yet</p>
-                      <p className="text-sm mt-1">Create your first employee login credentials!</p>
+                      <KeyRound className="h-12 w-12 text-gray-300 mb-4" />
+                      <p className="text-lg font-medium mb-2">No credentials yet</p>
+                      <p className="text-sm mb-4">Create your first employee login credentials!</p>
+                      <p className="text-sm text-green-600">Select an employee and create credentials</p>
                     </>
                   )}
                 </div>
               ) : (
-                <div className="divide-y divide-gray-200">
+                <ul className="divide-y divide-gray-200">
                   {filteredCredentials.map(cred => (
-                    <div
+                    <li
                       key={cred.id}
-                      className="p-4 hover:bg-gray-50 transition-colors duration-100"
+                      className="p-4 hover:bg-gray-50 transition-colors duration-100 cursor-pointer"
+                      onClick={() => handleEdit(cred)}
                     >
                       <div className="flex items-start justify-between">
                         <div>
@@ -596,41 +605,36 @@ const UserCredentialsModal: React.FC<UserCredentialsModalProps> = ({ isOpen, onC
                           </div>
                         </div>
                         <button
-                          onClick={() => handleEdit(cred)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleEdit(cred);
+                          }}
                           className="p-1.5 text-sm bg-green-50 text-green-600 rounded-md hover:bg-green-100 flex items-center"
                         >
                           <Edit className="h-4 w-4 mr-1" />
                           Edit
                         </button>
                       </div>
-                    </div>
+                    </li>
                   ))}
-                </div>
+                </ul>
               )}
             </div>
             
-            {/* Footer - Pagination or record count */}
-            <div className="p-3 border-t border-gray-200 bg-gray-50 text-xs text-gray-500 flex-shrink-0">
-              {filteredCredentials.length > 0 ? (
-                <div className="flex justify-between items-center">
-                  <div>
-                    Showing {filteredCredentials.length} {filteredCredentials.length === 1 ? 'employee' : 'employees'}
-                  </div>
-                  <div>
-                    <label className="inline-flex items-center">
-                      <input
-                        type="checkbox"
-                        checked={showPassword}
-                        onChange={() => setShowPassword(!showPassword)}
-                        className="h-4 w-4 text-green-600 focus:ring-green-500 border-gray-300 rounded"
-                      />
-                      <span className="ml-2">Show passwords</span>
-                    </label>
-                  </div>
-                </div>
-              ) : (
-                <span>&nbsp;</span>
-              )}
+            {/* Footer with show password toggle and count */}
+            <div className="p-3 border-t border-gray-200 bg-gray-50 text-xs text-gray-500 flex items-center justify-between flex-shrink-0">
+              <div>
+                Showing {filteredCredentials.length} of {credentials.length} users
+              </div>
+              <label className="inline-flex items-center select-none cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={showPassword}
+                  onChange={() => setShowPassword(!showPassword)}
+                  className="h-4 w-4 text-green-600 focus:ring-green-500 border-gray-300 rounded"
+                />
+                <span className="ml-2">Show passwords</span>
+              </label>
             </div>
           </div>
         </div>
