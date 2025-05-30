@@ -53,118 +53,93 @@ export const initializeUserCredentials = async () => {
     }
     
     // Generate unique usernames and create credentials
-    const credentialsToInsert = [];
-    let skippedCount = 0;
-    
-    for (const emp of employeesNeedingCredentials) {
-      // Generate a sanitized base username - remove spaces and special characters
-      const sanitizedName = emp.name
-        .toLowerCase()
-        .replace(/[^a-z0-9]/g, '') // Remove all non-alphanumeric characters
-        .trim();
-      
-      // Start with a base username that includes the employee number for uniqueness
-      let baseUsername = `${sanitizedName}_${emp.employee_number}`.toLowerCase();
-      let username = baseUsername;
-      let counter = 1;
-      
-      // If username exists, append a number until we find a unique one
-      while (existingUsernameSet.has(username.toLowerCase())) {
-        username = `${baseUsername}_${counter}`;
-        counter++;
-        
-        // Safety check to prevent infinite loops
-        if (counter > 100) {
-          console.warn(`Could not generate unique username for employee ${emp.id} after 100 attempts`);
-          skippedCount++;
-          continue; // Skip this employee
-        }
-      }
-      
-      // Check one more time with the database to ensure uniqueness
-      // This double-check helps prevent race conditions and ensures the username is truly unique
-      try {
-        const { data: usernameCheck, error: checkError } = await supabase
-          .from('user_credentials')
-          .select('id')
-          .ilike('username', username)
-          .maybeSingle();
-          
-        if (checkError) {
-          console.error(`Error checking username uniqueness for ${username}:`, checkError);
-          skippedCount++;
-          continue;
-        }
-        
-        if (usernameCheck) {
-          console.warn(`Username ${username} already exists despite our checks. Skipping.`);
-          skippedCount++;
-          continue;
-        }
-        
-        // Add the username to our set to prevent duplicates in this batch
-        existingUsernameSet.add(username.toLowerCase());
-        
-        credentialsToInsert.push({
-          employee_id: emp.id,
-          username: username,
-          password: emp.employee_number
-        });
-      } catch (err) {
-        console.error(`Error checking username for employee ${emp.id}:`, err);
-        skippedCount++;
-      }
-    }
-    
-    console.log(`Inserting ${credentialsToInsert.length} credentials (skipped ${skippedCount} duplicates)`);
-    
-    // Only proceed if we have credentials to insert
-    if (credentialsToInsert.length === 0) {
-      return { 
-        success: true, 
-        message: 'No new unique credentials needed to be created',
-        count: 0 
-      };
-    }
-    
-    // Insert credentials one by one to avoid batch errors
     let successCount = 0;
     let errorCount = 0;
     
-    for (const cred of credentialsToInsert) {
+    for (const emp of employeesNeedingCredentials) {
       try {
-        // Check one final time if the username exists (handles race conditions)
-        const { data: finalCheck, error: finalCheckError } = await supabase
-          .from('user_credentials')
-          .select('id')
-          .ilike('username', cred.username)
-          .maybeSingle();
-          
-        if (finalCheckError) {
-          console.error(`Error performing final check for username ${cred.username}:`, finalCheckError);
-          errorCount++;
-          continue;
+        // Generate a sanitized base username - remove spaces and special characters
+        const sanitizedName = emp.name
+          .toLowerCase()
+          .replace(/[^a-z0-9]/g, '') // Remove all non-alphanumeric characters
+          .trim();
+        
+        // Start with a base username that includes the employee number for uniqueness
+        let baseUsername = `${sanitizedName}_${emp.employee_number}`.toLowerCase();
+        let username = baseUsername;
+        let counter = 1;
+        let maxAttempts = 10; // Limit retry attempts
+        let inserted = false;
+        
+        while (!inserted && counter <= maxAttempts) {
+          try {
+            // If this is not the first attempt, modify the username
+            if (counter > 1) {
+              username = `${baseUsername}_${counter}`;
+            }
+            
+            // Check if username exists in our local set
+            if (existingUsernameSet.has(username.toLowerCase())) {
+              counter++;
+              continue;
+            }
+            
+            // Double-check with database to ensure uniqueness
+            const { data: usernameCheck, error: checkError } = await supabase
+              .from('user_credentials')
+              .select('id')
+              .ilike('username', username)
+              .maybeSingle();
+              
+            if (checkError) {
+              console.error(`Error checking username uniqueness for ${username}:`, checkError);
+              throw checkError;
+            }
+            
+            if (usernameCheck) {
+              counter++;
+              continue;
+            }
+            
+            // Try to insert the credential
+            const { error: insertError } = await supabase
+              .from('user_credentials')
+              .insert([{
+                employee_id: emp.id,
+                username: username,
+                password: emp.employee_number
+              }]);
+              
+            if (insertError) {
+              // If it's a duplicate key error, try a different username
+              if (insertError.code === '23505' && insertError.message.includes('user_credentials_username_key')) {
+                console.warn(`Username ${username} collision detected. Trying a different username.`);
+                counter++;
+                continue;
+              }
+              
+              // For other errors, throw to be caught by outer try/catch
+              throw insertError;
+            }
+            
+            // If we get here, insertion was successful
+            console.log(`Created credential for employee ${emp.id} with username ${username}`);
+            existingUsernameSet.add(username.toLowerCase());
+            successCount++;
+            inserted = true;
+          } catch (innerError) {
+            if (counter >= maxAttempts) {
+              throw innerError; // Throw to outer catch after max attempts
+            }
+            counter++;
+          }
         }
         
-        if (finalCheck) {
-          console.warn(`Username ${cred.username} was taken between checks. Skipping.`);
-          errorCount++;
-          continue;
-        }
-        
-        // Insert the credential
-        const { error } = await supabase
-          .from('user_credentials')
-          .insert([cred]);
-          
-        if (error) {
-          console.error(`Error inserting credential for employee ${cred.employee_id}:`, error);
-          errorCount++;
-        } else {
-          successCount++;
+        if (!inserted) {
+          throw new Error(`Failed to create unique username for employee ${emp.id} after ${maxAttempts} attempts`);
         }
       } catch (err) {
-        console.error(`Exception inserting credential for employee ${cred.employee_id}:`, err);
+        console.error(`Error creating credential for employee ${emp.id}:`, err);
         errorCount++;
       }
     }
@@ -278,58 +253,69 @@ export const createUserCredentialsForNewEmployee = async (
       .replace(/[^a-z0-9]/g, '') // Remove all non-alphanumeric characters
       .trim();
       
-    let username = `${sanitizedName}_${employeeNumber}`;
+    let baseUsername = `${sanitizedName}_${employeeNumber}`;
+    let username = baseUsername;
+    let counter = 1;
+    let maxAttempts = 10;
+    let inserted = false;
     
-    // Check if username already exists
-    const { data: usernameCheck, error: usernameError } = await supabase
-      .from('user_credentials')
-      .select('id')
-      .ilike('username', username)
-      .maybeSingle();
-      
-    if (usernameError) throw usernameError;
-    
-    // If username exists, append numbers until we find a unique one
-    if (usernameCheck) {
-      let counter = 1;
-      let isUnique = false;
-      
-      while (!isUnique && counter < 100) {
-        const candidateUsername = `${username}${counter}`;
-        
-        const { data: checkCandidate, error: candidateError } = await supabase
-          .from('user_credentials')
-          .select('id')
-          .ilike('username', candidateUsername)
-          .maybeSingle();
-          
-        if (candidateError) throw candidateError;
-        
-        if (!checkCandidate) {
-          username = candidateUsername;
-          isUnique = true;
+    while (!inserted && counter <= maxAttempts) {
+      try {
+        // If this is not the first attempt, modify the username
+        if (counter > 1) {
+          username = `${baseUsername}${counter}`;
         }
         
+        // Check if username already exists
+        const { data: usernameCheck, error: usernameError } = await supabase
+          .from('user_credentials')
+          .select('id')
+          .ilike('username', username)
+          .maybeSingle();
+          
+        if (usernameError) throw usernameError;
+        
+        if (usernameCheck) {
+          counter++;
+          continue;
+        }
+        
+        // Try to insert credentials
+        const { error: insertError } = await supabase
+          .from('user_credentials')
+          .insert([{
+            employee_id: employeeId,
+            username: username,
+            password: employeeNumber // Use employee number as default password
+          }]);
+          
+        if (insertError) {
+          // If it's a duplicate key error, try a different username
+          if (insertError.code === '23505' && insertError.message.includes('user_credentials_username_key')) {
+            console.warn(`Username ${username} collision detected. Trying a different username.`);
+            counter++;
+            continue;
+          }
+          
+          // For other errors, throw to be caught by outer try/catch
+          throw insertError;
+        }
+        
+        console.log(`Successfully created credentials for new employee ${employeeName} (${employeeNumber}) with username: ${username}`);
+        inserted = true;
+        return true;
+      } catch (innerError) {
+        if (counter >= maxAttempts) {
+          throw innerError; // Throw to outer catch after max attempts
+        }
         counter++;
-      }
-      
-      if (!isUnique) {
-        throw new Error(`Could not generate unique username for employee ${employeeId}`);
       }
     }
     
-    // Create credentials
-    const { error: insertError } = await supabase
-      .from('user_credentials')
-      .insert([{
-        employee_id: employeeId,
-        username: username,
-        password: employeeNumber // Use employee number as default password
-      }]);
-      
-    if (insertError) throw insertError;
+    if (!inserted) {
+      throw new Error(`Failed to create unique username for employee ${employeeId} after ${maxAttempts} attempts`);
+    }
     
-    console.log(`Successfully created credentials for new employee ${employeeName} (${employeeNumber}) with username: ${username}`);
     return true;
   } catch (error) {
     console.error('Error creating user credentials for new employee:', error);
