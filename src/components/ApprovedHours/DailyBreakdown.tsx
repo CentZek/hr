@@ -362,7 +362,7 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records, dou
                     <span className="font-bold text-gray-800 flex items-center px-2 py-0.5 bg-gray-100 rounded-full text-xs">
                       {hours.toFixed(2)} hrs
                       {isSignificantOvertime && 
-                        <Clock className="w-3 h-3 ml-1 text-blue-500" title="Overtime hours" />
+                        <Clock className="w-3 h-3 ml-1 text-blue-500\" title="Overtime hours" />
                       }
                       {hasPenalty && (
                         <span className="ml-1 text-xs text-red-600">
@@ -438,7 +438,7 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records, dou
                 <div className="font-bold flex items-center">
                   {hours.toFixed(2)}
                   {isSignificantOvertime && 
-                    <Clock className="w-4 h-4 ml-1 text-blue-500" title="Overtime hours" />
+                    <Clock className="w-4 h-4 ml-1 text-blue-500\" title="Overtime hours" />
                   }
                   {hasPenalty && (
                     <span className="ml-1 text-xs text-red-600">
