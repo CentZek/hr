@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { X, User, KeyRound, AlertCircle, Check, Search, Plus, Eye, EyeOff, Edit, Trash2 } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { X, User, KeyRound, AlertCircle, Check, Search, Plus, Eye, EyeOff, Edit } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import toast from 'react-hot-toast';
 
@@ -29,35 +29,27 @@ const UserCredentialsModal: React.FC<UserCredentialsModalProps> = ({ isOpen, onC
   const [credentials, setCredentials] = useState<Credential[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
-  const [isDeleting, setIsDeleting] = useState<Record<string, boolean>>({});
   
   // State for form
-  const [selectedEmployee, setSelectedEmployee] = useState<string>('');
-  const [username, setUsername] = useState<string>('');
-  const [password, setPassword] = useState<string>('');
-  const [searchQuery, setSearchQuery] = useState<string>('');
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState('');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
-  const [editingCredentialId, setEditingCredentialId] = useState<string>('');
+  const [editingCredentialId, setEditingCredentialId] = useState('');
   const [usernameExists, setUsernameExists] = useState(false);
-  
-  // State for delete confirmation
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
   
   // State for errors
   const [errors, setErrors] = useState<Record<string, string>>({});
-  
-  // Refs for scroll handling
-  const credentialsListRef = useRef<HTMLDivElement>(null);
   
   // Fetch employees and credentials on load
   useEffect(() => {
     if (isOpen) {
       fetchData();
-      resetForm();
     }
   }, [isOpen]);
-
+  
   const fetchData = async () => {
     setIsLoading(true);
     try {
@@ -108,7 +100,7 @@ const UserCredentialsModal: React.FC<UserCredentialsModalProps> = ({ isOpen, onC
   };
 
   const resetForm = () => {
-    setSelectedEmployee('');
+    setSelectedEmployeeId('');
     setUsername('');
     setPassword('');
     setErrors({});
@@ -120,44 +112,10 @@ const UserCredentialsModal: React.FC<UserCredentialsModalProps> = ({ isOpen, onC
   const handleEdit = (credential: Credential) => {
     setIsEditing(true);
     setEditingCredentialId(credential.id);
-    setSelectedEmployee(credential.employee_id);
+    setSelectedEmployeeId(credential.employee_id);
     setUsername(credential.username);
     setPassword(credential.password);
     setUsernameExists(false); // Reset when editing existing credential
-  };
-
-  // Handle deleting a credential
-  const handleDelete = async (credentialId: string) => {
-    // If not in confirmation mode, show confirmation first
-    if (showDeleteConfirm !== credentialId) {
-      setShowDeleteConfirm(credentialId);
-      return;
-    }
-    
-    setIsDeleting(prev => ({ ...prev, [credentialId]: true }));
-    try {
-      const { error } = await supabase
-        .from('user_credentials')
-        .delete()
-        .eq('id', credentialId);
-        
-      if (error) throw error;
-      
-      // Update the local state
-      setCredentials(prev => prev.filter(cred => cred.id !== credentialId));
-      toast.success('Credentials deleted successfully');
-    } catch (error) {
-      console.error('Error deleting credentials:', error);
-      toast.error('Failed to delete credentials');
-    } finally {
-      setIsDeleting(prev => ({ ...prev, [credentialId]: false }));
-      setShowDeleteConfirm(null);
-    }
-  };
-
-  // Cancel delete confirmation
-  const cancelDelete = () => {
-    setShowDeleteConfirm(null);
   };
 
   // Check if username already exists (excluding the current editing credential)
@@ -208,47 +166,31 @@ const UserCredentialsModal: React.FC<UserCredentialsModalProps> = ({ isOpen, onC
   }, [username, isEditing, editingCredentialId]);
 
   // Generate unique username based on employee name
-  const generateUniqueUsername = async (baseName: string, employeeNumber: string) => {
-    // First try with employee number as part of the username for uniqueness
-    let candidateUsername = `${baseName}_${employeeNumber}`;
+  const generateUniqueUsername = (baseName: string) => {
+    // Get list of existing usernames that start with this base name
+    const existingNames = credentials.map(c => c.username)
+      .filter(name => name.startsWith(baseName));
+    
+    if (existingNames.length === 0) {
+      return baseName;
+    }
+    
+    // Try adding a number suffix
     let counter = 1;
-    let isUnique = false;
+    let candidate = `${baseName}${counter}`;
     
-    while (!isUnique && counter < 100) {
-      // Check if this username exists - case insensitive
-      const { data, error } = await supabase
-        .from('user_credentials')
-        .select('username')
-        .ilike('username', candidateUsername)
-        .maybeSingle();
-      
-      if (error) {
-        console.error('Error checking username uniqueness:', error);
-        throw new Error('Failed to verify username uniqueness');
-      }
-      
-      // If no data returned, username is unique
-      if (!data) {
-        isUnique = true;
-      } else {
-        // Try next candidate with a counter
-        candidateUsername = `${baseName}_${counter}`;
-        counter++;
-      }
+    while (existingNames.includes(candidate)) {
+      counter++;
+      candidate = `${baseName}${counter}`;
     }
     
-    // Safety check to prevent infinite loops
-    if (counter >= 100) {
-      throw new Error('Failed to generate a unique username after multiple attempts');
-    }
-    
-    return candidateUsername;
+    return candidate;
   };
 
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
     
-    if (!selectedEmployee) {
+    if (!selectedEmployeeId) {
       newErrors.employee = 'Please select an employee';
     }
     
@@ -266,14 +208,13 @@ const UserCredentialsModal: React.FC<UserCredentialsModalProps> = ({ isOpen, onC
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async () => {
     if (!validateForm()) return;
     
     setIsSaving(true);
     try {
       if (isEditing) {
-        // Update existing credentials
+        // Update existing credentials - removed unnecessary select()
         const { error } = await supabase
           .from('user_credentials')
           .update({
@@ -289,13 +230,13 @@ const UserCredentialsModal: React.FC<UserCredentialsModalProps> = ({ isOpen, onC
         const { data: existingCred, error: checkError } = await supabase
           .from('user_credentials')
           .select('id')
-          .eq('employee_id', selectedEmployee)
+          .eq('employee_id', selectedEmployeeId)
           .maybeSingle();
         
         if (checkError) throw checkError;
         
         if (existingCred) {
-          // Update existing
+          // Update existing - removed unnecessary select()
           const { error } = await supabase
             .from('user_credentials')
             .update({
@@ -307,11 +248,11 @@ const UserCredentialsModal: React.FC<UserCredentialsModalProps> = ({ isOpen, onC
           if (error) throw error;
           toast.success('Credentials updated successfully');
         } else {
-          // Create new
+          // Create new - removed unnecessary select()
           const { error } = await supabase
             .from('user_credentials')
             .insert({
-              employee_id: selectedEmployee,
+              employee_id: selectedEmployeeId,
               username,
               password
             });
@@ -371,7 +312,7 @@ const UserCredentialsModal: React.FC<UserCredentialsModalProps> = ({ isOpen, onC
             </h4>
             
             {/* Form */}
-            <form className="space-y-4" onSubmit={handleSubmit}>
+            <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); handleSubmit(); }}>
               {/* Employee Selection */}
               <div>
                 <label htmlFor="employee" className="block text-sm font-medium text-gray-700 mb-1">
@@ -383,20 +324,17 @@ const UserCredentialsModal: React.FC<UserCredentialsModalProps> = ({ isOpen, onC
                   </div>
                   <select
                     id="employee"
-                    value={selectedEmployee}
+                    value={selectedEmployeeId}
                     onChange={(e) => {
-                      setSelectedEmployee(e.target.value);
+                      setSelectedEmployeeId(e.target.value);
                       
                       // If we're creating a new user, pre-fill the username with the employee name
                       if (!isEditing) {
-                        const selectedEmp = employees.find(emp => emp.id === e.target.value);
-                        if (selectedEmp) {
-                          // Generate a sanitized username from employee name
-                          const sanitizedName = selectedEmp.name
-                            .toLowerCase()
-                            .replace(/[^a-z0-9]/g, ''); // Remove special characters
-                            
-                          setUsername(`${sanitizedName}_${selectedEmp.employee_number}`);
+                        const selectedEmployee = employees.find(emp => emp.id === e.target.value);
+                        if (selectedEmployee) {
+                          // Generate a unique username based on employee name
+                          const uniqueName = generateUniqueUsername(selectedEmployee.name);
+                          setUsername(uniqueName);
                         }
                       }
                       
@@ -543,7 +481,7 @@ const UserCredentialsModal: React.FC<UserCredentialsModalProps> = ({ isOpen, onC
           </div>
           
           {/* Right panel - Credentials list */}
-          <div className="md:col-span-2 border-l border-gray-200 flex flex-col h-full">
+          <div className="md:col-span-2 border-l border-gray-200 flex flex-col">
             {/* Search */}
             <div className="p-4 border-b border-gray-200">
               <div className="relative">
@@ -560,8 +498,8 @@ const UserCredentialsModal: React.FC<UserCredentialsModalProps> = ({ isOpen, onC
               </div>
             </div>
             
-            {/* Credentials list - THIS SECTION SHOULD SCROLL */}
-            <div ref={credentialsListRef} className="flex-1 overflow-y-auto">
+            {/* Credentials list */}
+            <div className="flex-1 overflow-y-auto">
               {isLoading ? (
                 <div className="flex justify-center items-center h-full">
                   <div className="animate-spin w-8 h-8 border-4 border-green-500 border-t-transparent rounded-full"></div>
@@ -609,49 +547,13 @@ const UserCredentialsModal: React.FC<UserCredentialsModalProps> = ({ isOpen, onC
                             </div>
                           </div>
                         </div>
-                        <div className="flex space-x-2">
-                          <button
-                            onClick={() => handleEdit(cred)}
-                            className="p-1.5 text-sm bg-green-50 text-green-600 rounded-md hover:bg-green-100 flex items-center"
-                          >
-                            <Edit className="h-4 w-4 mr-1" />
-                            Edit
-                          </button>
-                          
-                          {/* Delete button with confirmation */}
-                          {showDeleteConfirm === cred.id ? (
-                            <div className="flex items-center space-x-1">
-                              <button
-                                onClick={() => handleDelete(cred.id)}
-                                disabled={isDeleting[cred.id]}
-                                className="p-1.5 text-sm bg-red-500 text-white rounded-md hover:bg-red-600 flex items-center whitespace-nowrap"
-                              >
-                                {isDeleting[cred.id] ? (
-                                  <span className="inline-block animate-spin h-3 w-3 border-2 border-t-transparent border-white rounded-full mr-1"></span>
-                                ) : (
-                                  <Check className="h-3 w-3 mr-1" />
-                                )}
-                                Confirm
-                              </button>
-                              <button
-                                onClick={cancelDelete}
-                                disabled={isDeleting[cred.id]}
-                                className="p-1.5 text-sm bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300"
-                              >
-                                Cancel
-                              </button>
-                            </div>
-                          ) : (
-                            <button
-                              onClick={() => handleDelete(cred.id)}
-                              className="p-1.5 text-sm bg-red-50 text-red-600 rounded-md hover:bg-red-100 flex items-center"
-                              disabled={isSaving}
-                            >
-                              <Trash2 className="h-4 w-4 mr-1" />
-                              Delete
-                            </button>
-                          )}
-                        </div>
+                        <button
+                          onClick={() => handleEdit(cred)}
+                          className="p-1.5 text-sm bg-green-50 text-green-600 rounded-md hover:bg-green-100 flex items-center"
+                        >
+                          <Edit className="h-4 w-4 mr-1" />
+                          Edit
+                        </button>
                       </div>
                     </div>
                   ))}
