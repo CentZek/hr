@@ -12,7 +12,7 @@ import { calculatePayableHours, determineShiftType } from '../utils/shiftCalcula
 import { addManualEntryToRecords, calculateStats, processRecordsAfterSave } from '../utils/dataHandlers';
 
 // Import services
-import { saveRecordsToDatabase, fetchManualTimeRecords, fetchPendingEmployeeShifts, resetAllDatabaseData } from '../services/database';
+import { saveRecordsToDatabase, fetchPendingEmployeeShifts, resetAllDatabaseData } from '../services/database';
 import { runAllMigrations, checkSupabaseConnection } from '../services/migrationService';
 import { supabase } from '../lib/supabase';
 import { checkAndRestoreHolidays } from '../services/holidayService';
@@ -24,7 +24,6 @@ import EmptyState from '../components/EmptyState';
 import ManualEntryModal from '../components/ManualEntryModal';
 import UserCredentialsModal from '../components/UserCredentialsModal';
 import EmployeeShiftRequest from '../components/EmployeeShiftRequest';
-import TimeRecordsTable from '../components/TimeRecordsTable';
 import ApproveAllConfirmationDialog from '../components/ApproveAllConfirmationDialog';
 import ConfirmDialog from '../components/ConfirmDialog';
 import DateRangePicker from '../components/DateRangePicker';
@@ -49,8 +48,6 @@ function HrPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [showApproved, setShowApproved] = useState(false);
   const [isMigrating, setIsMigrating] = useState(false);
-  const [manualRecords, setManualRecords] = useState<any[]>([]);
-  const [loadingManualRecords, setLoadingManualRecords] = useState(false);
   const [savingErrors, setSavingErrors] = useState<{employeeName: string, date: string, error: string}[]>([]);
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const [isMobile, setIsMobile] = useState(false);
@@ -99,7 +96,7 @@ function HrPage() {
     return connected;
   };
 
-  // Run migrations when component mounts and fetch manual records
+  // Run migrations when component mounts
   useEffect(() => {
     const initializeSystem = async () => {
       // First check connection
@@ -121,35 +118,8 @@ function HrPage() {
       }
     };
     
-    // Fetch manual records
-    const fetchManualRecords = async () => {
-      setLoadingManualRecords(true);
-      try {
-        const records = await fetchManualTimeRecords(50);
-        setManualRecords(records);
-      } catch (error) {
-        console.error('Error fetching manual records:', error);
-      } finally {
-        setLoadingManualRecords(false);
-      }
-    };
-    
     initializeSystem();
-    fetchManualRecords();
   }, []);
-
-  // Refresh manual records and pending shifts after changes
-  const refreshData = async () => {
-    setLoadingManualRecords(true);
-    try {
-      const records = await fetchManualTimeRecords(50);
-      setManualRecords(records);
-    } catch (error) {
-      console.error('Error refreshing data:', error);
-    } finally {
-      setLoadingManualRecords(false);
-    }
-  };
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     // Prevent file upload during reset operation
@@ -369,7 +339,6 @@ function HrPage() {
       if (result.success) {
         // Clear local state
         clearData();
-        setManualRecords([]);
         toast.dismiss(loadingToast);
         toast.success(`${result.message} Double-time days have been preserved.`);
       } else {
@@ -447,9 +416,6 @@ function HrPage() {
         // Only update Supabase if there are records left
         await saveToSupabase(currentFileName, updatedRecords);
       }
-
-      // FIXED: Refresh manually approved records from database instead of manually updating state
-      await refreshData();
       
       toast.dismiss(loadingToast);
       if (successCount > 0) {
@@ -600,9 +566,6 @@ function HrPage() {
     // Save to Supabase
     await saveToSupabase(currentFileName || 'Employee Shift Approvals', updatedRecords);
     
-    // FIXED: Refresh manual records - Get fresh data from database instead of manually updating state
-    await refreshData();
-    
     // Show success message
     toast.success(`Added ${employeeData.name}'s submitted shift to the Face ID Data`);
   };
@@ -638,9 +601,6 @@ function HrPage() {
         employeeNumber: empNumber,
         date: recordData.date
       });
-      
-      // Refresh manually approved records
-      await refreshData();
       
       toast.success('Manual time record added successfully');
     } catch (error) {
@@ -820,15 +780,6 @@ function HrPage() {
 
             {/* Employee Shift Requests Section */}
             <EmployeeShiftRequest onShiftApproved={handleEmployeeShiftApproved} />
-
-            {/* Manual Time Records Section */}
-            {manualRecords.length > 0 && (
-              <TimeRecordsTable 
-                records={manualRecords}
-                isLoading={loadingManualRecords}
-                title="Recent Manual & Employee-Submitted Records"
-              />
-            )}
 
             {/* Error section for failed records */}
             {savingErrors.length > 0 && (
