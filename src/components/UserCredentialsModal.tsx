@@ -46,6 +46,9 @@ const UserCredentialsModal: React.FC<UserCredentialsModalProps> = ({ isOpen, onC
   // State for errors
   const [errors, setErrors] = useState<Record<string, string>>({});
   
+  // Scrollable content ref
+  const credentialsListRef = useRef<HTMLDivElement>(null);
+  
   // Fetch employees and credentials on load
   useEffect(() => {
     if (isOpen) {
@@ -121,7 +124,7 @@ const UserCredentialsModal: React.FC<UserCredentialsModalProps> = ({ isOpen, onC
     setSelectedEmployee(credential.employee_id);
     setUsername(credential.username);
     setPassword(credential.password);
-    setUsernameExists(false); // Reset when editing existing credential
+    setUsernameExists(false);
   };
 
   // Handle deleting a credential
@@ -372,7 +375,7 @@ const UserCredentialsModal: React.FC<UserCredentialsModalProps> = ({ isOpen, onC
             </h4>
             
             {/* Form */}
-            <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); handleSubmit(e); }}>
+            <form className="space-y-4" onSubmit={handleSubmit}>
               {/* Employee Selection */}
               <div>
                 <label htmlFor="employee" className="block text-sm font-medium text-gray-700 mb-1">
@@ -390,14 +393,14 @@ const UserCredentialsModal: React.FC<UserCredentialsModalProps> = ({ isOpen, onC
                       
                       // If we're creating a new user, pre-fill the username with the employee name
                       if (!isEditing) {
-                        const selectedEmployee = employees.find(emp => emp.id === e.target.value);
-                        if (selectedEmployee) {
-                          // Generate a unique username based on employee name
-                          const sanitizedName = selectedEmployee.name
+                        const selectedEmp = employees.find(emp => emp.id === e.target.value);
+                        if (selectedEmp) {
+                          // Generate a username based on employee name
+                          const sanitizedName = selectedEmp.name
                             .toLowerCase()
                             .replace(/[^a-z0-9]/g, ''); // Remove special characters
                             
-                          setUsername(`${sanitizedName}_${selectedEmployee.employee_number}`);
+                          setUsername(`${sanitizedName}_${selectedEmp.employee_number}`);
                         }
                       }
                       
@@ -562,7 +565,7 @@ const UserCredentialsModal: React.FC<UserCredentialsModalProps> = ({ isOpen, onC
             </div>
             
             {/* Credentials list with scrolling */}
-            <div className="flex-1 overflow-y-auto max-h-full">
+            <div ref={credentialsListRef} className="flex-1 overflow-y-auto max-h-full">
               {isLoading ? (
                 <div className="flex justify-center items-center h-full">
                   <div className="animate-spin w-8 h-8 border-4 border-green-500 border-t-transparent rounded-full"></div>
