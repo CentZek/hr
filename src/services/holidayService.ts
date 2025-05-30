@@ -2,9 +2,22 @@ import { supabase } from '../lib/supabase';
 import { format, isFriday, parseISO, isValid } from 'date-fns';
 import { Holiday } from '../types';
 
+// In-memory cache for double-time days and holidays
+let doubleTimeDaysCache: Record<string, boolean> = {};
+let holidaysCache: string[] = [];
+let lastCacheRefresh: number = 0;
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
 // Fetch all holidays from the database
 export const fetchHolidays = async (): Promise<Holiday[]> => {
   try {
+    // Check if we need to refresh cache
+    const now = Date.now();
+    if (now - lastCacheRefresh > CACHE_TTL || holidaysCache.length === 0) {
+      await refreshHolidayCache();
+    }
+    
+    // Return cached holidays as objects
     const { data, error } = await supabase
       .from('holidays')
       .select('*')
@@ -28,6 +41,15 @@ export const addHoliday = async (date: string): Promise<Holiday> => {
       .single();
 
     if (error) throw error;
+    
+    // Update the cache
+    if (!holidaysCache.includes(date)) {
+      holidaysCache.push(date);
+    }
+    
+    // Clear the double-time days cache to ensure fresh calculations
+    doubleTimeDaysCache = {};
+    
     return data;
   } catch (error) {
     console.error('Error adding holiday:', error);
@@ -38,16 +60,43 @@ export const addHoliday = async (date: string): Promise<Holiday> => {
 // Delete a holiday
 export const deleteHoliday = async (id: string): Promise<void> => {
   try {
+    // First get the holiday date so we can remove it from cache
+    const { data: holiday, error: fetchError } = await supabase
+      .from('holidays')
+      .select('date')
+      .eq('id', id)
+      .single();
+      
+    if (fetchError) throw fetchError;
+    
+    // Delete from database
     const { error } = await supabase
       .from('holidays')
       .delete()
       .eq('id', id);
 
     if (error) throw error;
+    
+    // Update cache
+    if (holiday) {
+      holidaysCache = holidaysCache.filter(date => date !== holiday.date);
+      doubleTimeDaysCache = {}; // Clear double-time cache
+    }
   } catch (error) {
     console.error('Error deleting holiday:', error);
     throw error;
   }
+};
+
+// Check if a date is a holiday
+export const isHoliday = async (dateStr: string): Promise<boolean> => {
+  // Check if we need to refresh cache
+  const now = Date.now();
+  if (now - lastCacheRefresh > CACHE_TTL || holidaysCache.length === 0) {
+    await refreshHolidayCache();
+  }
+  
+  return holidaysCache.includes(dateStr);
 };
 
 // Check if a date is a double-time day (Friday or holiday)
@@ -59,33 +108,36 @@ export const isDoubleTimeDay = async (dateStr: string): Promise<boolean> => {
       return false;
     }
     
+    // Check cache first
+    if (doubleTimeDaysCache[dateStr] !== undefined) {
+      return doubleTimeDaysCache[dateStr];
+    }
+    
     const date = parseISO(dateStr);
     
     // First check if it's a Friday
-    if (isFriday(date)) {
+    const isFri = isFriday(date);
+    if (isFri) {
+      doubleTimeDaysCache[dateStr] = true;
       return true;
     }
     
-    // Then check if it's a holiday
-    const { data, error } = await supabase
-      .from('holidays')
-      .select('id')
-      .eq('date', dateStr)
-      .maybeSingle();
-
-    if (error) throw error;
+    // Check if we need to refresh holiday cache
+    const now = Date.now();
+    if (now - lastCacheRefresh > CACHE_TTL || holidaysCache.length === 0) {
+      await refreshHolidayCache();
+    }
     
-    return !!data; // Return true if holiday exists, false otherwise
+    // Then check if it's a holiday using cache
+    const isHol = holidaysCache.includes(dateStr);
+    doubleTimeDaysCache[dateStr] = isHol;
+    
+    return isHol;
   } catch (error) {
     console.error('Error checking double-time day:', error);
     return false; // Default to false on error
   }
 };
-
-// In-memory cache for double-time days
-let doubleTimeDaysCache: Record<string, boolean> = {};
-let lastCacheRefresh: number = 0;
-const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
 // Get all double-time days (Fridays and holidays) for a given date range
 export const getDoubleTimeDays = async (startDate: string, endDate: string): Promise<string[]> => {
@@ -107,17 +159,15 @@ export const getDoubleTimeDays = async (startDate: string, endDate: string): Pro
   }
   
   try {
-    // Get all holidays in the date range
-    const { data: holidays, error } = await supabase
-      .from('holidays')
-      .select('date')
-      .gte('date', startDate)
-      .lte('date', endDate);
-
-    if (error) throw error;
+    // Ensure holidays cache is up-to-date
+    if (holidaysCache.length === 0) {
+      await refreshHolidayCache();
+    }
     
-    // Create an array of holiday dates
-    const holidayDates = holidays?.map(h => h.date) || [];
+    // Get holidays in the date range
+    const holidaysInRange = holidaysCache.filter(date => 
+      date >= startDate && date <= endDate
+    );
     
     // For each date in the range, check if it's a Friday
     const start = parseISO(startDate);
@@ -131,7 +181,7 @@ export const getDoubleTimeDays = async (startDate: string, endDate: string): Pro
       
       // Check cache first
       if (doubleTimeDaysCache[dateStr] === undefined) {
-        doubleTimeDaysCache[dateStr] = isFriday(current) || holidayDates.includes(dateStr);
+        doubleTimeDaysCache[dateStr] = isFriday(current) || holidaysInRange.includes(dateStr);
       }
       
       if (doubleTimeDaysCache[dateStr]) {
@@ -148,6 +198,26 @@ export const getDoubleTimeDays = async (startDate: string, endDate: string): Pro
   } catch (error) {
     console.error('Error getting double-time days:', error);
     return [];
+  }
+};
+
+// Refresh the holiday cache
+export const refreshHolidayCache = async (): Promise<void> => {
+  try {
+    const { data, error } = await supabase
+      .from('holidays')
+      .select('date')
+      .order('date');
+      
+    if (error) throw error;
+    
+    holidaysCache = data ? data.map(h => h.date) : [];
+    lastCacheRefresh = Date.now();
+    
+    console.log(`Refreshed holiday cache with ${holidaysCache.length} holidays`);
+  } catch (error) {
+    console.error('Error refreshing holiday cache:', error);
+    // Keep using existing cache if refresh fails
   }
 };
 
@@ -202,7 +272,7 @@ export const checkAndRestoreHolidays = async (): Promise<boolean> => {
       if (backupData && backupData.length > 0) {
         console.log(`Found ${backupData.length} holidays in backup, restoring...`);
         
-        // Insert holidays from backup - without the ID to avoid conflicts
+        // Insert holidays from backup
         const { error: insertError } = await supabase
           .from('holidays')
           .insert(
@@ -259,56 +329,35 @@ export const backupCurrentHolidays = async (): Promise<boolean> => {
     
     console.log(`Found ${holidays.length} holidays to backup`);
     
-    // Process each holiday individually for backup
-    for (const holiday of holidays) {
-      try {
-        // Check if holiday already exists in backup
-        const { data: existing, error: checkError } = await supabase
-          .from('holidays_backup')
-          .select('id')
-          .eq('date', holiday.date)
-          .maybeSingle();
-          
-        if (checkError) {
-          console.error(`Error checking holiday existence: ${holiday.date}`, checkError);
-          continue;
-        }
-        
-        const now = new Date().toISOString();
-        
-        if (existing) {
-          // Update existing backup
-          const { error: updateError } = await supabase
-            .from('holidays_backup')
-            .update({
-              description: holiday.description,
-              created_at: holiday.created_at,
-              restored_at: now
-            })
-            .eq('id', existing.id);
-            
-          if (updateError) {
-            console.error(`Error updating holiday backup: ${holiday.date}`, updateError);
-          }
-        } else {
-          // Create new backup
-          const { error: insertError } = await supabase
-            .from('holidays_backup')
-            .insert({
-              id: holiday.id,
-              date: holiday.date,
-              description: holiday.description,
-              created_at: holiday.created_at,
-              restored_at: now
-            });
-            
-          if (insertError) {
-            console.error(`Error backing up holiday: ${holiday.date}`, insertError);
-          }
-        }
-      } catch (err) {
-        console.error(`Error processing holiday backup for ${holiday.date}:`, err);
-      }
+    // Delete existing backups to avoid duplicates
+    const { error: deleteError } = await supabase
+      .from('holidays_backup')
+      .delete()
+      .neq('id', '00000000-0000-0000-0000-000000000000');
+      
+    if (deleteError) {
+      console.warn('Error clearing existing backups:', deleteError);
+      // Continue anyway
+    }
+    
+    // Batch insert all holidays to backup table
+    const now = new Date().toISOString();
+    const backupRecords = holidays.map(holiday => ({
+      id: holiday.id,
+      date: holiday.date,
+      description: holiday.description,
+      created_at: holiday.created_at,
+      restored_at: now
+    }));
+    
+    // Create new backup
+    const { error: insertError } = await supabase
+      .from('holidays_backup')
+      .insert(backupRecords);
+      
+    if (insertError) {
+      console.error('Error backing up holidays:', insertError);
+      return false;
     }
     
     console.log(`Successfully backed up ${holidays.length} holidays`);

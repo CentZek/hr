@@ -5,6 +5,12 @@ import toast from 'react-hot-toast';
 import { parseShiftTimes } from '../utils/dateTimeHelper';
 import { isDoubleTimeDay, getDoubleTimeDays, backupCurrentHolidays, refreshDoubleTimeDaysCache } from '../services/holidayService';
 
+// Helper function to create a delay
+const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+// Cache for employee IDs to reduce database lookups
+const employeeIdCache = new Map<string, string>();
+
 // Fetch approved hours summary
 export const fetchApprovedHours = async (dateFilter: string = ''): Promise<{
   data: any[];
@@ -700,32 +706,52 @@ export const saveRecordsToDatabase = async (employeeRecords: EmployeeRecord[]): 
 };
 
 // Helper function to get employee ID from employee number
+// This function now uses a cache to reduce database lookups
 const getEmployeeId = async (employeeNumber: string): Promise<string> => {
-  // Check if employee exists
-  const { data, error } = await supabase
-    .from('employees')
-    .select('id')
-    .eq('employee_number', employeeNumber)
-    .maybeSingle();
-  
-  if (error) throw error;
-  
-  if (data) {
-    return data.id;
+  // Check cache first
+  if (employeeIdCache.has(employeeNumber)) {
+    return employeeIdCache.get(employeeNumber)!;
   }
   
-  // Create new employee if not exists
-  const { data: newEmployee, error: createError } = await supabase
-    .from('employees')
-    .insert([
-      { employee_number: employeeNumber, name: 'Unknown Employee' }
-    ])
-    .select('id')
-    .single();
-  
-  if (createError) throw createError;
-  
-  return newEmployee.id;
+  try {
+    // Check if employee exists
+    const { data, error } = await supabase
+      .from('employees')
+      .select('id')
+      .eq('employee_number', employeeNumber)
+      .maybeSingle();
+    
+    if (error) throw error;
+    
+    if (data) {
+      // Store in cache
+      employeeIdCache.set(employeeNumber, data.id);
+      return data.id;
+    }
+    
+    // Create new employee if not exists
+    const { data: newEmployee, error: createError } = await supabase
+      .from('employees')
+      .insert([
+        { employee_number: employeeNumber, name: 'Unknown Employee' }
+      ])
+      .select('id')
+      .single();
+    
+    if (createError) throw createError;
+    
+    // Store in cache
+    employeeIdCache.set(employeeNumber, newEmployee.id);
+    return newEmployee.id;
+  } catch (error) {
+    console.error(`Error getting employee ID for ${employeeNumber}:`, error);
+    throw error;
+  }
+};
+
+// Clear employee ID cache - call this after operations that might modify employees
+export const clearEmployeeIdCache = () => {
+  employeeIdCache.clear();
 };
 
 // Fetch manual time records
@@ -843,6 +869,9 @@ export const deleteAllTimeRecords = async (dateFilter: string = '', employeeFilt
   count: number;
 }> => {
   try {
+    // Clear employee ID cache at the start of the operation
+    clearEmployeeIdCache();
+    
     // Build the query for selecting records to delete
     let query = supabase.from('time_records').select('id');
     
@@ -956,6 +985,11 @@ export const deleteAllTimeRecords = async (dateFilter: string = '', employeeFilt
       }
       
       deletedCount += chunk.length;
+      
+      // Add a small delay between chunks to reduce server load
+      if (i + chunkSize < idsToDelete.length) {
+        await delay(300); // Small delay to prevent overloading the server
+      }
     }
     
     return {
@@ -979,6 +1013,9 @@ export const resetAllDatabaseData = async (): Promise<{
   message: string;
 }> => {
   try {
+    // Clear employee ID cache at the start
+    clearEmployeeIdCache();
+    
     // First backup all holidays to ensure they can be restored
     await backupCurrentHolidays();
     
@@ -994,7 +1031,7 @@ export const resetAllDatabaseData = async (): Promise<{
     }
     
     // Delete processed_excel_files (this will cascade to processed_employee_data and processed_daily_records)
-    const { data: filesDeleted, error: filesError } = await supabase
+    const { error: filesError } = await supabase
       .from('processed_excel_files')
       .delete()
       .neq('id', '00000000-0000-0000-0000-000000000000');
@@ -1004,8 +1041,11 @@ export const resetAllDatabaseData = async (): Promise<{
       // Continue anyway to try deleting other tables
     }
     
+    // Wait for deletion to complete
+    await delay(1000);
+    
     // Delete pending employee shifts EXCEPT approved ones
-    const { data: shiftsDeleted, error: shiftsError } = await supabase
+    const { error: shiftsError } = await supabase
       .from('employee_shifts')
       .delete()
       .not('status', 'eq', 'approved')
@@ -1018,8 +1058,11 @@ export const resetAllDatabaseData = async (): Promise<{
       };
     }
     
+    // Wait for deletion to complete
+    await delay(1000);
+    
     // Delete employee_shift_patterns
-    const { data: patternsDeleted, error: patternsError } = await supabase
+    const { error: patternsError } = await supabase
       .from('employee_shift_patterns')
       .delete()
       .neq('id', '00000000-0000-0000-0000-000000000000');
