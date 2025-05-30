@@ -193,10 +193,10 @@ const EmployeeLoginPage: React.FC = () => {
           <div className="mb-4">
             <AnimatedClock />
           </div>
-          <h2 className="text-2xl font-bold text-gray-900 mb-2 text-center">
+          <h2 className="text-3xl font-bold text-gray-900 mb-2 text-center">
             Employee Portal
           </h2>
-          <p className="text-sm text-gray-600 text-center">
+          <p className="text-base text-gray-700 font-medium text-center">
             Track your working hours and manage your shifts
           </p>
         </div>
@@ -207,12 +207,12 @@ const EmployeeLoginPage: React.FC = () => {
             {error && (
               <div className="bg-red-50 border border-red-200 rounded-md p-4 flex items-start">
                 <AlertCircle className="w-5 h-5 text-red-500 mr-3 mt-0.5 flex-shrink-0" />
-                <p className="text-sm text-red-700">{error}</p>
+                <p className="text-base text-red-700 font-medium">{error}</p>
               </div>
             )}
             
             <div>
-              <label htmlFor="username" className="block text-sm font-medium text-gray-700 mb-1">
+              <label htmlFor="username" className="block text-base font-semibold text-gray-700 mb-1">
                 Username or Full Name
               </label>
               <div className="relative">
@@ -227,17 +227,17 @@ const EmployeeLoginPage: React.FC = () => {
                   required
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  className="block w-full pl-10 pr-3 py-2 sm:text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-purple-500 focus:border-purple-500"
+                  className="block w-full pl-10 pr-3 py-2 text-base border border-gray-300 rounded-md focus:outline-none focus:ring-purple-500 focus:border-purple-500"
                   placeholder="Enter your username or full name"
                 />
               </div>
-              <p className="mt-1 text-xs text-gray-500">
+              <p className="mt-1 text-sm text-gray-600 font-medium">
                 First time login: Enter your full name exactly as provided by HR
               </p>
             </div>
 
             <div>
-              <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">
+              <label htmlFor="password" className="block text-base font-semibold text-gray-700 mb-1">
                 Password (Your Employee Number)
               </label>
               <div className="relative">
@@ -252,7 +252,7 @@ const EmployeeLoginPage: React.FC = () => {
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="block w-full pl-10 pr-3 py-2 sm:text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-purple-500 focus:border-purple-500"
+                  className="block w-full pl-10 pr-3 py-2 text-base border border-gray-300 rounded-md focus:outline-none focus:ring-purple-500 focus:border-purple-500"
                   placeholder="Enter your employee number"
                 />
               </div>
@@ -262,7 +262,7 @@ const EmployeeLoginPage: React.FC = () => {
               <button
                 type="submit"
                 disabled={isLoading}
-                className={`w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white ${
+                className={`w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-base font-semibold text-white ${
                   isLoading ? 'bg-purple-400' : 'bg-purple-600 hover:bg-purple-700'
                 } focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 transition duration-150 ease-in-out`}
               >
@@ -284,12 +284,12 @@ const EmployeeLoginPage: React.FC = () => {
 
         {/* Help text and back to home link */}
         <div className="mt-6 text-center">
-          <p className="text-sm text-gray-600 mb-2">
+          <p className="text-base text-gray-700 font-medium mb-2">
             Need help? Please contact HR or your supervisor.
           </p>
           <button
             onClick={() => navigate('/')} 
-            className="text-purple-600 hover:text-purple-800 flex items-center justify-center mx-auto mt-2"
+            className="text-purple-600 hover:text-purple-800 flex items-center justify-center mx-auto mt-2 text-base font-semibold"
           >
             <Home className="w-4 h-4 mr-1" />
             Back to Home

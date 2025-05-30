@@ -130,7 +130,7 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({
         >
           <div 
             className={`
-              absolute inset-0 rounded-full 
+              absolute inset-0 rounded-full text-base
               ${isSelectedStart ? 'bg-purple-600 text-white' : ''}
               ${isSelectedEnd ? 'bg-purple-600 text-white' : ''}
               ${isRangeDay ? 'bg-purple-100' : ''}
@@ -240,13 +240,13 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({
       <div className="flex">
         {/* Predefined ranges sidebar */}
         <div className="hidden sm:block w-48 bg-gray-50 p-4 border-r border-gray-200">
-          <h3 className="text-sm font-medium text-gray-700 mb-3">Quick select</h3>
+          <h3 className="text-base font-semibold text-gray-700 mb-3">Quick select</h3>
           <div className="space-y-2">
             {predefinedRanges.map((range, index) => (
               <button
                 key={index}
                 onClick={range.action}
-                className="w-full text-left px-2 py-1 text-sm text-gray-700 hover:bg-gray-200 rounded"
+                className="w-full text-left px-2 py-1 text-base text-gray-700 hover:bg-gray-200 rounded font-medium"
               >
                 {range.label}
               </button>
@@ -260,7 +260,7 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({
             <button onClick={previousMonth} className="p-1 hover:bg-gray-100 rounded-full">
               <ChevronLeft className="w-5 h-5 text-gray-600" />
             </button>
-            <h2 className="text-lg font-medium text-gray-900">
+            <h2 className="text-xl font-semibold text-gray-900">
               {format(currentMonth, 'MMMM yyyy')}
             </h2>
             <button onClick={nextMonth} className="p-1 hover:bg-gray-100 rounded-full">
@@ -273,7 +273,7 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({
             {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => (
               <div
                 key={day}
-                className="h-10 flex items-center justify-center text-sm font-medium text-gray-500"
+                className="h-10 flex items-center justify-center text-base font-semibold text-gray-500"
               >
                 {day}
               </div>
@@ -287,18 +287,18 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({
           
           {/* Selection info and buttons */}
           <div className="mt-4 pt-4 border-t border-gray-200">
-            <div className="flex justify-between mb-4 text-sm">
+            <div className="flex justify-between mb-4 text-base">
               <div>
-                <div className="text-gray-500 mb-1">Start date</div>
-                <div className="font-medium">
+                <div className="text-gray-500 mb-1 font-medium">Start date</div>
+                <div className="font-semibold">
                   {selectedStartDate 
                     ? format(selectedStartDate, 'MMMM d, yyyy') 
                     : '(Not selected)'}
                 </div>
               </div>
               <div>
-                <div className="text-gray-500 mb-1">End date</div>
-                <div className="font-medium">
+                <div className="text-gray-500 mb-1 font-medium">End date</div>
+                <div className="font-semibold">
                   {selectedEndDate 
                     ? format(selectedEndDate, 'MMMM d, yyyy') 
                     : selectionStep === 'end' ? '(Select end date)' : '(Not selected)'}
@@ -309,14 +309,14 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({
             <div className="flex items-center justify-end space-x-3">
               <button
                 onClick={resetSelection}
-                className="px-3 py-1.5 text-sm text-gray-700 hover:text-gray-900"
+                className="px-3 py-1.5 text-base text-gray-700 hover:text-gray-900 font-medium"
               >
                 Reset
               </button>
               <button
                 onClick={applySelection}
                 disabled={!selectedStartDate}
-                className="px-4 py-1.5 bg-purple-600 text-white text-sm rounded hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
+                className="px-4 py-1.5 bg-purple-600 text-white text-base rounded hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center font-semibold"
               >
                 <Check className="w-4 h-4 mr-1" />
                 Apply
@@ -328,13 +328,13 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({
       
       {/* Mobile Quick Select */}
       <div className="sm:hidden p-4 border-t border-gray-200">
-        <h3 className="text-sm font-medium text-gray-700 mb-2">Quick select</h3>
+        <h3 className="text-base font-semibold text-gray-700 mb-2">Quick select</h3>
         <div className="grid grid-cols-2 gap-2">
           {predefinedRanges.map((range, index) => (
             <button
               key={index}
               onClick={range.action}
-              className="px-2 py-1.5 text-sm text-gray-700 bg-gray-100 hover:bg-gray-200 rounded"
+              className="px-2 py-1.5 text-base text-gray-700 bg-gray-100 hover:bg-gray-200 rounded font-medium"
             >
               {range.label}
             </button>
