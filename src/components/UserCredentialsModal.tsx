@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { User, KeyRound, AlertCircle, Check, Search, Plus, Eye, EyeOff, Edit, Trash2, X } from 'lucide-react';
+import { X, User, KeyRound, AlertCircle, Check, Search, Plus, Eye, EyeOff, Edit, Trash2 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import toast from 'react-hot-toast';
 
@@ -24,20 +24,21 @@ interface Credential {
 }
 
 const UserCredentialsModal: React.FC<UserCredentialsModalProps> = ({ isOpen, onClose }) => {
-  const [employees, setEmployees] = useState<any[]>([]);
+  // State for employees and credentials
+  const [employees, setEmployees] = useState<Employee[]>([]);
   const [credentials, setCredentials] = useState<Credential[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState<Record<string, boolean>>({});
   
-  // Form state
+  // State for form
   const [selectedEmployee, setSelectedEmployee] = useState<string>('');
   const [username, setUsername] = useState<string>('');
   const [password, setPassword] = useState<string>('');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [showPassword, setShowPassword] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
-  const [editingCredentialId, setEditingCredentialId] = useState('');
+  const [editingCredentialId, setEditingCredentialId] = useState<string>('');
   const [usernameExists, setUsernameExists] = useState(false);
   
   // State for delete confirmation
@@ -46,7 +47,7 @@ const UserCredentialsModal: React.FC<UserCredentialsModalProps> = ({ isOpen, onC
   // State for errors
   const [errors, setErrors] = useState<Record<string, string>>({});
   
-  // Scrollable content ref
+  // Refs for scroll handling
   const credentialsListRef = useRef<HTMLDivElement>(null);
   
   // Fetch employees and credentials on load
@@ -61,20 +62,15 @@ const UserCredentialsModal: React.FC<UserCredentialsModalProps> = ({ isOpen, onC
     setIsLoading(true);
     try {
       // Fetch employees
-      const { data, error } = await supabase
+      const { data: employeesData, error: employeesError } = await supabase
         .from('employees')
         .select('id, name, employee_number')
         .order('name');
-
-      if (error) throw error;
-      setEmployees(data || []);
-    } catch (error) {
-      console.error('Error fetching employees:', error);
-    }
-
-    try {
+      
+      if (employeesError) throw employeesError;
+      
       // Fetch credentials with employee names
-      const { data, error } = await supabase
+      const { data: credentialsData, error: credentialsError } = await supabase
         .from('user_credentials')
         .select(`
           id, 
@@ -87,11 +83,11 @@ const UserCredentialsModal: React.FC<UserCredentialsModalProps> = ({ isOpen, onC
           )
         `)
         .order('created_at', { ascending: false });
-
-      if (error) throw error;
+      
+      if (credentialsError) throw credentialsError;
       
       // Format credentials data with employee names
-      const formattedCredentials: Credential[] = data?.map(cred => ({
+      const formattedCredentials: Credential[] = credentialsData?.map(cred => ({
         id: cred.id,
         employee_id: cred.employee_id,
         username: cred.username,
@@ -100,10 +96,12 @@ const UserCredentialsModal: React.FC<UserCredentialsModalProps> = ({ isOpen, onC
         employee_number: cred.employees?.employee_number
       })) || [];
       
+      setEmployees(employeesData || []);
       setCredentials(formattedCredentials);
+      
     } catch (error) {
-      console.error('Error fetching credentials:', error);
-      toast.error('Failed to load credential data');
+      console.error('Error fetching data:', error);
+      toast.error('Failed to load employee data');
     } finally {
       setIsLoading(false);
     }
@@ -125,7 +123,7 @@ const UserCredentialsModal: React.FC<UserCredentialsModalProps> = ({ isOpen, onC
     setSelectedEmployee(credential.employee_id);
     setUsername(credential.username);
     setPassword(credential.password);
-    setUsernameExists(false);
+    setUsernameExists(false); // Reset when editing existing credential
   };
 
   // Handle deleting a credential
@@ -270,10 +268,7 @@ const UserCredentialsModal: React.FC<UserCredentialsModalProps> = ({ isOpen, onC
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    if (!validateForm()) {
-      return;
-    }
+    if (!validateForm()) return;
     
     setIsSaving(true);
     try {
@@ -396,7 +391,7 @@ const UserCredentialsModal: React.FC<UserCredentialsModalProps> = ({ isOpen, onC
                       if (!isEditing) {
                         const selectedEmp = employees.find(emp => emp.id === e.target.value);
                         if (selectedEmp) {
-                          // Generate a username based on employee name
+                          // Generate a sanitized username from employee name
                           const sanitizedName = selectedEmp.name
                             .toLowerCase()
                             .replace(/[^a-z0-9]/g, ''); // Remove special characters
@@ -565,8 +560,8 @@ const UserCredentialsModal: React.FC<UserCredentialsModalProps> = ({ isOpen, onC
               </div>
             </div>
             
-            {/* Credentials list with scrolling */}
-            <div ref={credentialsListRef} className="flex-1 overflow-y-auto max-h-full">
+            {/* Credentials list - THIS SECTION SHOULD SCROLL */}
+            <div ref={credentialsListRef} className="flex-1 overflow-y-auto">
               {isLoading ? (
                 <div className="flex justify-center items-center h-full">
                   <div className="animate-spin w-8 h-8 border-4 border-green-500 border-t-transparent rounded-full"></div>
@@ -618,7 +613,6 @@ const UserCredentialsModal: React.FC<UserCredentialsModalProps> = ({ isOpen, onC
                           <button
                             onClick={() => handleEdit(cred)}
                             className="p-1.5 text-sm bg-green-50 text-green-600 rounded-md hover:bg-green-100 flex items-center"
-                            disabled={isSaving}
                           >
                             <Edit className="h-4 w-4 mr-1" />
                             Edit
@@ -651,7 +645,7 @@ const UserCredentialsModal: React.FC<UserCredentialsModalProps> = ({ isOpen, onC
                             <button
                               onClick={() => handleDelete(cred.id)}
                               className="p-1.5 text-sm bg-red-50 text-red-600 rounded-md hover:bg-red-100 flex items-center"
-                              disabled={isSaving || isDeleting[cred.id]}
+                              disabled={isSaving}
                             >
                               <Trash2 className="h-4 w-4 mr-1" />
                               Delete

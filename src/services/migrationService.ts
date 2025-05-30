@@ -75,7 +75,7 @@ export const initializeUserCredentials = async () => {
           try {
             // If this is not the first attempt, modify the username
             if (counter > 1) {
-              username = `${baseUsername}_${counter}`;
+              username = `${baseUsername}${counter}`;
             }
             
             // Check if username exists in our local set
@@ -174,11 +174,6 @@ export const runAllMigrations = async () => {
       };
     }
     
-    // Prevent multiple clicks
-    if (isMigrating) {
-      return;
-    }
-    
     // Initialize user credentials for all existing employees
     const credentialsResult = await initializeUserCredentials();
     
@@ -225,7 +220,7 @@ export const getMigrationStatus = () => {
   return isMigrating;
 };
 
-// Function to create or update user credentials for a new employee
+// Function to create user credentials for a new employee
 export const createUserCredentialsForNewEmployee = async (
   employeeId: string, 
   employeeName: string,
