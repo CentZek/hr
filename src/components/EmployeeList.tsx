@@ -451,7 +451,7 @@ const EmployeeList: React.FC<EmployeeListProps> = ({
                           </div>
                           <div className={`flex items-center ${day.missingCheckIn ? 'text-red-500 font-semibold' : (day.isLate || isLateNightCheckIn) ? 'text-amber-600 font-semibold' : 'text-gray-700 font-medium'}`}>
                             {day.firstCheckIn ? 
-                              <>{(day.isLate || isLateNightCheckIn) && <AlertTriangle className="w-4 h-4 mr-1 text-amber-500" title="Late check-in" />}
+                              <>{(day.isLate || isLateNightCheckIn) && <AlertTriangle className="w-4 h-4 mr-1 text-amber-500\" title="Late check-in" />}
                               {checkInDisplay}
                               {day.shiftType === 'canteen' && 
                                 <span className="ml-1 text-sm bg-yellow-100 text-yellow-800 px-1 rounded font-semibold">
