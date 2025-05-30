@@ -68,8 +68,8 @@ const checkFileExists = async (fileId: string): Promise<boolean> => {
 // Helper to check if a file exists with retries
 const checkFileExistsWithRetry = async (
   fileId: string, 
-  maxRetries = 10, // Increased from 5 to 10
-  initialDelay = 500
+  maxRetries = 15, // Increased from 10 to 15
+  initialDelay = 800  // Increased from 700 to 800
 ): Promise<boolean> => {
   let attempts = 0;
   let currentDelay = initialDelay;
@@ -90,7 +90,49 @@ const checkFileExistsWithRetry = async (
     await delay(currentDelay);
     
     // Increase delay with each retry (exponential backoff)
-    currentDelay = Math.min(currentDelay * 1.5, 3000);
+    currentDelay = Math.min(currentDelay * 1.5, 5000); // Increased max delay from 3000 to 5000
+  }
+  
+  return false;
+};
+
+// Helper to check if an employee exists with retries
+const checkEmployeeExistsWithRetry = async (
+  employeeId: string,
+  maxRetries = 10,
+  initialDelay = 800
+): Promise<boolean> => {
+  let attempts = 0;
+  let currentDelay = initialDelay;
+  
+  while (attempts < maxRetries) {
+    try {
+      const { data, error } = await supabase
+        .from('processed_employee_data')
+        .select('id')
+        .eq('id', employeeId)
+        .maybeSingle();
+        
+      if (error) {
+        console.error('Error checking employee existence:', error);
+      } else if (data) {
+        return true;
+      }
+    } catch (err) {
+      console.error('Exception checking employee existence:', err);
+    }
+    
+    attempts++;
+    if (attempts >= maxRetries) {
+      console.log(`Employee ${employeeId} not found after ${maxRetries} attempts`);
+      return false;
+    }
+    
+    console.log(`Employee verification attempt ${attempts} - waiting ${currentDelay}ms before retry`);
+    await delay(currentDelay);
+    
+    // Increase delay with each retry (exponential backoff)
+    currentDelay = Math.min(currentDelay * 1.5, 5000);
   }
   
   return false;
@@ -122,16 +164,16 @@ export const saveProcessedExcelFile = async (
     const fileId = fileData.id;
     
     // Add a small delay to ensure the file record is committed
-    await delay(2000);  // Increased delay to ensure record is committed
+    await delay(3000);  // Increased delay to ensure record is committed
 
     // Verify the file was actually created
-    const fileExists = await checkFileExistsWithRetry(fileId, 10, 700); // Increased retries
+    const fileExists = await checkFileExistsWithRetry(fileId, 15, 800); // Increased retries and initial delay
     if (!fileExists) {
       throw new Error(`File record created but not found in subsequent query. ID: ${fileId}`);
     }
 
     // Add an additional delay before processing employee records
-    await delay(500); // Added delay before processing employees
+    await delay(1000); // Increased delay before processing employees
 
     // Step 2: Save employee data
     for (const employee of employeeRecords) {
@@ -161,12 +203,19 @@ export const saveProcessedExcelFile = async (
         }
         
         return data;
-      }, 5);  // Increased retries for more reliability
+      }, 10, 800, 10000);  // Increased retries and delays for more reliability
 
       const employeeId = employeeData.id;
       
       // Add a small delay to ensure the employee record is committed
-      await delay(500);  // Increased delay for record commitment
+      await delay(1000);  // Increased delay for record commitment
+
+      // Verify employee exists before proceeding
+      const employeeExists = await checkEmployeeExistsWithRetry(employeeId, 10, 800);
+      if (!employeeExists) {
+        console.error(`Employee ${employeeId} not found after creation, skipping daily records`);
+        continue;
+      }
 
       // Step 3: Save daily records for this employee
       const dailyRecordsToInsert = employee.days.map(day => ({
@@ -193,7 +242,7 @@ export const saveProcessedExcelFile = async (
 
       if (dailyRecordsToInsert.length > 0) {
         // Insert in batches to avoid payload size limitations
-        const batchSize = 10;  // Reduced batch size
+        const batchSize = 5;  // Reduced batch size further for reliability
         for (let i = 0; i < dailyRecordsToInsert.length; i += batchSize) {
           const batch = dailyRecordsToInsert.slice(i, i + batchSize);
           
@@ -207,11 +256,11 @@ export const saveProcessedExcelFile = async (
               console.error('Error inserting daily records batch:', error);
               throw error;
             }
-          }, 5);  // Increased retries
+          }, 10, 800, 10000);  // Increased retries and delays
           
           // Add a small delay between batches
           if (i + batchSize < dailyRecordsToInsert.length) {
-            await delay(300);
+            await delay(500); // Increased delay between batches
           }
         }
       }
@@ -260,7 +309,7 @@ export const getActiveProcessedFile = async (): Promise<{
 export const getProcessedEmployees = async (fileId: string): Promise<EmployeeRecord[]> => {
   try {
     // Verify the file exists first
-    const fileExists = await checkFileExists(fileId);
+    const fileExists = await checkFileExistsWithRetry(fileId, 10, 800);
     if (!fileExists) {
       console.error('File does not exist:', fileId);
       return [];
@@ -340,7 +389,7 @@ export const updateProcessedEmployeeData = async (
     let actualFileId = fileId;
     
     // First check if the file exists
-    const fileExists = await checkFileExists(fileId);
+    const fileExists = await checkFileExistsWithRetry(fileId, 15, 800); // Increased retries and initial delay
     
     // If file doesn't exist, create a new one
     if (!fileExists) {
@@ -376,66 +425,75 @@ export const updateProcessedEmployeeData = async (
       }
       
       // Add delay after creating the file
-      await delay(2000); // Increased from 1000 to 2000
+      await delay(3000); // Increased from 2000 to 3000
       
       // Verify file was created with retry mechanism
-      const newFileExists = await checkFileExistsWithRetry(actualFileId, 10, 700); // Increased retries and delay
+      const newFileExists = await checkFileExistsWithRetry(actualFileId, 15, 800); // Increased retries and delay
       if (!newFileExists) {
         console.warn('New file record may not be immediately accessible, proceeding with caution');
         // We'll continue but with additional delays later to compensate
-        await delay(1000); // Add extra delay just to be safe
+        await delay(2000); // Increased extra delay
       }
     }
     
     // Add a delay before processing employee records
-    await delay(500); // New delay before processing employees
+    await delay(1000); // Increased delay before processing employees
     
     // For each employee, ensure their record exists before updating daily records
     for (const employee of employeeRecords) {
       try {
-        // Look for existing employee
-        const { data: existingEmployee, error: lookupError } = await supabase
-          .from('processed_employee_data')
-          .select('id')
-          .eq('file_id', actualFileId)
-          .eq('employee_number', employee.employeeNumber)
-          .maybeSingle();
+        // Look for existing employee with retry
+        const lookupEmployee = await retry(async () => {
+          const { data, error } = await supabase
+            .from('processed_employee_data')
+            .select('id')
+            .eq('file_id', actualFileId)
+            .eq('employee_number', employee.employeeNumber)
+            .maybeSingle();
+            
+          if (error) {
+            console.error('Error looking up employee:', error);
+            throw error;
+          }
           
-        if (lookupError) {
-          console.error('Error looking up employee:', lookupError);
-          continue;
-        }
+          return data;
+        }, 10, 800, 10000); // Increased retries and delays
         
         let employeeId: string;
         
-        if (existingEmployee) {
+        if (lookupEmployee) {
           // Use existing employee ID
-          employeeId = existingEmployee.id;
+          employeeId = lookupEmployee.id;
           
-          // Update employee details
-          const { error: updateError } = await supabase
-            .from('processed_employee_data')
-            .update({
-              name: employee.name,
-              department: employee.department || '',
-              total_days: employee.days.length
-            })
-            .eq('id', employeeId);
-            
-          if (updateError) {
-            console.error('Error updating employee:', updateError);
-            continue;
-          }
+          // Update employee details with retry
+          await retry(async () => {
+            const { error } = await supabase
+              .from('processed_employee_data')
+              .update({
+                name: employee.name,
+                department: employee.department || '',
+                total_days: employee.days.length
+              })
+              .eq('id', employeeId);
+              
+            if (error) {
+              console.error('Error updating employee:', error);
+              throw error;
+            }
+          }, 10, 800, 10000); // Increased retries and delays
+          
+          // Add delay after updating
+          await delay(1000);
         } else {
           // Create new employee record
           let newEmployee;
           try {
             // Verify file still exists before creating employee - with retry mechanism
-            const fileStillExists = await checkFileExistsWithRetry(actualFileId, 10, 500); // Increased retries
+            const fileStillExists = await checkFileExistsWithRetry(actualFileId, 15, 800); // Increased retries
             if (!fileStillExists) {
               console.warn(`File ${actualFileId} verification failed, adding extra delay before creating employee`);
               // Add extra delay to ensure file is visible
-              await delay(2000); // Longer delay when file verification fails
+              await delay(3000); // Increased delay when file verification fails
             }
             
             // Use retry mechanism for employee creation
@@ -460,7 +518,7 @@ export const updateProcessedEmployeeData = async (
               }
               
               return data;
-            }, 6, 800, 10000); // Increased retries, initial delay, and max delay
+            }, 10, 800, 10000); // Increased retries, initial delay, and max delay
             
           } catch (err) {
             console.error('Exception creating employee:', err);
@@ -475,22 +533,13 @@ export const updateProcessedEmployeeData = async (
           employeeId = newEmployee.id;
           
           // Add a delay after creating an employee to ensure it's committed
-          await delay(800); // Increased from 500 to 800
+          await delay(1200); // Increased from 800 to 1200
         }
         
         // Verify employee record still exists before proceeding with daily records
-        const { data: empCheck, error: empCheckError } = await supabase
-          .from('processed_employee_data')
-          .select('id')
-          .eq('id', employeeId)
-          .maybeSingle();
-          
-        if (empCheckError) {
-          console.error('Error verifying employee existence:', empCheckError);
-          continue;
-        }
-        
-        if (!empCheck) {
+        // Use the retry helper for this check
+        const employeeExists = await checkEmployeeExistsWithRetry(employeeId, 10, 800);
+        if (!employeeExists) {
           console.error(`Employee ${employeeId} no longer exists, skipping daily records`);
           continue;
         }
@@ -508,7 +557,7 @@ export const updateProcessedEmployeeData = async (
           }
           
           // Wait for delete to complete
-          await delay(800); // Increased from 500 to 800
+          await delay(1200); // Increased from 800 to 1200
         } catch (err) {
           console.error('Exception deleting daily records:', err);
           // Continue to try insertions
@@ -538,19 +587,14 @@ export const updateProcessedEmployeeData = async (
         }));
         
         if (dailyRecordsToInsert.length > 0) {
-          const batchSize = 5; // Smaller batch size for better reliability
+          const batchSize = 3; // Further reduced batch size for better reliability
           for (let i = 0; i < dailyRecordsToInsert.length; i += batchSize) {
             const batch = dailyRecordsToInsert.slice(i, i + batchSize);
             
             try {
               // Final check before insert to ensure employee exists
-              const { data: empFinalCheck } = await supabase
-                .from('processed_employee_data')
-                .select('id')
-                .eq('id', employeeId)
-                .maybeSingle();
-                
-              if (!empFinalCheck) {
+              const employeeStillExists = await checkEmployeeExistsWithRetry(employeeId, 5, 500);
+              if (!employeeStillExists) {
                 console.error(`Employee ${employeeId} no longer exists before batch insert`);
                 break;
               }
@@ -565,10 +609,10 @@ export const updateProcessedEmployeeData = async (
                   console.error('Error inserting daily records batch:', insertError);
                   throw insertError;
                 }
-              }, 5, 600);
+              }, 10, 800, 10000); // Increased retries and delays
               
               // Delay between batches
-              await delay(400); // Increased from 300 to 400
+              await delay(600); // Increased from 400 to 600
             } catch (err) {
               console.error('Exception inserting daily records batch:', err);
               // Continue with next batch
@@ -636,7 +680,7 @@ export const deleteProcessedExcelData = async (fileId?: string): Promise<boolean
           .neq('employee_id', '00000000-0000-0000-0000-000000000000');
           
         // Wait for deletion to complete
-        await delay(2000); // Increased from 1000 to 2000
+        await delay(3000); // Increased from 2000 to 3000
         
         console.log('Deleting all processed employee data...');
         await supabase
@@ -645,7 +689,7 @@ export const deleteProcessedExcelData = async (fileId?: string): Promise<boolean
           .neq('file_id', '00000000-0000-0000-0000-000000000000');
           
         // Wait for deletion to complete
-        await delay(2000); // Increased from 1000 to 2000
+        await delay(3000); // Increased from 2000 to 3000
         
         console.log('Deleting all processed excel files...');
         const { error } = await supabase
@@ -664,7 +708,7 @@ export const deleteProcessedExcelData = async (fileId?: string): Promise<boolean
     }
 
     // Add a final delay after deletion to ensure all operations complete
-    await delay(1000); // New delay at the end of deletion
+    await delay(2000); // Increased from 1000 to 2000
 
     return true;
   } catch (error) {
@@ -680,7 +724,7 @@ export const setActiveProcessedFile = async (
 ): Promise<boolean> => {
   try {
     // Verify the file exists first
-    const fileExists = await checkFileExists(fileId);
+    const fileExists = await checkFileExistsWithRetry(fileId, 10, 800);
     if (!fileExists) {
       console.error('File does not exist:', fileId);
       return false;
