@@ -45,7 +45,8 @@ const ApprovedHoursPage: React.FC = () => {
   const [allEmployees, setAllEmployees] = useState<any[]>([]);
   const [expandedEmployee, setExpandedEmployee] = useState<string | null>(null);
   const [dailyRecords, setDailyRecords] = useState<any[]>([]);
-  const [filterMonth, setFilterMonth] = useState<string>("all");
+  // Change default from "all" to current month
+  const [filterMonth, setFilterMonth] = useState<string>(safeFormat(new Date(), 'yyyy-MM'));
   const [filterEmployee, setFilterEmployee] = useState<string>("all");
   const [selectedEmployees, setSelectedEmployees] = useState<string[]>([]);
   const [dailyRecordsLoading, setDailyRecordsLoading] = useState(false);
@@ -562,12 +563,6 @@ const ApprovedHoursPage: React.FC = () => {
       }
     }
   };
-
-  // Handle logout
-  const handleLogout = () => {
-    logout();
-    navigate('/hr-login', { replace: true });
-  };
   
   // Generate calendar days for the current month
   const renderCalendarDays = () => {
@@ -617,6 +612,12 @@ const ApprovedHoursPage: React.FC = () => {
     }
     
     return days;
+  };
+
+  // Handle logout
+  const handleLogout = () => {
+    logout();
+    navigate('/hr-login', { replace: true });
   };
 
   return (
@@ -796,7 +797,7 @@ const ApprovedHoursPage: React.FC = () => {
                   </h3>
                   <button 
                     onClick={() => setShowDateRangePicker(false)}
-                    className="text-gray-400 hover:text-gray-600"
+                    className="text-gray-400 hover:text-gray-500"
                   >
                     <X className="w-5 h-5" />
                   </button>
