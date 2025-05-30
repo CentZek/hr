@@ -20,7 +20,7 @@ const DeleteConfirmDialog: React.FC<DeleteConfirmDialogProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50\" onClick={onClose}>
       <div className="bg-white rounded-lg shadow-xl w-full max-w-md mx-4 overflow-hidden" onClick={e => e.stopPropagation()}>
         <div className="bg-red-600 p-4 flex items-center">
           <Trash2 className="w-6 h-6 text-white mr-2" />
