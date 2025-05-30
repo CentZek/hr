@@ -6,7 +6,7 @@ import { parseShiftTimes } from '../utils/dateTimeHelper';
 import { isDoubleTimeDay, getDoubleTimeDays, backupCurrentHolidays, refreshDoubleTimeDaysCache } from '../services/holidayService';
 
 // Helper function to create a delay
-export const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 // Cache for employee IDs to reduce database lookups
 const employeeIdCache = new Map<string, string>();
@@ -1181,93 +1181,15 @@ export const resetAllDatabaseData = async (): Promise<{
       };
     }
     
-    // ADDED: Delete all manual entry time records (Recent Manual & Employee-Submitted Records)
-    const { success: manualRecordsDeleted, count: manualRecordsCount, message: manualRecordsMessage } = 
-      await deleteManualTimeRecords();
-    
-    if (!manualRecordsDeleted) {
-      return {
-        success: false,
-        message: `Failed to delete manual time records: ${manualRecordsMessage}`
-      };
-    }
-    
     return {
       success: true,
-      message: `Reset complete. Deleted ${timeRecordsCount} non-approved time records and ${manualRecordsCount} manual entries while preserving approved records and holiday data.`
+      message: `Reset complete. Deleted ${timeRecordsCount} non-approved time records while preserving approved records and holiday data.`
     };
   } catch (error) {
     console.error('Error resetting database:', error);
     return {
       success: false,
       message: error instanceof Error ? error.message : 'Unknown error during reset'
-    };
-  }
-};
-
-// ADDED: New function to delete manual time records
-export const deleteManualTimeRecords = async (): Promise<{
-  success: boolean;
-  message: string;
-  count: number;
-}> => {
-  try {
-    // Query to get all manual entry record IDs
-    const { data: manualRecords, error: queryError } = await supabase
-      .from('time_records')
-      .select('id')
-      .eq('is_manual_entry', true);
-    
-    if (queryError) throw queryError;
-    
-    if (!manualRecords || manualRecords.length === 0) {
-      return {
-        success: true,
-        message: 'No manual records found to delete',
-        count: 0
-      };
-    }
-    
-    // Get IDs of records to delete
-    const idsToDelete = manualRecords.map(record => record.id);
-    
-    // Process deletions in chunks to avoid URL length limitations
-    const chunkSize = 50; // Smaller chunk size to avoid URL length issues
-    let deletedCount = 0;
-    
-    for (let i = 0; i < idsToDelete.length; i += chunkSize) {
-      const chunk = idsToDelete.slice(i, i + chunkSize);
-      
-      // Delete the chunk of records
-      const { error: deleteError } = await supabase
-        .from('time_records')
-        .delete()
-        .in('id', chunk);
-      
-      if (deleteError) {
-        console.error(`Error deleting manual records chunk ${i/chunkSize + 1}:`, deleteError);
-        throw deleteError;
-      }
-      
-      deletedCount += chunk.length;
-      
-      // Add a small delay between chunks to reduce server load
-      if (i + chunkSize < idsToDelete.length) {
-        await delay(300);
-      }
-    }
-    
-    return {
-      success: true,
-      message: `Deleted ${deletedCount} manual time records`,
-      count: deletedCount
-    };
-  } catch (error) {
-    console.error('Error deleting manual time records:', error);
-    return {
-      success: false,
-      message: error instanceof Error ? error.message : 'Unknown error',
-      count: 0
     };
   }
 };
