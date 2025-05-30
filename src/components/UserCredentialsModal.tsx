@@ -45,7 +45,7 @@ const UserCredentialsModal: React.FC<UserCredentialsModalProps> = ({ isOpen, onC
   
   // Refs for scrollable areas
   const credentialsListRef = useRef<HTMLDivElement>(null);
-  const modalRef = useRef<HTMLDivElement>(null);
+  const formRef = useRef<HTMLFormElement>(null);
   
   // Fetch employees and credentials on load
   useEffect(() => {
@@ -111,6 +111,9 @@ const UserCredentialsModal: React.FC<UserCredentialsModalProps> = ({ isOpen, onC
     setIsEditing(false);
     setEditingCredentialId('');
     setUsernameExists(false);
+    if (formRef.current) {
+      formRef.current.reset();
+    }
   };
 
   const handleEdit = (credential: Credential) => {
@@ -120,6 +123,11 @@ const UserCredentialsModal: React.FC<UserCredentialsModalProps> = ({ isOpen, onC
     setUsername(credential.username);
     setPassword(credential.password);
     setUsernameExists(false); // Reset when editing existing credential
+    
+    // Scroll form into view on mobile
+    if (formRef.current && window.innerWidth < 768) {
+      formRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
   };
 
   // Check if username already exists (excluding the current editing credential)
@@ -171,40 +179,54 @@ const UserCredentialsModal: React.FC<UserCredentialsModalProps> = ({ isOpen, onC
 
   // Generate unique username based on employee name
   const generateUniqueUsername = async (baseName: string, employeeNumber: string) => {
-    // First try with employee number as part of the username for uniqueness
-    let candidateUsername = `${baseName}_${employeeNumber}`.toLowerCase();
+    // Sanitize the name to create a valid username
+    const sanitizedName = baseName
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, '') // Remove all non-alphanumeric characters
+      .trim();
+      
+    // Start with a base username that includes the employee number for uniqueness
+    let baseUsername = `${sanitizedName}_${employeeNumber}`.toLowerCase();
+    let username = baseUsername;
     let counter = 1;
-    let isUnique = false;
     
-    while (!isUnique && counter < 100) {
-      // Check if this username exists - case insensitive
-      const { data, error } = await supabase
-        .from('user_credentials')
-        .select('username')
-        .ilike('username', candidateUsername)
-        .maybeSingle();
+    // Check if username already exists
+    const { data, error } = await supabase
+      .from('user_credentials')
+      .select('id')
+      .ilike('username', username)
+      .maybeSingle();
       
-      if (error) {
-        console.error('Error checking username uniqueness:', error);
-        throw new Error('Failed to verify username uniqueness');
-      }
-      
-      // If no data returned, username is unique
-      if (!data) {
-        isUnique = true;
-      } else {
-        // Try next candidate with a counter
-        candidateUsername = `${baseName}_${counter}`;
+    if (error) throw error;
+    
+    // If username exists, append numbers until we find a unique one
+    if (data) {
+      while (counter < 100) {
+        username = `${baseUsername}${counter}`;
+        
+        const { data: checkData, error: checkError } = await supabase
+          .from('user_credentials')
+          .select('id')
+          .ilike('username', username)
+          .maybeSingle();
+          
+        if (checkError) throw checkError;
+        
+        if (!checkData) {
+          // Found a unique username
+          break;
+        }
+        
         counter++;
       }
+      
+      // Safety check to prevent infinite loops
+      if (counter >= 100) {
+        throw new Error('Failed to generate a unique username after multiple attempts');
+      }
     }
     
-    // Safety check to prevent infinite loops
-    if (counter >= 100) {
-      throw new Error('Failed to generate a unique username after multiple attempts');
-    }
-    
-    return candidateUsername;
+    return username;
   };
 
   const validateForm = () => {
@@ -314,18 +336,15 @@ const UserCredentialsModal: React.FC<UserCredentialsModalProps> = ({ isOpen, onC
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 overflow-hidden">
-      <div 
-        ref={modalRef} 
-        className="bg-white rounded-lg shadow-xl w-full max-w-4xl mx-4 max-h-[90vh] flex flex-col"
-      >
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl mx-4 flex flex-col max-h-[90vh]">
         {/* Header */}
         <div className="p-4 border-b border-gray-200 flex justify-between items-center bg-green-600 text-white flex-shrink-0">
           <h3 className="text-lg font-semibold flex items-center">
             <KeyRound className="w-5 h-5 mr-2" />
             Manage Employee Credentials
           </h3>
-          <button 
+          <button
             onClick={onClose}
             className="text-white hover:text-green-200"
             aria-label="Close"
@@ -335,15 +354,15 @@ const UserCredentialsModal: React.FC<UserCredentialsModalProps> = ({ isOpen, onC
         </div>
         
         {/* Body */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-0 flex-grow overflow-hidden">
+        <div className="flex flex-col md:flex-row overflow-hidden flex-grow">
           {/* Left panel - Create/Edit form */}
-          <div className="p-6 border-r border-gray-200 overflow-y-auto">
+          <div className="w-full md:w-1/3 p-6 border-b md:border-b-0 md:border-r border-gray-200 overflow-y-auto">
             <h4 className="font-medium text-lg mb-4">
               {isEditing ? 'Edit Credentials' : 'Create New Credentials'}
             </h4>
             
             {/* Form */}
-            <form className="space-y-4" onSubmit={handleSubmit}>
+            <form className="space-y-4" onSubmit={handleSubmit} ref={formRef}>
               {/* Employee Selection */}
               <div>
                 <label htmlFor="employee" className="block text-sm font-medium text-gray-700 mb-1">
@@ -516,7 +535,7 @@ const UserCredentialsModal: React.FC<UserCredentialsModalProps> = ({ isOpen, onC
           </div>
           
           {/* Right panel - Credentials list */}
-          <div className="md:col-span-2 border-l border-gray-200 flex flex-col h-full">
+          <div className="w-full md:w-2/3 flex flex-col">
             {/* Search */}
             <div className="p-4 border-b border-gray-200 flex-shrink-0">
               <div className="relative">
@@ -542,7 +561,7 @@ const UserCredentialsModal: React.FC<UserCredentialsModalProps> = ({ isOpen, onC
               </div>
             </div>
             
-            {/* Credentials list - with scroll */}
+            {/* Credentials list - with fixed height and scroll */}
             <div 
               ref={credentialsListRef}
               className="flex-1 overflow-y-auto"
