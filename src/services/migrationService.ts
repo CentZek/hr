@@ -199,6 +199,11 @@ export const runAllMigrations = async () => {
       };
     }
     
+    // Prevent multiple clicks
+    if (isMigrating) {
+      return;
+    }
+    
     // Initialize user credentials for all existing employees
     const credentialsResult = await initializeUserCredentials();
     
@@ -229,5 +234,105 @@ export const checkSupabaseConnection = async () => {
   } catch (err) {
     console.error('Supabase connection check failed:', err);
     return { connected: false, error: err instanceof Error ? err.message : 'Unknown error' };
+  }
+};
+
+// Global variable to track migration status
+let isMigrating = false;
+
+// Update the migration status
+export const setMigrationStatus = (status: boolean) => {
+  isMigrating = status;
+};
+
+// Get the current migration status
+export const getMigrationStatus = () => {
+  return isMigrating;
+};
+
+// Function to create or update user credentials for a new employee
+export const createUserCredentialsForNewEmployee = async (
+  employeeId: string, 
+  employeeName: string,
+  employeeNumber: string
+): Promise<boolean> => {
+  try {
+    // Check if credentials already exist
+    const { data: existingCreds, error: checkError } = await supabase
+      .from('user_credentials')
+      .select('id')
+      .eq('employee_id', employeeId)
+      .maybeSingle();
+      
+    if (checkError) throw checkError;
+    
+    // If credentials already exist, no need to create new ones
+    if (existingCreds) {
+      return true;
+    }
+    
+    // Generate username from employee name
+    // Sanitize the name to create a valid username
+    const sanitizedName = employeeName
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, '') // Remove all non-alphanumeric characters
+      .trim();
+      
+    let username = `${sanitizedName}_${employeeNumber}`;
+    
+    // Check if username already exists
+    const { data: usernameCheck, error: usernameError } = await supabase
+      .from('user_credentials')
+      .select('id')
+      .ilike('username', username)
+      .maybeSingle();
+      
+    if (usernameError) throw usernameError;
+    
+    // If username exists, append numbers until we find a unique one
+    if (usernameCheck) {
+      let counter = 1;
+      let isUnique = false;
+      
+      while (!isUnique && counter < 100) {
+        const candidateUsername = `${username}${counter}`;
+        
+        const { data: checkCandidate, error: candidateError } = await supabase
+          .from('user_credentials')
+          .select('id')
+          .ilike('username', candidateUsername)
+          .maybeSingle();
+          
+        if (candidateError) throw candidateError;
+        
+        if (!checkCandidate) {
+          username = candidateUsername;
+          isUnique = true;
+        }
+        
+        counter++;
+      }
+      
+      if (!isUnique) {
+        throw new Error(`Could not generate unique username for employee ${employeeId}`);
+      }
+    }
+    
+    // Create credentials
+    const { error: insertError } = await supabase
+      .from('user_credentials')
+      .insert([{
+        employee_id: employeeId,
+        username: username,
+        password: employeeNumber // Use employee number as default password
+      }]);
+      
+    if (insertError) throw insertError;
+    
+    console.log(`Successfully created credentials for new employee ${employeeName} (${employeeNumber}) with username: ${username}`);
+    return true;
+  } catch (error) {
+    console.error('Error creating user credentials for new employee:', error);
+    return false;
   }
 };

@@ -54,8 +54,8 @@ export const fetchApprovedHours = async (dateFilter: string = ''): Promise<{
           if (year && month) {
             const monthDate = new Date(parseInt(year), parseInt(month) - 1, 1);
             if (isValid(monthDate)) {
-              const startDate = startOfMonth(monthDate);
-              const endDate = endOfMonth(monthDate);
+              const startDate = format(startOfMonth(monthDate), 'yyyy-MM-dd');
+              const endDate = format(endOfMonth(monthDate), 'yyyy-MM-dd');
               
               if (isValid(startDate) && isValid(endDate)) {
                 const startStr = format(startDate, 'yyyy-MM-dd');
@@ -286,6 +286,7 @@ export const fetchApprovedHours = async (dateFilter: string = ''): Promise<{
     const result = Array.from(employeeSummary.values()).map(emp => {
       // Calculate double-time hours
       let doubleTimeHours = 0;
+      let regularHours = 0;
       const workingDates = Array.from(emp.working_week_dates);
       
       workingDates.forEach(date => {
@@ -717,7 +718,7 @@ const getEmployeeId = async (employeeNumber: string): Promise<string> => {
     // Check if employee exists
     const { data, error } = await supabase
       .from('employees')
-      .select('id')
+      .select('id, name')
       .eq('employee_number', employeeNumber)
       .maybeSingle();
     
@@ -733,12 +734,15 @@ const getEmployeeId = async (employeeNumber: string): Promise<string> => {
     const { data: newEmployee, error: createError } = await supabase
       .from('employees')
       .insert([
-        { employee_number: employeeNumber, name: 'Unknown Employee' }
+        { employee_number: employeeNumber, name: `Employee #${employeeNumber}` }
       ])
       .select('id')
       .single();
     
     if (createError) throw createError;
+    
+    // Create user credentials for the new employee
+    await createUserCredentials(newEmployee.id, employeeNumber);
     
     // Store in cache
     employeeIdCache.set(employeeNumber, newEmployee.id);
@@ -746,6 +750,106 @@ const getEmployeeId = async (employeeNumber: string): Promise<string> => {
   } catch (error) {
     console.error(`Error getting employee ID for ${employeeNumber}:`, error);
     throw error;
+  }
+};
+
+// Helper function to create user credentials for a new employee
+const createUserCredentials = async (employeeId: string, employeeNumber: string): Promise<void> => {
+  try {
+    // Get employee details for proper username
+    const { data: employeeDetails, error: detailsError } = await supabase
+      .from('employees')
+      .select('name, employee_number')
+      .eq('id', employeeId)
+      .single();
+      
+    if (detailsError) throw detailsError;
+    
+    if (!employeeDetails) {
+      console.error('Could not find employee details for ID:', employeeId);
+      return;
+    }
+    
+    // Generate username based on employee name and number
+    let username;
+    if (employeeDetails.name && employeeDetails.name !== `Employee #${employeeNumber}`) {
+      // If we have a proper name, create a username from it
+      const sanitizedName = employeeDetails.name
+        .toLowerCase()
+        .replace(/[^a-z0-9]/g, '') // Remove special characters
+        .trim();
+        
+      username = `${sanitizedName}_${employeeNumber}`;
+    } else {
+      // Default username based on employee number
+      username = `employee_${employeeNumber}`;
+    }
+    
+    // Check if username already exists
+    const { data: existingUsername, error: usernameError } = await supabase
+      .from('user_credentials')
+      .select('id')
+      .ilike('username', username)
+      .maybeSingle();
+      
+    if (usernameError) throw usernameError;
+    
+    // If username exists, append a number
+    if (existingUsername) {
+      let counter = 1;
+      let newUsername;
+      
+      // Try up to 10 different usernames
+      while (counter <= 10) {
+        newUsername = `${username}${counter}`;
+        
+        const { data: checkNewUsername, error: checkError } = await supabase
+          .from('user_credentials')
+          .select('id')
+          .ilike('username', newUsername)
+          .maybeSingle();
+          
+        if (checkError) throw checkError;
+        
+        if (!checkNewUsername) {
+          username = newUsername;
+          break;
+        }
+        
+        counter++;
+      }
+    }
+    
+    // Check if credentials already exist for this employee
+    const { data: existingCreds, error: credsError } = await supabase
+      .from('user_credentials')
+      .select('id')
+      .eq('employee_id', employeeId)
+      .maybeSingle();
+      
+    if (credsError) throw credsError;
+    
+    if (existingCreds) {
+      // Credentials already exist for this employee, skip creation
+      console.log(`Credentials already exist for employee ID: ${employeeId}`);
+      return;
+    }
+    
+    // Create user credentials
+    const { error: insertError } = await supabase
+      .from('user_credentials')
+      .insert([{
+        employee_id: employeeId,
+        username: username,
+        password: employeeNumber // Use employee number as default password
+      }]);
+      
+    if (insertError) throw insertError;
+    
+    console.log(`Created user credentials for employee ${employeeNumber} with username: ${username}`);
+  } catch (error) {
+    console.error('Error creating user credentials:', error);
+    // Don't throw to prevent affecting the main operation flow
   }
 };
 
@@ -1029,6 +1133,9 @@ export const resetAllDatabaseData = async (): Promise<{
         message: `Failed to delete time records: ${timeRecordsMessage}`
       };
     }
+    
+    // Wait for deletion to complete
+    await delay(1000);
     
     // Delete processed_excel_files (this will cascade to processed_employee_data and processed_daily_records)
     const { error: filesError } = await supabase

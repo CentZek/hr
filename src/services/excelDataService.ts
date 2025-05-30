@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabase';
 import { EmployeeRecord, DailyRecord } from '../types';
+import { createUserCredentialsForNewEmployee } from './migrationService';
 
 /**
  * Service for handling processed Excel data storage in Supabase
@@ -162,6 +163,57 @@ export const saveProcessedExcelFile = async (
     console.time('Process employee records');
     const employeeDataPromises = employeeRecords.map(async (employee) => {
       try {
+        // Create or update the employee record in the employees table
+        // This way new employees from Excel get added to the system
+        const { data: empInDatabase, error: empLookupError } = await supabase
+          .from('employees')
+          .select('id, name')
+          .eq('employee_number', employee.employeeNumber)
+          .maybeSingle();
+          
+        let systemEmployeeId: string;
+        let isNewEmployee = false;
+        
+        if (empLookupError) {
+          console.error('Error looking up employee in database:', empLookupError);
+        }
+        
+        if (!empInDatabase) {
+          // Create new employee in the system
+          const { data: newEmpInSystem, error: createEmpError } = await supabase
+            .from('employees')
+            .insert({
+              employee_number: employee.employeeNumber,
+              name: employee.name
+            })
+            .select('id')
+            .single();
+            
+          if (createEmpError) {
+            console.error('Error creating employee in system:', createEmpError);
+          } else {
+            systemEmployeeId = newEmpInSystem.id;
+            isNewEmployee = true;
+            
+            // Create user credentials for the new employee
+            await createUserCredentialsForNewEmployee(
+              systemEmployeeId,
+              employee.name,
+              employee.employeeNumber
+            );
+          }
+        } else {
+          systemEmployeeId = empInDatabase.id;
+          
+          // Update employee name if it's different
+          if (empInDatabase.name !== employee.name) {
+            await supabase
+              .from('employees')
+              .update({ name: employee.name })
+              .eq('id', systemEmployeeId);
+          }
+        }
+        
         // Create employee record
         const { data: empData, error: empError } = await supabase
           .from('processed_employee_data')
@@ -256,7 +308,11 @@ export const saveProcessedExcelFile = async (
           await Promise.all(dailyRecordsPromises);
         }
         
-        return employeeId;
+        return {
+          id: employeeId,
+          isNewEmployee,
+          systemEmployeeId: systemEmployeeId || null
+        };
       } catch (error) {
         console.error('Error processing employee:', error);
         return null;
@@ -265,16 +321,22 @@ export const saveProcessedExcelFile = async (
     
     // Process employees in parallel with controlled concurrency
     const batchSize = 5; // Process 5 employees at a time
-    const employeeIds: string[] = [];
+    const employeeResults: any[] = [];
     
     for (let i = 0; i < employeeDataPromises.length; i += batchSize) {
       const batch = employeeDataPromises.slice(i, i + batchSize);
       const results = await Promise.all(batch);
-      employeeIds.push(...results.filter(id => id !== null) as string[]);
+      employeeResults.push(...results.filter(r => r !== null));
+    }
+    
+    // Count new employees that were added to the system
+    const newEmployeesCount = employeeResults.filter(r => r.isNewEmployee).length;
+    if (newEmployeesCount > 0) {
+      console.log(`Added ${newEmployeesCount} new employees to the system with login credentials`);
     }
     
     console.timeEnd('Process employee records');
-    console.log(`Successfully created ${employeeIds.length} employee records with their daily data`);
+    console.log(`Successfully created ${employeeResults.length} employee records with their daily data`);
 
     // Return the file ID for reference
     return fileId;
@@ -478,6 +540,53 @@ export const updateProcessedEmployeeData = async (
       // Process batch in parallel
       await Promise.all(batch.map(async (employee) => {
         try {
+          // First, check if the employee exists in the system employees table
+          // and create them if not
+          const { data: systemEmployee, error: sysLookupError } = await supabase
+            .from('employees')
+            .select('id, name')
+            .eq('employee_number', employee.employeeNumber)
+            .maybeSingle();
+            
+          let systemEmployeeId: string | null = null;
+          
+          if (sysLookupError) {
+            console.error('Error looking up employee in system:', sysLookupError);
+          } else if (!systemEmployee) {
+            // Create the employee in the system
+            const { data: newSysEmp, error: createSysError } = await supabase
+              .from('employees')
+              .insert({
+                employee_number: employee.employeeNumber,
+                name: employee.name
+              })
+              .select('id')
+              .single();
+              
+            if (createSysError) {
+              console.error('Error creating employee in system:', createSysError);
+            } else {
+              systemEmployeeId = newSysEmp.id;
+              
+              // Create credentials for the new employee
+              await createUserCredentialsForNewEmployee(
+                systemEmployeeId,
+                employee.name,
+                employee.employeeNumber
+              );
+            }
+          } else {
+            systemEmployeeId = systemEmployee.id;
+            
+            // Update employee name if different
+            if (systemEmployee.name !== employee.name) {
+              await supabase
+                .from('employees')
+                .update({ name: employee.name })
+                .eq('id', systemEmployeeId);
+            }
+          }
+          
           // Look for existing employee
           const { data: existingEmp, error: lookupError } = await supabase
             .from('processed_employee_data')
