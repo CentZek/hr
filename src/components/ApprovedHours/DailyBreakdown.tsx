@@ -76,7 +76,7 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records, dou
     return (
       <div className="bg-gray-50 p-4 text-center">
         <div className="animate-spin w-5 h-5 border-2 border-purple-500 border-t-transparent rounded-full mx-auto mb-2"></div>
-        <p className="text-xs text-gray-500">Loading daily records...</p>
+        <p className="text-base text-gray-600 font-medium">Loading daily records...</p>
       </div>
     );
   }
@@ -84,7 +84,7 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records, dou
   if (records.length === 0) {
     return (
       <div className="bg-gray-50 p-4 text-center">
-        <p className="text-sm text-gray-500">No detailed records found for this employee.</p>
+        <p className="text-base text-gray-600 font-medium">No detailed records found for this employee.</p>
       </div>
     );
   }
@@ -93,7 +93,7 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records, dou
     <div className="bg-gray-50 px-4 py-2">
       <div className="bg-white rounded-md border border-gray-200 divide-y divide-gray-100">
         {/* Header */}
-        <div className="hidden sm:grid sm:grid-cols-8 gap-2 p-3 text-xs font-medium text-gray-600 bg-gray-50 rounded-t-md">
+        <div className="hidden sm:grid sm:grid-cols-8 gap-2 p-3 text-sm font-semibold text-gray-600 bg-gray-50 rounded-t-md">
           <div className="col-span-2">Date</div>
           <div>Check In</div>
           <div>Check Out</div>
@@ -104,7 +104,7 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records, dou
         </div>
 
         {/* Mobile Header */}
-        <div className="sm:hidden p-3 text-xs font-medium text-gray-600 bg-gray-50 rounded-t-md text-center">
+        <div className="sm:hidden p-3 text-sm font-semibold text-gray-600 bg-gray-50 rounded-t-md text-center">
           Daily Records
         </div>
 
@@ -123,27 +123,27 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records, dou
               return (
                 <div key={date} className="p-3 border-b border-gray-100 last:border-0">
                   <div className="flex justify-between items-start mb-2">
-                    <div className="font-medium text-gray-800">
+                    <div className="font-semibold text-gray-800 text-base">
                       {format(new Date(date), 'EEE, MMM d, yyyy')}
                     </div>
                     {isDoubleTime && (
-                      <span className="inline-flex items-center justify-center px-2 py-0.5 bg-amber-100 text-amber-800 rounded-full text-xs font-medium">
+                      <span className="inline-flex items-center justify-center px-2 py-0.5 bg-amber-100 text-amber-800 rounded-full text-sm font-semibold">
                         <span className="font-bold mr-1">2×</span> Double-Time
                       </span>
                     )}
                   </div>
-                  <div className="grid grid-cols-2 gap-3 text-sm">
+                  <div className="grid grid-cols-2 gap-3 text-base">
                     <div>
-                      <span className="text-xs text-gray-500">Status:</span>
+                      <span className="text-sm text-gray-600 font-medium">Status:</span>
                       <div className="mt-1">
-                        <span className="px-2 py-0.5 text-xs font-medium rounded-full bg-red-100 text-red-800">
+                        <span className="px-2 py-0.5 text-sm font-semibold rounded-full bg-red-100 text-red-800">
                           OFF-DAY
                         </span>
                       </div>
                     </div>
                     <div>
-                      <span className="text-xs text-gray-500">Hours:</span>
-                      <div className="font-medium text-gray-800 mt-1">
+                      <span className="text-sm text-gray-600 font-medium">Hours:</span>
+                      <div className="font-semibold text-gray-800 mt-1">
                         0.00
                       </div>
                     </div>
@@ -154,38 +154,38 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records, dou
             
             // Desktop view
             return (
-              <div key={date} className={`grid grid-cols-8 gap-2 p-3 text-sm ${isDoubleTime ? 'bg-amber-50' : ''}`}>
+              <div key={date} className={`grid grid-cols-8 gap-2 p-3 text-base font-medium ${isDoubleTime ? 'bg-amber-50' : ''}`}>
                 <div className="col-span-2">
-                  <div className="font-medium text-gray-800 flex items-center">
+                  <div className="font-semibold text-gray-800 flex items-center">
                     {format(new Date(date), 'EEE, MMM d, yyyy')}
                     {isDoubleTime && (
-                      <span className="ml-2 inline-flex items-center justify-center px-2 py-0.5 bg-amber-100 text-amber-800 rounded-full text-xs">
+                      <span className="ml-2 inline-flex items-center justify-center px-2 py-0.5 bg-amber-100 text-amber-800 rounded-full text-sm font-semibold">
                         <span className="font-bold mr-0.5">2×</span> Double-Time
                       </span>
                     )}
                   </div>
                 </div>
                 <div>
-                  <span className="text-red-500 font-medium">OFF-DAY</span>
+                  <span className="text-red-500 font-semibold">OFF-DAY</span>
                 </div>
                 <div>
-                  <span className="text-red-500 font-medium">OFF-DAY</span>
+                  <span className="text-red-500 font-semibold">OFF-DAY</span>
                 </div>
                 <div className="text-gray-700">
-                  <span className="px-2 py-1 text-xs font-medium rounded-full bg-red-100 text-red-800">
+                  <span className="px-2 py-1 text-sm font-semibold rounded-full bg-red-100 text-red-800">
                     OFF-DAY
                   </span>
                 </div>
-                <div className="font-medium text-gray-800">
+                <div className="font-semibold text-gray-800">
                   0.00
                 </div>
-                <div className="font-medium text-gray-800">
+                <div className="font-semibold text-gray-800">
                   0.00
                 </div>
                 <div>
-                  <span className="flex items-center text-green-600">
+                  <span className="flex items-center text-green-600 font-semibold">
                     <CheckCircle className="w-3 h-3 mr-1" />
-                    <span className="text-xs">Approved</span>
+                    <span className="text-sm">Approved</span>
                   </span>
                 </div>
               </div>
@@ -304,41 +304,41 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records, dou
               return (
                 <div key={shiftKey} className={`p-3 border-b border-gray-100 last:border-0 ${isDoubleTime ? 'bg-amber-50' : ''}`}>
                   <div className="flex justify-between items-start mb-2">
-                    <div className="font-medium text-gray-800">
+                    <div className="font-semibold text-gray-800 text-base">
                       {format(new Date(date), 'EEE, MMM d, yyyy')}
                     </div>
                     {isDoubleTime && (
-                      <span className="inline-flex items-center justify-center px-2 py-0.5 bg-amber-100 text-amber-800 rounded-full text-xs font-medium">
+                      <span className="inline-flex items-center justify-center px-2 py-0.5 bg-amber-100 text-amber-800 rounded-full text-sm font-semibold">
                         <span className="font-bold mr-1">2×</span> Double-Time
                       </span>
                     )}
                   </div>
                   
-                  <div className="grid grid-cols-2 gap-3 mb-2">
+                  <div className="grid grid-cols-2 gap-3 mb-2 text-base">
                     <div>
-                      <span className="text-xs text-gray-500">Check In</span>
-                      <div className={`text-sm mt-1 ${checkIn?.is_late ? 'text-amber-600' : 'text-gray-700'}`}>
+                      <span className="text-sm text-gray-600 font-semibold">Check In</span>
+                      <div className={`text-base mt-1 ${checkIn?.is_late ? 'text-amber-600 font-semibold' : 'text-gray-700 font-medium'}`}>
                         {checkIn ? (
                           <>
                             {checkIn.is_late && <AlertTriangle className="inline w-3 h-3 mr-1 text-amber-500" />}
                             {checkInDisplay}
                           </>
                         ) : (
-                          <span className="text-gray-400">Missing</span>
+                          <span className="text-gray-400 font-medium">Missing</span>
                         )}
                       </div>
                     </div>
                     
                     <div>
-                      <span className="text-xs text-gray-500">Check Out</span>
-                      <div className={`text-sm mt-1 ${checkOut?.early_leave ? 'text-amber-600' : 'text-gray-700'}`}>
+                      <span className="text-sm text-gray-600 font-semibold">Check Out</span>
+                      <div className={`text-base mt-1 ${checkOut?.early_leave ? 'text-amber-600 font-semibold' : 'text-gray-700 font-medium'}`}>
                         {checkOut ? (
                           <>
                             {checkOut.early_leave && <AlertTriangle className="inline w-3 h-3 mr-1 text-amber-500" />}
                             {checkOutDisplay}
                           </>
                         ) : (
-                          <span className="text-gray-400">Missing</span>
+                          <span className="text-gray-400 font-medium">Missing</span>
                         )}
                       </div>
                     </div>
@@ -346,7 +346,7 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records, dou
 
                   <div className="flex flex-wrap gap-2">
                     {shiftType && (
-                      <span className={`px-2 py-1 text-xs font-medium rounded-full ${
+                      <span className={`px-2 py-1 text-sm font-semibold rounded-full ${
                         shiftType === 'morning' ? 'bg-blue-100 text-blue-800' : 
                         shiftType === 'evening' ? 'bg-orange-100 text-orange-800' : 
                         shiftType === 'night' ? 'bg-purple-100 text-purple-800' :
@@ -359,26 +359,26 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records, dou
                       </span>
                     )}
                     
-                    <span className="font-medium text-gray-800 flex items-center px-2 py-0.5 bg-gray-100 rounded-full text-xs">
+                    <span className="font-semibold text-gray-800 flex items-center px-2 py-1 bg-gray-100 rounded-full text-sm">
                       {hours.toFixed(2)} hrs
                       {isSignificantOvertime && 
                         <Clock className="w-3 h-3 ml-1 text-blue-500" title="Overtime hours" />
                       }
                       {hasPenalty && (
-                        <span className="ml-1 text-xs text-red-600">
+                        <span className="ml-1 text-sm text-red-600 font-semibold">
                           (-{(checkIn.deduction_minutes / 60).toFixed(2)}h)
                         </span>
                       )}
                     </span>
                     
                     {isDoubleTime && (
-                      <span className="font-medium text-amber-800 flex items-center px-2 py-0.5 bg-amber-100 rounded-full text-xs">
+                      <span className="font-semibold text-amber-800 flex items-center px-2 py-1 bg-amber-100 rounded-full text-sm">
                         <span className="font-bold mr-1">2×</span>
                         {doubleTimeHours.toFixed(2)} hrs
                       </span>
                     )}
                     
-                    <span className="flex items-center text-green-600 px-2 py-0.5 bg-green-50 rounded-full text-xs">
+                    <span className="flex items-center text-green-600 px-2 py-1 bg-green-50 rounded-full text-sm font-semibold">
                       <CheckCircle className="w-3 h-3 mr-1" />
                       <span>Approved</span>
                     </span>
@@ -389,12 +389,12 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records, dou
             
             // Desktop view
             return (
-              <div key={shiftKey} className={`grid grid-cols-8 gap-2 p-3 text-sm ${isDoubleTime ? 'bg-amber-50' : ''}`}>
+              <div key={shiftKey} className={`grid grid-cols-8 gap-2 p-3 text-base ${isDoubleTime ? 'bg-amber-50' : ''}`}>
                 <div className="col-span-2">
-                  <div className="font-medium text-gray-800 flex items-center">
+                  <div className="font-semibold text-gray-800 flex items-center">
                     {format(new Date(date), 'EEE, MMM d, yyyy')}
                     {isDoubleTime && (
-                      <span className="ml-2 inline-flex items-center justify-center px-2 py-0.5 bg-amber-100 text-amber-800 rounded-full text-xs">
+                      <span className="ml-2 inline-flex items-center justify-center px-2 py-0.5 bg-amber-100 text-amber-800 rounded-full text-sm font-semibold">
                         <span className="font-bold mr-0.5">2×</span> Double-Time
                       </span>
                     )}
@@ -402,27 +402,27 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records, dou
                 </div>
                 <div>
                   {checkIn ? (
-                    <div className={`flex items-center ${checkIn.is_late ? 'text-amber-600' : 'text-gray-700'}`}>
+                    <div className={`flex items-center ${checkIn.is_late ? 'text-amber-600 font-semibold' : 'text-gray-700 font-medium'}`}>
                       {checkIn.is_late && <AlertTriangle className="w-4 h-4 mr-1 text-amber-500" />}
                       {checkInDisplay}
                     </div>
                   ) : (
-                    <span className="text-gray-400">Missing</span>
+                    <span className="text-gray-400 font-medium">Missing</span>
                   )}
                 </div>
                 <div>
                   {checkOut ? (
-                    <div className={`flex items-center ${checkOut.early_leave ? 'text-amber-600' : 'text-gray-700'}`}>
+                    <div className={`flex items-center ${checkOut.early_leave ? 'text-amber-600 font-semibold' : 'text-gray-700 font-medium'}`}>
                       {checkOut.early_leave && <AlertTriangle className="w-4 h-4 mr-1 text-amber-500" />}
                       {checkOutDisplay}
                     </div>
                   ) : (
-                    <span className="text-gray-400">Missing</span>
+                    <span className="text-gray-400 font-medium">Missing</span>
                   )}
                 </div>
                 <div className="text-gray-700">
                   {shiftType && (
-                    <span className={`px-2 py-1 text-xs font-medium rounded-full ${
+                    <span className={`px-2 py-1 text-sm font-semibold rounded-full ${
                       shiftType === 'morning' ? 'bg-blue-100 text-blue-800' : 
                       shiftType === 'evening' ? 'bg-orange-100 text-orange-800' : 
                       shiftType === 'night' ? 'bg-purple-100 text-purple-800' :
@@ -435,31 +435,31 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records, dou
                     </span>
                   )}
                 </div>
-                <div className="font-medium flex items-center">
+                <div className="font-semibold flex items-center">
                   {hours.toFixed(2)}
                   {isSignificantOvertime && 
                     <Clock className="w-4 h-4 ml-1 text-blue-500" title="Overtime hours" />
                   }
                   {hasPenalty && (
-                    <span className="ml-1 text-xs text-red-600">
+                    <span className="ml-1 text-sm text-red-600 font-semibold">
                       (-{(checkIn.deduction_minutes / 60).toFixed(2)}h)
                     </span>
                   )}
                 </div>
-                <div className="font-medium flex items-center">
+                <div className="font-semibold flex items-center">
                   {isDoubleTime ? (
-                    <span className="inline-flex items-center text-amber-800">
+                    <span className="inline-flex items-center text-amber-800 font-semibold">
                       <span className="font-bold mr-1">2×</span>
                       {doubleTimeHours.toFixed(2)}
                     </span>
                   ) : (
-                    <span className="text-gray-400">—</span>
+                    <span className="text-gray-400 font-medium">—</span>
                   )}
                 </div>
                 <div>
-                  <span className="flex items-center text-green-600">
+                  <span className="flex items-center text-green-600 font-semibold">
                     <CheckCircle className="w-3 h-3 mr-1" />
-                    <span className="text-xs">Approved</span>
+                    <span className="text-sm">Approved</span>
                   </span>
                 </div>
               </div>

@@ -596,7 +596,7 @@ const ApprovedHoursPage: React.FC = () => {
         <div
           key={dateStr}
           onClick={() => handleDateSelect(dateStr)}
-          className={`h-8 w-8 flex items-center justify-center rounded-full cursor-pointer text-sm
+          className={`h-8 w-8 flex items-center justify-center rounded-full cursor-pointer text-base font-medium
             ${isStartDate || isEndDate ? 'bg-purple-600 text-white' : ''}
             ${isInRange && !isStartDate && !isEndDate ? 'bg-purple-100 text-purple-800' : ''}
             ${!isStartDate && !isEndDate && !isInRange ? 'hover:bg-gray-100' : ''}
@@ -623,21 +623,21 @@ const ApprovedHoursPage: React.FC = () => {
             <div className="flex items-center justify-between flex-wrap gap-2">
               <div className="flex items-center">
                 <Clock className="w-5 h-5 text-purple-600 mr-2" />
-                <h1 className="text-lg font-medium text-gray-800">
+                <h1 className="text-xl font-semibold text-gray-800">
                   Approved Hours
                 </h1>
               </div>
               <div className="flex items-center space-x-4">
                 <button
                   onClick={() => navigate('/')}
-                  className="flex items-center text-gray-600 hover:text-gray-800"
+                  className="flex items-center text-gray-600 hover:text-gray-800 font-medium text-base"
                 >
                   <Home className="w-4 h-4 mr-1" />
                   Back to Home
                 </button>
                 <button
                   onClick={() => navigate('/hr')}
-                  className="flex items-center text-purple-600 hover:text-purple-800"
+                  className="flex items-center text-purple-600 hover:text-purple-800 font-medium text-base"
                 >
                   <ArrowLeft className="w-4 h-4 mr-1" />
                   Back to Face ID Data
@@ -655,28 +655,28 @@ const ApprovedHoursPage: React.FC = () => {
                 <div className="flex items-center gap-2 px-3 py-2 bg-purple-50 rounded-md">
                   <Users className="w-5 h-5 text-purple-600" />
                   <div>
-                    <div className="text-xs text-purple-600 font-medium">Employees</div>
+                    <div className="text-sm text-purple-600 font-semibold">Employees</div>
                     <div className="text-lg font-bold text-purple-900">{totalEmployees}</div>
                   </div>
                 </div>
                 <div className="flex items-center gap-2 px-3 py-2 bg-blue-50 rounded-md">
                   <Clock className="w-5 h-5 text-blue-600" />
                   <div>
-                    <div className="text-xs text-blue-600 font-medium">Regular Hours</div>
+                    <div className="text-sm text-blue-600 font-semibold">Regular Hours</div>
                     <div className="text-lg font-bold text-blue-900">{totalHours.toFixed(2)}</div>
                   </div>
                 </div>
                 <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 rounded-md">
                   <Calendar2 className="w-5 h-5 text-amber-600" />
                   <div>
-                    <div className="text-xs text-amber-600 font-medium">Double-Time Hours</div>
+                    <div className="text-sm text-amber-600 font-semibold">Double-Time Hours</div>
                     <div className="text-lg font-bold text-amber-900">{totalDoubleTimeHours.toFixed(2)}</div>
                   </div>
                 </div>
                 <div className="flex items-center gap-2 px-3 py-2 bg-green-50 rounded-md">
                   <Clock className="w-5 h-5 text-green-600" />
                   <div>
-                    <div className="text-xs text-green-600 font-medium">Total Hours</div>
+                    <div className="text-sm text-green-600 font-semibold">Total Hours</div>
                     <div className="text-lg font-bold text-green-900">{(totalHours + totalDoubleTimeHours).toFixed(2)}</div>
                   </div>
                 </div>
@@ -698,7 +698,7 @@ const ApprovedHoursPage: React.FC = () => {
                           setShowDateRangePicker(false);
                         }
                       }}
-                      className="border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                      className="border border-gray-300 rounded px-3 py-1.5 text-base font-medium focus:outline-none focus:ring-2 focus:ring-purple-500"
                     >
                       {monthOptions.map((option) => (
                         <option key={option.value} value={option.value}>
@@ -714,7 +714,7 @@ const ApprovedHoursPage: React.FC = () => {
                   <div className="flex items-center gap-2">
                     <button 
                       onClick={handleDateRangePickerToggle}
-                      className="flex items-center gap-1 px-3 py-1 border border-gray-300 rounded text-sm"
+                      className="flex items-center gap-1 px-3 py-1.5 border border-gray-300 rounded text-base font-medium"
                     >
                       <span>{startDate && parseISO(startDate) && isValid(parseISO(startDate)) ? safeFormat(parseISO(startDate), 'MMM d, yyyy') : 'Start date'}</span>
                       <span>to</span>
@@ -735,11 +735,11 @@ const ApprovedHoursPage: React.FC = () => {
                 
                 <button
                   onClick={handleCalendarToggle}
-                  className={`flex items-center gap-1 px-3 py-1 ${
+                  className={`flex items-center gap-1 px-3 py-1.5 ${
                     showCalendar 
                       ? 'bg-amber-600 hover:bg-amber-700 text-white' 
                       : 'bg-amber-100 text-amber-800 hover:bg-amber-200'
-                  } text-sm rounded`}
+                  } text-base font-semibold rounded`}
                 >
                   <Calendar className="w-4 h-4" />
                   {showCalendar ? 'Hide Calendar' : 'Manage Holidays'}
@@ -747,7 +747,7 @@ const ApprovedHoursPage: React.FC = () => {
                 
                 <button
                   onClick={handleExport}
-                  className="flex items-center gap-1 px-3 py-1 bg-purple-600 text-white text-sm rounded hover:bg-purple-700"
+                  className="flex items-center gap-1 px-3 py-1.5 bg-purple-600 text-white text-base font-semibold rounded hover:bg-purple-700"
                 >
                   <Download className="w-4 h-4" />
                   Export
@@ -756,7 +756,7 @@ const ApprovedHoursPage: React.FC = () => {
                 {/* Delete Button */}
                 <button
                   onClick={() => setIsDeleteDialogOpen(true)}
-                  className="flex items-center gap-1 px-3 py-1 bg-red-600 text-white text-sm rounded hover:bg-red-700"
+                  className="flex items-center gap-1 px-3 py-1.5 bg-red-600 text-white text-base font-semibold rounded hover:bg-red-700"
                   disabled={isLoading || totalEmployees === 0}
                 >
                   <Trash2 className="w-4 h-4" />
@@ -769,7 +769,7 @@ const ApprovedHoursPage: React.FC = () => {
             {showDateRangePicker && (
               <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-4">
                 <div className="flex justify-between items-center mb-4">
-                  <h3 className="text-sm font-medium text-gray-700 flex items-center">
+                  <h3 className="text-base font-semibold text-gray-700 flex items-center">
                     <Calendar className="w-4 h-4 mr-2 text-purple-500" />
                     Select Date Range
                   </h3>
@@ -800,12 +800,12 @@ const ApprovedHoursPage: React.FC = () => {
             {isLoading ? (
               <div className="py-20 text-center">
                 <div className="animate-spin w-8 h-8 border-4 border-purple-500 border-t-transparent rounded-full mx-auto mb-4"></div>
-                <p className="text-gray-500">Loading approved hours data...</p>
+                <p className="text-base text-gray-600 font-medium">Loading approved hours data...</p>
               </div>
             ) : (
               <div className="border border-gray-200 rounded-md overflow-hidden">
                 {/* Table Header */}
-                <div className="grid grid-cols-6 gap-2 bg-gray-50 p-4 text-sm font-medium text-gray-600">
+                <div className="grid grid-cols-6 gap-2 bg-gray-50 p-4 text-base font-semibold text-gray-600">
                   <div className="col-span-2">Employee</div>
                   <div>Total Days</div>
                   <div>Total Hours</div>
@@ -817,15 +817,15 @@ const ApprovedHoursPage: React.FC = () => {
                 {employees.length === 0 ? (
                   <div className="p-8 text-center">
                     <Calendar className="w-10 h-10 mx-auto text-gray-300 mb-2" />
-                    <h3 className="text-gray-500 font-medium">No approved hours found</h3>
-                    <p className="text-sm text-gray-400 mt-1">
+                    <h3 className="text-gray-600 font-semibold text-lg">No approved hours found</h3>
+                    <p className="text-base text-gray-500 mt-1 font-medium">
                       {selectedEmployees.length > 0 || filterEmployee !== "all" 
                         ? "No records found for the selected employee(s) and time period."
                         : "Try selecting a different date range or approve time records from the Face ID data page."}
                     </p>
                     <button
                       onClick={() => navigate('/hr')}
-                      className="mt-4 px-4 py-2 bg-purple-600 text-white rounded text-sm hover:bg-purple-700"
+                      className="mt-4 px-4 py-2 bg-purple-600 text-white rounded text-base font-semibold hover:bg-purple-700"
                     >
                       Go to Face ID Data
                     </button>
