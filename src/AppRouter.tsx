@@ -6,6 +6,7 @@ import HrLoginPage from './pages/HrLoginPage';
 import ApprovedHoursPage from './pages/ApprovedHoursPage';
 import EmployeeLoginPage from './pages/EmployeeLoginPage';
 import EmployeeDashboardPage from './pages/EmployeeDashboardPage';
+import OperationalManagerPage from './pages/OperationalManagerPage';
 import { useHrAuth } from './context/HrAuthContext';
 
 // Route guard component for employee routes
@@ -95,6 +96,7 @@ const AppRouter: React.FC = () => {
           </EmployeeRoute>
         } 
       />
+      <Route path="/operational-manager" element={<OperationalManagerPage />} />
       {/* Handle unknown paths - render LandingPage instead of using Navigate */}
       <Route path="*" element={<LandingPage />} />
     </Routes>

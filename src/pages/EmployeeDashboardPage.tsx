@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { format, isToday, isSameMonth, isSameDay, addMonths, subMonths, parseISO, startOfMonth, endOfMonth, eachDayOfInterval, getDay } from 'date-fns';
-import { Clock, Calendar, LogOut, Plus, ChevronLeft, ChevronRight, CheckCircle, AlertCircle, Trash2, Edit2, Home, Info } from 'lucide-react';
+import { Clock, Calendar, LogOut, Plus, ChevronLeft, ChevronRight, CheckCircle, AlertCircle, Trash2, Edit2, Home, Info, Briefcase } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import toast, { Toaster } from 'react-hot-toast';
 import ShiftEntryForm from '../components/Employee/ShiftEntryForm';
 import ShiftDetail from '../components/Employee/ShiftDetail';
+import LeaveRequestForm from '../components/Employee/LeaveRequestForm';
+import LeaveRequestList from '../components/Employee/LeaveRequestList';
 import { getEmployeeShifts, addEmployeeShift, deleteEmployeeShift } from '../services/employeeService';
 import { DISPLAY_SHIFT_TIMES } from '../types';
 
@@ -31,8 +33,9 @@ const EmployeeDashboardPage: React.FC = () => {
   const [selectedDateShifts, setSelectedDateShifts] = useState<Shift[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [showNewShiftForm, setShowNewShiftForm] = useState<boolean>(false);
-  const [currentView, setCurrentView] = useState<'calendar' | 'detail'>('calendar');
+  const [currentView, setCurrentView] = useState<'calendar' | 'detail' | 'leave'>('calendar');
   const [selectedShift, setSelectedShift] = useState<Shift | null>(null);
+  const [showLeaveRequestForm, setShowLeaveRequestForm] = useState<boolean>(false);
   const navigate = useNavigate();
 
   // Check authentication and load initial data
@@ -60,7 +63,6 @@ const EmployeeDashboardPage: React.FC = () => {
     setIsLoading(true);
     try {
       const data = await getEmployeeShifts(empId);
-      console.log("Loaded shifts:", data);
       setShifts(data);
       if (selectedDate) {
         filterShiftsByDate(data, selectedDate);
@@ -78,7 +80,6 @@ const EmployeeDashboardPage: React.FC = () => {
     const filteredShifts = allShifts.filter(shift => 
       isSameDay(parseISO(shift.date), date)
     );
-    console.log("Filtered shifts for date", format(date, 'yyyy-MM-dd'), ":", filteredShifts);
     setSelectedDateShifts(filteredShifts);
   };
 
@@ -103,6 +104,7 @@ const EmployeeDashboardPage: React.FC = () => {
     setSelectedDate(date);
     filterShiftsByDate(shifts, date);
     setShowNewShiftForm(false); // Close form when changing dates
+    setShowLeaveRequestForm(false);
   };
 
   // Handle adding a new shift
@@ -176,6 +178,13 @@ const EmployeeDashboardPage: React.FC = () => {
     const displayTimes = DISPLAY_SHIFT_TIMES[shiftType as keyof typeof DISPLAY_SHIFT_TIMES];
     return timeType === 'start' ? displayTimes.startTime : displayTimes.endTime;
   };
+  
+  // Leave request handlers
+  const handleLeaveRequestSubmitted = () => {
+    setShowLeaveRequestForm(false);
+    setCurrentView('leave');
+    toast.success('Leave request submitted successfully');
+  };
 
   // Render calendar days
   const renderCalendarDays = () => {
@@ -210,12 +219,16 @@ const EmployeeDashboardPage: React.FC = () => {
       const hasConfirmedShift = dayShifts.some(shift => shift.status === 'confirmed');
       const hasApprovedRecord = dayShifts.some(shift => shift.is_approved_record === true);
       
+      // Check leave requests for this day
+      const hasLeaveRequest = false; // This will be implemented to check for leave on this day
+      
       days.push(
         <div
           key={day.toString()}
           className={`h-12 border rounded-md flex items-center justify-center relative cursor-pointer transition-colors
             ${isCurrentDay ? 'border-purple-500 font-bold' : 'border-gray-200'}
             ${isSelectedDay ? 'bg-purple-100 border-purple-400' : 'hover:bg-gray-50'}
+            ${hasLeaveRequest ? 'bg-blue-50' : ''}
           `}
           onClick={() => handleDateSelect(day)}
         >
@@ -289,13 +302,42 @@ const EmployeeDashboardPage: React.FC = () => {
 
       {/* Main content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="text-gray-600 mb-8">
-          <p>Track your working hours and manage your shifts</p>
+        <div className="text-gray-600 mb-6">
+          <p>Track your working hours, shifts, and request leave</p>
+        </div>
+
+        {/* Tab navigation */}
+        <div className="flex border-b border-gray-200 mb-6">
+          <button
+            onClick={() => setCurrentView('calendar')}
+            className={`px-4 py-2 font-medium text-sm ${
+              currentView === 'calendar' 
+                ? 'border-b-2 border-purple-500 text-purple-600' 
+                : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            <Calendar className="w-4 h-4 inline mr-1" />
+            Shift Calendar
+          </button>
+          <button
+            onClick={() => {
+              setCurrentView('leave');
+              setShowNewShiftForm(false);
+            }}
+            className={`px-4 py-2 font-medium text-sm ${
+              currentView === 'leave' 
+                ? 'border-b-2 border-purple-500 text-purple-600' 
+                : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            <Briefcase className="w-4 h-4 inline mr-1" />
+            Leave Requests
+          </button>
         </div>
 
         {/* Content sections */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-          {/* Left column - Calendar */}
+          {/* Left column - Calendar (always visible) */}
           <div className="md:col-span-1 bg-white rounded-lg shadow p-6">
             <div className="flex items-center mb-4">
               <Calendar className="h-5 w-5 text-purple-600 mr-2" />
@@ -340,7 +382,7 @@ const EmployeeDashboardPage: React.FC = () => {
             {getStatusBadges()}
           </div>
 
-          {/* Right column - Shift details */}
+          {/* Right column - Content based on current view */}
           <div className="md:col-span-2 bg-white rounded-lg shadow">
             {currentView === 'calendar' && selectedDate && (
               <div className="p-6">
@@ -510,6 +552,23 @@ const EmployeeDashboardPage: React.FC = () => {
                       Please select a shift to view details
                     </p>
                   </div>
+                )}
+              </div>
+            )}
+
+            {currentView === 'leave' && (
+              <div className="p-6">
+                {showLeaveRequestForm ? (
+                  <LeaveRequestForm 
+                    employeeId={employeeId}
+                    onClose={() => setShowLeaveRequestForm(false)}
+                    onSubmit={handleLeaveRequestSubmitted}
+                  />
+                ) : (
+                  <LeaveRequestList 
+                    employeeId={employeeId}
+                    onNewRequest={() => setShowLeaveRequestForm(true)}
+                  />
                 )}
               </div>
             )}

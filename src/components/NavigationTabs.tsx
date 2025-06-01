@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { FileSpreadsheet, Clock, Home, Menu, X, LogOut } from 'lucide-react';
+import { FileSpreadsheet, Clock, Home, Menu, X, LogOut, Users, Briefcase } from 'lucide-react';
 import Tab from './Tab';
 import { useHrAuth } from '../context/HrAuthContext';
 
@@ -27,7 +27,8 @@ const NavigationTabs: React.FC = () => {
   const routes = [
     { path: '/', label: 'Home', icon: <Home className="w-5 h-5" /> },
     { path: '/hr', label: 'Face ID Data', icon: <FileSpreadsheet className="w-5 h-5" /> },
-    { path: '/approved-hours', label: 'Approved Hours', icon: <Clock className="w-5 h-5" /> }
+    { path: '/approved-hours', label: 'Approved Hours', icon: <Clock className="w-5 h-5" /> },
+    { path: '/operational-manager', label: 'Leave Management', icon: <Briefcase className="w-5 h-5" /> }
   ];
   
   if (isMobile) {
@@ -44,6 +45,7 @@ const NavigationTabs: React.FC = () => {
                 {currentPath === '/login' && 'Login'}
                 {currentPath === '/employee' && 'Dashboard'}
                 {currentPath === '/hr-login' && 'HR Login'}
+                {currentPath === '/operational-manager' && 'Leave Management'}
               </span>
             </div>
             <div className="flex items-center gap-2">
