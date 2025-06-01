@@ -302,11 +302,11 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records, dou
             // Get display times for this shift
             let checkInDisplay = checkIn ? 
               formatTimeDisplay(checkIn.timestamp, checkIn, 'in') :
-              (isOffDay ? 'OFF-DAY' : 'Missing');
+              (isOffDay ? formatLeaveType(leaveType) : 'Missing');
             
             let checkOutDisplay = checkOut ? 
               formatTimeDisplay(checkOut.timestamp, checkOut, 'out') : 
-              (isOffDay ? 'OFF-DAY' : 'Missing');
+              (isOffDay ? formatLeaveType(leaveType) : 'Missing');
             
             // Generate a unique key for this shift group
             const shiftKey = `${date}-${shiftType}`;
