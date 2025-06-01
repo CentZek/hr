@@ -5,7 +5,7 @@ const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 // Validate that we have the required environment variables
 if (!supabaseUrl || !supabaseAnonKey) {
-  console.error('Missing Supabase environment variables. Please check your .env file.');
+  throw new Error('Missing Supabase environment variables. Please check your .env file.');
 }
 
 // Function to implement retry logic with exponential backoff
@@ -14,11 +14,11 @@ const fetchWithRetry = async (url, options, retries = 3, backoff = 300) => {
     // Enhanced fetch options with CORS credentials
     const enhancedOptions = {
       ...options,
-      credentials: 'include',
-      mode: 'cors',
       headers: {
-        ...options.headers,
-        'Accept': 'application/json'
+        ...options?.headers,
+        'Accept': 'application/json',
+        'apikey': supabaseAnonKey,
+        'Authorization': `Bearer ${supabaseAnonKey}`
       }
     };
     
@@ -47,10 +47,7 @@ const options = {
     detectSessionInUrl: false, // Disable URL detection which can cause CORS issues
   },
   global: {
-    fetch: (url, options) => {
-      // Add enhanced retry logic for network errors
-      return fetchWithRetry(url, options);
-    },
+    fetch: fetchWithRetry,
     headers: {
       'X-Client-Info': 'supabase-js/2.x',
       'Content-Type': 'application/json',
@@ -75,21 +72,30 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, options);
 // Add a simple health check function to test connectivity
 export const checkSupabaseConnection = async () => {
   try {
-    // First try a lightweight RPC call instead of a table access which might have stricter permissions
-    const { data, error } = await supabase.rpc('get_service_status', {}, { count: 'exact' })
-      .catch(() => {
-        // Fallback to a simple table count if RPC not available
-        return supabase.from('employees').select('count', { count: 'exact', head: true });
-      });
-      
-    if (error) {
-      console.error('Supabase connection check failed:', error.message);
-      return { connected: false, error: error.message };
+    // Try a basic health check
+    const response = await fetch(`${supabaseUrl}/rest/v1/?apikey=${supabaseAnonKey}`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': supabaseAnonKey,
+        'Authorization': `Bearer ${supabaseAnonKey}`,
+      }
+    });
+    
+    if (!response.ok) {
+      return { 
+        connected: false, 
+        error: `Supabase API returned ${response.status}: ${response.statusText}` 
+      };
     }
+    
     return { connected: true, error: null };
   } catch (err) {
     console.error('Supabase connection check failed:', err);
-    return { connected: false, error: err instanceof Error ? err.message : 'Unknown error' };
+    return { 
+      connected: false, 
+      error: err instanceof Error ? err.message : 'Unknown error' 
+    };
   }
 };
 
@@ -123,6 +129,31 @@ export const testCorsAccess = async () => {
 
 // Log successful initialization
 console.log('Supabase client initialized with URL:', supabaseUrl);
+
+// Helper function to diagnose network issues
+export const diagnoseSupabaseConnection = async () => {
+  // Test basic fetch without Supabase client
+  try {
+    console.log('Testing direct fetch to Supabase...');
+    const testResult = await testCorsAccess();
+    console.log('Direct fetch test result:', testResult);
+    
+    // Test Supabase client
+    console.log('Testing Supabase client connection...');
+    const connectionCheck = await checkSupabaseConnection();
+    console.log('Supabase connection check result:', connectionCheck);
+    
+    return {
+      directFetch: testResult,
+      clientConnection: connectionCheck
+    };
+  } catch (error) {
+    console.error('Network diagnostic failed:', error);
+    return {
+      error: error instanceof Error ? error.message : 'Unknown diagnostic error'
+    };
+  }
+};
 
 // Export a function to check if the Supabase configuration is valid
 export const isSupabaseConfigValid = () => {
