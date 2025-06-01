@@ -12,6 +12,7 @@ interface TimeEditModalProps {
 }
 
 const TimeEditModal: React.FC<TimeEditModalProps> = ({ employee, day, onClose, onSave }) => {
+  // Initialize with empty strings when times are missing instead of 'Missing' text
   const [checkInTime, setCheckInTime] = useState<string>(
     day.firstCheckIn ? format(day.firstCheckIn, 'HH:mm') : ''
   );
