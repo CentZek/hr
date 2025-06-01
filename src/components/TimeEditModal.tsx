@@ -141,6 +141,9 @@ const TimeEditModal: React.FC<TimeEditModalProps> = ({ employee, day, onClose, o
     setCheckInTime(checkOutTime);
     setCheckOutTime(tempCheckIn);
     setShowCorrectionInfo(true);
+    
+    // When swapping times, switch to regular mode
+    setRecordType('regular');
   };
 
   const handleSave = () => {
