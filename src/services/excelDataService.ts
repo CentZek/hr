@@ -214,28 +214,31 @@ export const saveProcessedExcelFile = async (
           }
         }
         
-        // Create employee record
-        const { data: empData, error: empError } = await supabase
-          .from('processed_employee_data')
-          .insert({
-            file_id: fileId,
-            employee_number: employee.employeeNumber,
-            name: employee.name,
-            department: employee.department || '',
-            total_days: employee.days.length
-          })
-          .select('id')
-          .single();
+        // Create employee record - Use retry to handle foreign key constraints
+        const empData = await retry(async () => {
+          const { data, error } = await supabase
+            .from('processed_employee_data')
+            .insert({
+              file_id: fileId,
+              employee_number: employee.employeeNumber,
+              name: employee.name,
+              department: employee.department || '',
+              total_days: employee.days.length
+            })
+            .select('id')
+            .single();
+            
+          if (error) {
+            console.error('Error creating employee:', error);
+            throw error;
+          }
           
-        if (empError) {
-          console.error('Error creating employee:', empError);
-          return null;
-        }
-        
-        if (!empData) {
-          console.error('No data returned when creating employee');
-          return null;
-        }
+          if (!data) {
+            throw new Error('No data returned when creating employee');
+          }
+          
+          return data;
+        });
         
         const employeeId = empData.id;
         
@@ -271,24 +274,33 @@ export const saveProcessedExcelFile = async (
             }));
             
             try {
-              const { error } = await supabase
-                .from('processed_daily_records')
-                .insert(dailyRecordsBatch);
-                
-              if (error) {
+              // Use retry for daily records batch insert
+              await retry(async () => {
+                const { error } = await supabase
+                  .from('processed_daily_records')
+                  .insert(dailyRecordsBatch);
+                  
+                if (error) {
+                  throw error;
+                }
+              }).catch(async (error) => {
                 console.error('Error inserting daily records batch:', error);
                 
                 // If batch insert fails, try individual inserts
                 for (const record of dailyRecordsBatch) {
                   try {
-                    await supabase
-                      .from('processed_daily_records')
-                      .insert([record]);
+                    await retry(async () => {
+                      const { error } = await supabase
+                        .from('processed_daily_records')
+                        .insert([record]);
+                        
+                      if (error) throw error;
+                    });
                   } catch (err) {
                     console.error('Error inserting individual daily record:', err);
                   }
                 }
-              }
+              });
             } catch (err) {
               console.error('Exception inserting daily records batch:', err);
             }
@@ -603,35 +615,47 @@ export const updateProcessedEmployeeData = async (
           let employeeId: string;
           
           if (existingEmp) {
-            // Update existing employee
+            // Update existing employee - Use retry for foreign key constraint issues
             employeeId = existingEmp.id;
             
-            await supabase
-              .from('processed_employee_data')
-              .update({
-                name: employee.name,
-                department: employee.department || '',
-                total_days: employee.days.length
-              })
-              .eq('id', employeeId);
+            await retry(async () => {
+              const { error } = await supabase
+                .from('processed_employee_data')
+                .update({
+                  name: employee.name,
+                  department: employee.department || '',
+                  total_days: employee.days.length
+                })
+                .eq('id', employeeId);
+                
+              if (error) throw error;
+            });
           } else {
-            // Create new employee
-            const { data: newEmp, error: createError } = await supabase
-              .from('processed_employee_data')
-              .insert({
-                file_id: actualFileId,
-                employee_number: employee.employeeNumber,
-                name: employee.name,
-                department: employee.department || '',
-                total_days: employee.days.length
-              })
-              .select('id')
-              .single();
+            // Create new employee - Use retry for foreign key constraint issues
+            const newEmp = await retry(async () => {
+              const { data, error } = await supabase
+                .from('processed_employee_data')
+                .insert({
+                  file_id: actualFileId,
+                  employee_number: employee.employeeNumber,
+                  name: employee.name,
+                  department: employee.department || '',
+                  total_days: employee.days.length
+                })
+                .select('id')
+                .single();
+                
+              if (error) {
+                console.error('Error creating employee:', error);
+                throw error;
+              }
               
-            if (createError || !newEmp) {
-              console.error('Error creating employee:', createError);
-              return;
-            }
+              if (!data) {
+                throw new Error('No data returned when creating employee');
+              }
+              
+              return data;
+            });
             
             employeeId = newEmp.id;
           }
@@ -683,11 +707,14 @@ export const updateProcessedEmployeeData = async (
               continue;
             }
             
-            // Insert the batch
-            await supabase
-              .from('processed_daily_records')
-              .insert(recordsToInsert)
-              .throwOnError();
+            // Insert the batch with retry
+            await retry(async () => {
+              const { error } = await supabase
+                .from('processed_daily_records')
+                .insert(recordsToInsert);
+                
+              if (error) throw error;
+            });
           }
         } catch (err) {
           console.error(`Error processing employee ${employee.name}:`, err);
