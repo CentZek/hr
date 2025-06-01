@@ -1,8 +1,115 @@
 /**
  * Time record helper functions for applying changes to daily records
  */
-import { DailyRecord } from '../types';
+import { EmployeeRecord, DailyRecord } from '../types';
 import { calculatePayableHours, determineShiftType } from './shiftCalculations';
+
+// Calculate statistics from employee records
+export const calculateStats = (records: EmployeeRecord[]) => {
+  const totalEmployees = records.length;
+  let totalDays = 0;
+  
+  records.forEach(employee => {
+    totalDays += employee.days.length;
+  });
+  
+  return { totalEmployees, totalDays };
+};
+
+// Add a manual entry to the employee records
+export const addManualEntryToRecords = (
+  recordData: any, 
+  employeeRecords: EmployeeRecord[]
+): { updatedRecords: EmployeeRecord[], employeeIndex: number, isNewEmployee: boolean } => {
+  // Create a copy of the records to avoid direct state mutation
+  const updatedRecords = [...employeeRecords];
+  
+  // Extract data from the record
+  const employeeNumber = String(recordData.employee.employee_number || recordData.employee.employeeNumber || "").trim();
+  const employeeName = recordData.employee.name;
+  const date = recordData.date;
+  const checkIn = recordData.checkIn;
+  const checkOut = recordData.checkOut;
+  const shiftType = recordData.shiftType;
+  const notes = recordData.notes || 'Manual entry';
+  
+  // Check if this is an off day
+  const isOffDay = !checkIn && !checkOut;
+  
+  // Create the daily record
+  const dailyRecord: DailyRecord = {
+    date,
+    firstCheckIn: checkIn,
+    lastCheckOut: checkOut,
+    hoursWorked: recordData.hoursWorked || 0,
+    approved: false,
+    shiftType: isOffDay ? 'off_day' : (shiftType || (checkIn ? determineShiftType(checkIn) : null)),
+    notes: isOffDay ? 'OFF-DAY' : notes,
+    missingCheckIn: !checkIn,
+    missingCheckOut: !checkOut,
+    isLate: false,
+    earlyLeave: false,
+    excessiveOvertime: false,
+    penaltyMinutes: 0,
+    displayCheckIn: isOffDay ? 'OFF-DAY' : undefined,
+    displayCheckOut: isOffDay ? 'OFF-DAY' : undefined
+  };
+  
+  // Find employee index in records
+  let employeeIndex = updatedRecords.findIndex(emp => 
+    String(emp.employeeNumber).trim() === employeeNumber
+  );
+  
+  let isNewEmployee = false;
+  
+  if (employeeIndex >= 0) {
+    // Employee exists, add or update the day
+    const dayIndex = updatedRecords[employeeIndex].days.findIndex(day => day.date === date);
+    
+    if (dayIndex >= 0) {
+      // Update existing day
+      updatedRecords[employeeIndex].days[dayIndex] = dailyRecord;
+    } else {
+      // Add new day
+      updatedRecords[employeeIndex].days.push(dailyRecord);
+      updatedRecords[employeeIndex].totalDays += 1;
+    }
+  } else {
+    // Employee doesn't exist, create new record
+    isNewEmployee = true;
+    employeeIndex = updatedRecords.length;
+    updatedRecords.push({
+      employeeNumber,
+      name: employeeName,
+      department: recordData.department || '',
+      days: [dailyRecord],
+      totalDays: 1,
+      expanded: true // Auto-expand to show the new entry
+    });
+  }
+  
+  return { updatedRecords, employeeIndex, isNewEmployee };
+};
+
+// Process records after saving (removing approved days)
+export const processRecordsAfterSave = (employeeRecords: EmployeeRecord[]): EmployeeRecord[] => {
+  // Create a deep copy of employee records
+  const updatedRecords = employeeRecords.map(employee => {
+    // Filter out approved days
+    const remainingDays = employee.days.filter(day => !day.approved);
+    
+    return {
+      ...employee,
+      days: remainingDays,
+      totalDays: remainingDays.length,
+      // Keep expanded state for employees with remaining days
+      expanded: remainingDays.length > 0 ? employee.expanded : false
+    };
+  });
+  
+  // Filter out employees with no remaining days
+  return updatedRecords.filter(employee => employee.days.length > 0);
+};
 
 // Apply a penalty to a specific day
 export const applyPenaltyToDay = (day: DailyRecord, penaltyMinutes: number): DailyRecord => {
