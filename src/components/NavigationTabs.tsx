@@ -24,12 +24,23 @@ const NavigationTabs: React.FC = () => {
     navigate('/', { replace: true });
   };
 
-  const routes = [
+  // Determine which routes to show based on path/role
+  const isOperationalManager = currentPath === '/operational-manager';
+  
+  // Define routes for each role
+  const hrRoutes = [
     { path: '/', label: 'Home', icon: <Home className="w-5 h-5" /> },
     { path: '/hr', label: 'Face ID Data', icon: <FileSpreadsheet className="w-5 h-5" /> },
-    { path: '/approved-hours', label: 'Approved Hours', icon: <Clock className="w-5 h-5" /> },
+    { path: '/approved-hours', label: 'Approved Hours', icon: <Clock className="w-5 h-5" /> }
+  ];
+  
+  const operationalManagerRoutes = [
+    { path: '/', label: 'Home', icon: <Home className="w-5 h-5" /> },
     { path: '/operational-manager', label: 'Leave Management', icon: <Briefcase className="w-5 h-5" /> }
   ];
+
+  // Choose which routes to display based on current path/role
+  const routes = isOperationalManager ? operationalManagerRoutes : hrRoutes;
   
   if (isMobile) {
     return (
