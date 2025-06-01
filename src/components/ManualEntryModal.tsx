@@ -171,7 +171,8 @@ const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
         shift.employee_id, 
         shift.shift_type,
         'check_in',
-        shift.date
+        shift.date,
+        true // Explicitly pass true for manual entries
       );
       
       // Then check for existing check-out record
@@ -179,7 +180,8 @@ const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
         shift.employee_id, 
         shift.shift_type,
         'check_out',
-        shift.date
+        shift.date,
+        true // Explicitly pass true for manual entries
       );
       
       // Use safeUpsertTimeRecord to handle both insert and update
@@ -321,7 +323,8 @@ const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
         employeeId, 
         shiftType,
         'check_in',
-        selectedDate
+        selectedDate,
+        true // Explicitly pass true for manual entries
       );
       
       // Then check for existing check-out record
@@ -329,7 +332,8 @@ const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
         employeeId, 
         shiftType,
         'check_out',
-        selectedDate
+        selectedDate,
+        true // Explicitly pass true for manual entries
       );
       
       // Use safeUpsertTimeRecord to handle both insert and update
