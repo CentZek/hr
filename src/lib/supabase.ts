@@ -17,6 +17,7 @@ const fetchWithRetry = async (url, options, retries = 3, backoff = 300) => {
       headers: {
         ...options?.headers,
         'Accept': 'application/json',
+        'Content-Type': 'application/json',
         'apikey': supabaseAnonKey,
         'Authorization': `Bearer ${supabaseAnonKey}`
       }
