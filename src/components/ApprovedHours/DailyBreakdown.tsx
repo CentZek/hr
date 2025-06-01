@@ -72,6 +72,12 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records, dou
     return doubleDays.includes(dateStr);
   };
 
+  // Helper function to format leave type
+  const formatLeaveType = (leaveType: string): string => {
+    if (!leaveType || leaveType === 'OFF-DAY') return 'OFF-DAY';
+    return leaveType.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+  };
+
   if (isLoading) {
     return (
       <div className="bg-gray-50 p-4 text-center">
@@ -110,12 +116,14 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records, dou
 
         {/* Records by date */}
         {Object.entries(recordsByDate).map(([date, dayRecords]: [string, any[]]) => {
-          // Check if this is an off day
+          // Check if this is an off day or leave
           const isOffDay = dayRecords.some(r => r.status === 'off_day');
+          const isLeave = isOffDay && dayRecords.some(r => r.notes && r.notes !== 'OFF-DAY');
+          const leaveType = isLeave ? dayRecords.find(r => r.notes && r.notes !== 'OFF-DAY')?.notes : 'OFF-DAY';
           const isDoubleTime = isDoubleTimeDay(date);
           
           if (isOffDay) {
-            // Display off day record
+            // Display off day or leave record
             const offDayRecord = dayRecords.find(r => r.status === 'off_day');
             
             // Mobile view
@@ -136,8 +144,10 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records, dou
                     <div>
                       <span className="text-xs text-gray-500">Status:</span>
                       <div className="mt-1">
-                        <span className="px-2 py-0.5 text-xs font-bold rounded-full bg-red-100 text-red-800">
-                          OFF-DAY
+                        <span className={`px-2 py-0.5 text-xs font-bold rounded-full ${
+                          isLeave ? 'bg-blue-100 text-blue-800' : 'bg-red-100 text-red-800'
+                        }`}>
+                          {formatLeaveType(leaveType)}
                         </span>
                       </div>
                     </div>
@@ -166,14 +176,16 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records, dou
                   </div>
                 </div>
                 <div>
-                  <span className="text-red-500 font-bold">OFF-DAY</span>
+                  <span className={`text-${isLeave ? 'blue' : 'red'}-500 font-bold`}>{formatLeaveType(leaveType)}</span>
                 </div>
                 <div>
-                  <span className="text-red-500 font-bold">OFF-DAY</span>
+                  <span className={`text-${isLeave ? 'blue' : 'red'}-500 font-bold`}>{formatLeaveType(leaveType)}</span>
                 </div>
                 <div className="text-gray-700">
-                  <span className="px-2 py-1 text-xs font-medium rounded-full bg-red-100 text-red-800">
-                    OFF-DAY
+                  <span className={`px-2 py-1 text-xs font-medium rounded-full ${
+                    isLeave ? 'bg-blue-100 text-blue-800' : 'bg-red-100 text-red-800'
+                  }`}>
+                    {formatLeaveType(leaveType)}
                   </span>
                 </div>
                 <div className="font-bold text-gray-800">
@@ -290,11 +302,11 @@ const DailyBreakdown: React.FC<DailyBreakdownProps> = ({ isLoading, records, dou
             // Get display times for this shift
             let checkInDisplay = checkIn ? 
               formatTimeDisplay(checkIn.timestamp, checkIn, 'in') :
-              (isOffDay ? 'OFF-DAY' : 'Missing');
+              (isOffDay ? formatLeaveType(leaveType) : 'Missing');
             
             let checkOutDisplay = checkOut ? 
               formatTimeDisplay(checkOut.timestamp, checkOut, 'out') : 
-              (isOffDay ? 'OFF-DAY' : 'Missing');
+              (isOffDay ? formatLeaveType(leaveType) : 'Missing');
             
             // Generate a unique key for this shift group
             const shiftKey = `${date}-${shiftType}`;
