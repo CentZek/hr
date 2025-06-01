@@ -110,10 +110,10 @@ const EmployeeList: React.FC<EmployeeListProps> = ({
   const getShiftTypeDisplay = (shiftType: string | null, checkInHour?: number) => {
     if (!shiftType) return { color: 'bg-gray-100 text-gray-800', name: 'Unknown' };
     
-    if (shiftType === 'OFF-DAY') return { color: 'bg-gray-100 text-gray-500', name: 'OFF-DAY' };
+    if (shiftType === 'off_day' || shiftType === 'OFF-DAY') return { color: 'bg-gray-100 text-gray-500', name: 'OFF-DAY' };
     
     // Handle leave types
-    if (shiftType.includes('leave')) {
+    if (shiftType.includes('leave') || shiftType.includes('-leave')) {
       const leaveLabel = shiftType.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
       return { color: 'bg-blue-100 text-blue-800', name: leaveLabel };
     }
@@ -203,7 +203,7 @@ const EmployeeList: React.FC<EmployeeListProps> = ({
     const checkInHour = day.firstCheckIn?.getHours();
     const shiftDisplay = getShiftTypeDisplay(day.shiftType, checkInHour);
     const isOffDay = day.notes === 'OFF-DAY';
-    const isLeaveDay = day.notes && day.notes !== 'OFF-DAY' && day.notes.includes('leave');
+    const isLeaveDay = day.notes && day.notes !== 'OFF-DAY' && (day.notes.includes('leave') || day.shiftType === 'off_day');
     const isManualEntry = day.notes === 'Manual entry';
     const wasCorrected = day.correctedRecords || day.notes.includes('Fixed mislabeled');
     const isLateNightCheckIn = day.shiftType === 'night' && day.firstCheckIn && isLateNightShiftCheckIn(day.firstCheckIn, day.shiftType);
@@ -391,7 +391,7 @@ const EmployeeList: React.FC<EmployeeListProps> = ({
                     const hasMissingRecords = day.missingCheckIn || day.missingCheckOut;
                     const isManualEntry = day.notes === 'Manual entry' || day.notes?.includes('Employee submitted');
                     const isOffDay = day.notes === 'OFF-DAY';
-                    const isLeaveDay = day.notes && day.notes !== 'OFF-DAY' && day.notes.includes('leave');
+                    const isLeaveDay = day.notes && day.notes !== 'OFF-DAY' && (day.notes.includes('leave') || day.shiftType === 'off_day');
                     const checkInHour = day.firstCheckIn?.getHours();
                     const shiftDisplay = getShiftTypeDisplay(isOffDay ? 'OFF-DAY' : (isLeaveDay ? day.notes : day.shiftType), checkInHour);
                     const wasCorrected = day.correctedRecords || day.notes?.includes('Fixed mislabeled');
