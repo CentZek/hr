@@ -347,10 +347,9 @@ const TimeEditModal: React.FC<TimeEditModalProps> = ({ employee, day, onClose, o
                     'border-gray-300 focus:ring-purple-500 focus:border-purple-500'
                   } rounded-md`}
                   placeholder="HH:MM"
-                  disabled={isOffDaySelected || !!leaveType}
                 />
                 <div className="mt-1 text-xs text-gray-600">
-                  {checkInTime && !isOffDaySelected && !leaveType && (
+                  {checkInTime && (
                     <>
                       <span>You entered: {formatTimeWithAmPm(checkInTime)}</span>
                       {isLateForShift(checkInTime) && (
@@ -373,19 +372,19 @@ const TimeEditModal: React.FC<TimeEditModalProps> = ({ employee, day, onClose, o
                 </div>
               </div>
               {checkInError && <p className="mt-1 text-xs text-red-600">{checkInError}</p>}
-              {day.shiftType === 'morning' && !isOffDaySelected && !leaveType && (
+              {day.shiftType === 'morning' && (
                 <p className="mt-1 text-xs text-gray-500">Expected around 05:00</p>
               )}
-              {day.shiftType === 'canteen' && day.firstCheckIn?.getHours() === 7 && !isOffDaySelected && !leaveType && (
+              {day.shiftType === 'canteen' && day.firstCheckIn?.getHours() === 7 && (
                 <p className="mt-1 text-xs text-gray-500">Expected around 07:00</p>
               )}
-              {day.shiftType === 'canteen' && day.firstCheckIn?.getHours() === 8 && !isOffDaySelected && !leaveType && (
+              {day.shiftType === 'canteen' && day.firstCheckIn?.getHours() === 8 && (
                 <p className="mt-1 text-xs text-gray-500">Expected around 08:00</p>
               )}
-              {day.shiftType === 'evening' && !isOffDaySelected && !leaveType && (
+              {day.shiftType === 'evening' && (
                 <p className="mt-1 text-xs text-gray-500">Expected around 13:00</p>
               )}
-              {(isNightShift() || day.shiftType === 'night') && !isOffDaySelected && !leaveType && (
+              {(isNightShift() || day.shiftType === 'night') && (
                 <p className="mt-1 text-xs text-gray-500">Expected around 21:00</p>
               )}
             </div>
@@ -412,26 +411,25 @@ const TimeEditModal: React.FC<TimeEditModalProps> = ({ employee, day, onClose, o
                     'border-gray-300 focus:ring-purple-500 focus:border-purple-500'
                   } rounded-md`}
                   placeholder="HH:MM"
-                  disabled={isOffDaySelected || !!leaveType}
                 />
                 <div className="mt-1 text-xs text-gray-600">
-                  {checkOutTime && !isOffDaySelected && !leaveType && `You entered: ${formatTimeWithAmPm(checkOutTime)}`}
+                  {checkOutTime && `You entered: ${formatTimeWithAmPm(checkOutTime)}`}
                 </div>
               </div>
               {checkOutError && <p className="mt-1 text-xs text-red-600">{checkOutError}</p>}
-              {day.shiftType === 'morning' && !isOffDaySelected && !leaveType && (
+              {day.shiftType === 'morning' && (
                 <p className="mt-1 text-xs text-gray-500">Expected around 14:00</p>
               )}
-              {day.shiftType === 'canteen' && day.firstCheckIn?.getHours() === 7 && !isOffDaySelected && !leaveType && (
+              {day.shiftType === 'canteen' && day.firstCheckIn?.getHours() === 7 && (
                 <p className="mt-1 text-xs text-gray-500">Expected around 16:00</p>
               )}
-              {day.shiftType === 'canteen' && day.firstCheckIn?.getHours() === 8 && !isOffDaySelected && !leaveType && (
+              {day.shiftType === 'canteen' && day.firstCheckIn?.getHours() === 8 && (
                 <p className="mt-1 text-xs text-gray-500">Expected around 17:00</p>
               )}
-              {day.shiftType === 'evening' && !isOffDaySelected && !leaveType && (
+              {day.shiftType === 'evening' && (
                 <p className="mt-1 text-xs text-gray-500">Expected around 22:00</p>
               )}
-              {(isNightShift() || day.shiftType === 'night') && !isOffDaySelected && !leaveType && (
+              {(isNightShift() || day.shiftType === 'night') && (
                 <p className="mt-1 text-xs text-gray-500">Expected around 06:00 (next day)</p>
               )}
             </div>
@@ -444,19 +442,17 @@ const TimeEditModal: React.FC<TimeEditModalProps> = ({ employee, day, onClose, o
             </div>
             
             {/* Swap times button for mislabeled records */}
-            {!isOffDaySelected && !leaveType && (
-              <div className="flex justify-center">
-                <button
-                  type="button"
-                  onClick={handleSwapTimes}
-                  className="flex items-center px-3 py-2 text-sm font-medium text-yellow-700 bg-yellow-100 
-                           rounded-md hover:bg-yellow-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-yellow-500"
-                >
-                  <Repeat className="w-4 h-4 mr-2" />
-                  Swap Check-In/Out Times
-                </button>
-              </div>
-            )}
+            <div className="flex justify-center">
+              <button
+                type="button"
+                onClick={handleSwapTimes}
+                className="flex items-center px-3 py-2 text-sm font-medium text-yellow-700 bg-yellow-100 
+                         rounded-md hover:bg-yellow-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-yellow-500"
+              >
+                <Repeat className="w-4 h-4 mr-2" />
+                Swap Check-In/Out Times
+              </button>
+            </div>
           </div>
           
           <div className="mt-6 flex justify-end space-x-3">
