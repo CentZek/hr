@@ -220,7 +220,8 @@ const TimeEditModal: React.FC<TimeEditModalProps> = ({ employee, day, onClose, o
 
     if (!hasError) {
       // Use "Manual entry" as the notes for regular time records
-      onSave(checkIn, checkOut, null, 'Manual entry');
+      const shiftType = isNightShift() ? 'night' : null;
+      onSave(checkIn, checkOut, shiftType, 'Manual entry');
     }
   };
 
