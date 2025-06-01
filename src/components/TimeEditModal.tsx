@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { format, parse, addDays } from 'date-fns';
-import { X, Clock, AlertCircle, Info, RefreshCw, Repeat, Briefcase } from 'lucide-react';
+import { X, Clock, AlertCircle, Info, RefreshCw, Repeat, Briefcase, Edit } from 'lucide-react';
 import { EmployeeRecord, DailyRecord, DISPLAY_SHIFT_TIMES, LATE_THRESHOLDS } from '../types';
 import { formatTimeWith24Hour } from '../utils/dateTimeHelper';
 
@@ -23,6 +23,7 @@ const TimeEditModal: React.FC<TimeEditModalProps> = ({ employee, day, onClose, o
   const [showCorrectionInfo, setShowCorrectionInfo] = useState<boolean>(!!day.correctedRecords);
   const [leaveType, setLeaveType] = useState<string>(day.notes === 'OFF-DAY' ? '' : day.notes || '');
   const [isOffDaySelected, setIsOffDaySelected] = useState<boolean>(day.notes === 'OFF-DAY');
+  const [isEditHoursSelected, setIsEditHoursSelected] = useState<boolean>(!day.notes?.includes('leave') && day.notes !== 'OFF-DAY');
 
   const dateStr = format(new Date(day.date), 'yyyy-MM-dd');
   
@@ -136,10 +137,18 @@ const TimeEditModal: React.FC<TimeEditModalProps> = ({ employee, day, onClose, o
     setShowCorrectionInfo(true);
   };
 
-  // Toggle between OFF-DAY and leave type
-  const handleOffDayToggle = (isOff: boolean) => {
-    setIsOffDaySelected(isOff);
-    if (isOff) {
+  // Toggle between record type options
+  const handleRecordTypeToggle = (type: 'off' | 'leave' | 'edit') => {
+    if (type === 'off') {
+      setIsOffDaySelected(true);
+      setIsEditHoursSelected(false);
+      setLeaveType('');
+    } else if (type === 'leave') {
+      setIsOffDaySelected(false);
+      setIsEditHoursSelected(false);
+    } else if (type === 'edit') {
+      setIsOffDaySelected(false);
+      setIsEditHoursSelected(true);
       setLeaveType('');
     }
   };
@@ -148,13 +157,21 @@ const TimeEditModal: React.FC<TimeEditModalProps> = ({ employee, day, onClose, o
     setCheckInError('');
     setCheckOutError('');
     
-    // If marked as OFF-DAY or leave day, and both times are empty
-    if ((isOffDaySelected || leaveType) && !checkInTime.trim() && !checkOutTime.trim()) {
-      // Set to OFF-DAY or leave type by passing null for both values
-      onSave(null, null, null, isOffDaySelected ? 'OFF-DAY' : leaveType);
+    // If marked as OFF-DAY
+    if (isOffDaySelected) {
+      // Set to OFF-DAY by passing null for both values
+      onSave(null, null, null, 'OFF-DAY');
       return;
     }
     
+    // If marked as leave type
+    if (!isOffDaySelected && !isEditHoursSelected && leaveType) {
+      // Set to leave type by passing null for both values
+      onSave(null, null, null, leaveType);
+      return;
+    }
+    
+    // For edit hours option - process the time inputs
     let checkIn: Date | null = null;
     let checkOut: Date | null = null;
     let hasError = false;
@@ -206,7 +223,7 @@ const TimeEditModal: React.FC<TimeEditModalProps> = ({ employee, day, onClose, o
     }
 
     if (!hasError) {
-      onSave(checkIn, checkOut, null, isOffDaySelected ? 'OFF-DAY' : leaveType);
+      onSave(checkIn, checkOut, null, isEditHoursSelected ? 'Manual entry' : leaveType);
     }
   };
 
@@ -260,16 +277,16 @@ const TimeEditModal: React.FC<TimeEditModalProps> = ({ employee, day, onClose, o
             </div>
           )}
           
-          {/* OFF-DAY/Leave Type toggle */}
+          {/* Record Type toggle */}
           <div className="mb-4">
             <div className="flex items-center mb-3">
               <p className="text-sm font-medium text-gray-700">Record Type:</p>
-              <div className="ml-4 flex space-x-4">
+              <div className="ml-4 flex flex-wrap gap-2">
                 <label className="inline-flex items-center">
                   <input
                     type="radio"
                     checked={isOffDaySelected}
-                    onChange={() => handleOffDayToggle(true)}
+                    onChange={() => handleRecordTypeToggle('off')}
                     className="h-4 w-4 text-purple-600 focus:ring-purple-500"
                   />
                   <span className="ml-2 text-sm text-gray-700">OFF-DAY</span>
@@ -278,16 +295,27 @@ const TimeEditModal: React.FC<TimeEditModalProps> = ({ employee, day, onClose, o
                 <label className="inline-flex items-center">
                   <input
                     type="radio"
-                    checked={!isOffDaySelected}
-                    onChange={() => handleOffDayToggle(false)}
+                    checked={!isOffDaySelected && !isEditHoursSelected}
+                    onChange={() => handleRecordTypeToggle('leave')}
                     className="h-4 w-4 text-purple-600 focus:ring-purple-500"
                   />
                   <span className="ml-2 text-sm text-gray-700">Leave</span>
                 </label>
+                
+                <label className="inline-flex items-center">
+                  <input
+                    type="radio"
+                    checked={isEditHoursSelected}
+                    onChange={() => handleRecordTypeToggle('edit')}
+                    className="h-4 w-4 text-purple-600 focus:ring-purple-500"
+                  />
+                  <span className="ml-2 text-sm text-gray-700">Edit Hours</span>
+                </label>
               </div>
             </div>
             
-            {!isOffDaySelected && (
+            {/* Leave type dropdown - only shown when Leave option is selected */}
+            {!isOffDaySelected && !isEditHoursSelected && (
               <div className="pl-4 mb-4">
                 <label htmlFor="leave-type" className="block text-sm font-medium text-gray-700 mb-1">
                   Leave Type
@@ -309,21 +337,29 @@ const TimeEditModal: React.FC<TimeEditModalProps> = ({ employee, day, onClose, o
             )}
           </div>
           
+          {/* Record Type Info Box */}
           <div className="mb-4 p-3 bg-blue-50 border border-blue-100 rounded-md">
             <div className="flex items-center">
-              <Briefcase className="w-4 h-4 mr-2 text-blue-500" />
+              {isEditHoursSelected ? (
+                <Edit className="w-4 h-4 mr-2 text-blue-500" />
+              ) : (
+                <Briefcase className="w-4 h-4 mr-2 text-blue-500" />
+              )}
               <p className="text-sm text-blue-700">
                 <span className="font-medium">
                   {isOffDaySelected 
                     ? 'This will be marked as an OFF-DAY'
-                    : leaveType 
-                      ? `This will be marked as ${leaveTypes.find(t => t.value === leaveType)?.label || leaveType}` 
-                      : 'Please select a leave type'}
+                    : isEditHoursSelected
+                      ? 'Edit check-in and check-out times directly'
+                      : leaveType 
+                        ? `This will be marked as ${leaveTypes.find(t => t.value === leaveType)?.label || leaveType}` 
+                        : 'Please select a leave type'}
                 </span>
               </p>
             </div>
           </div>
           
+          {/* Time inputs - only enabled for Edit Hours option */}
           <div className="space-y-4">
             <div>
               <label htmlFor="check-in-time" className="block text-sm font-medium text-gray-700 mb-1">
@@ -347,10 +383,10 @@ const TimeEditModal: React.FC<TimeEditModalProps> = ({ employee, day, onClose, o
                     'border-gray-300 focus:ring-purple-500 focus:border-purple-500'
                   } rounded-md`}
                   placeholder="HH:MM"
-                  disabled={isOffDaySelected || !!leaveType}
+                  disabled={isOffDaySelected || (!isEditHoursSelected && !!leaveType)}
                 />
                 <div className="mt-1 text-xs text-gray-600">
-                  {checkInTime && !isOffDaySelected && !leaveType && (
+                  {checkInTime && isEditHoursSelected && (
                     <>
                       <span>You entered: {formatTimeWithAmPm(checkInTime)}</span>
                       {isLateForShift(checkInTime) && (
@@ -373,19 +409,19 @@ const TimeEditModal: React.FC<TimeEditModalProps> = ({ employee, day, onClose, o
                 </div>
               </div>
               {checkInError && <p className="mt-1 text-xs text-red-600">{checkInError}</p>}
-              {day.shiftType === 'morning' && !isOffDaySelected && !leaveType && (
+              {isEditHoursSelected && day.shiftType === 'morning' && (
                 <p className="mt-1 text-xs text-gray-500">Expected around 05:00</p>
               )}
-              {day.shiftType === 'canteen' && day.firstCheckIn?.getHours() === 7 && !isOffDaySelected && !leaveType && (
+              {isEditHoursSelected && day.shiftType === 'canteen' && day.firstCheckIn?.getHours() === 7 && (
                 <p className="mt-1 text-xs text-gray-500">Expected around 07:00</p>
               )}
-              {day.shiftType === 'canteen' && day.firstCheckIn?.getHours() === 8 && !isOffDaySelected && !leaveType && (
+              {isEditHoursSelected && day.shiftType === 'canteen' && day.firstCheckIn?.getHours() === 8 && (
                 <p className="mt-1 text-xs text-gray-500">Expected around 08:00</p>
               )}
-              {day.shiftType === 'evening' && !isOffDaySelected && !leaveType && (
+              {isEditHoursSelected && day.shiftType === 'evening' && (
                 <p className="mt-1 text-xs text-gray-500">Expected around 13:00</p>
               )}
-              {(isNightShift() || day.shiftType === 'night') && !isOffDaySelected && !leaveType && (
+              {isEditHoursSelected && (isNightShift() || day.shiftType === 'night') && (
                 <p className="mt-1 text-xs text-gray-500">Expected around 21:00</p>
               )}
             </div>
@@ -412,39 +448,43 @@ const TimeEditModal: React.FC<TimeEditModalProps> = ({ employee, day, onClose, o
                     'border-gray-300 focus:ring-purple-500 focus:border-purple-500'
                   } rounded-md`}
                   placeholder="HH:MM"
-                  disabled={isOffDaySelected || !!leaveType}
+                  disabled={isOffDaySelected || (!isEditHoursSelected && !!leaveType)}
                 />
                 <div className="mt-1 text-xs text-gray-600">
-                  {checkOutTime && !isOffDaySelected && !leaveType && `You entered: ${formatTimeWithAmPm(checkOutTime)}`}
+                  {checkOutTime && isEditHoursSelected && `You entered: ${formatTimeWithAmPm(checkOutTime)}`}
                 </div>
               </div>
               {checkOutError && <p className="mt-1 text-xs text-red-600">{checkOutError}</p>}
-              {day.shiftType === 'morning' && !isOffDaySelected && !leaveType && (
+              {isEditHoursSelected && day.shiftType === 'morning' && (
                 <p className="mt-1 text-xs text-gray-500">Expected around 14:00</p>
               )}
-              {day.shiftType === 'canteen' && day.firstCheckIn?.getHours() === 7 && !isOffDaySelected && !leaveType && (
+              {isEditHoursSelected && day.shiftType === 'canteen' && day.firstCheckIn?.getHours() === 7 && (
                 <p className="mt-1 text-xs text-gray-500">Expected around 16:00</p>
               )}
-              {day.shiftType === 'canteen' && day.firstCheckIn?.getHours() === 8 && !isOffDaySelected && !leaveType && (
+              {isEditHoursSelected && day.shiftType === 'canteen' && day.firstCheckIn?.getHours() === 8 && (
                 <p className="mt-1 text-xs text-gray-500">Expected around 17:00</p>
               )}
-              {day.shiftType === 'evening' && !isOffDaySelected && !leaveType && (
+              {isEditHoursSelected && day.shiftType === 'evening' && (
                 <p className="mt-1 text-xs text-gray-500">Expected around 22:00</p>
               )}
-              {(isNightShift() || day.shiftType === 'night') && !isOffDaySelected && !leaveType && (
+              {isEditHoursSelected && (isNightShift() || day.shiftType === 'night') && (
                 <p className="mt-1 text-xs text-gray-500">Expected around 06:00 (next day)</p>
               )}
             </div>
             
             <div className="text-amber-600 text-xs text-center">
-              {isOffDaySelected || leaveType ? 
-                `This will be marked as ${isOffDaySelected ? "OFF-DAY" : leaveTypes.find(t => t.value === leaveType)?.label || leaveType}` :
-                "Removing both times will mark this as an OFF-DAY"
+              {isOffDaySelected ? 
+                "This will be marked as OFF-DAY" :
+                !isEditHoursSelected && leaveType ?
+                  `This will be marked as ${leaveTypes.find(t => t.value === leaveType)?.label || leaveType}` :
+                  isEditHoursSelected ?
+                    "Hours will be calculated based on your time entries" :
+                    "Please select a record type"
               }
             </div>
             
-            {/* Swap times button for mislabeled records */}
-            {!isOffDaySelected && !leaveType && (
+            {/* Swap times button for mislabeled records - only shown for Edit Hours */}
+            {isEditHoursSelected && (
               <div className="flex justify-center">
                 <button
                   type="button"
