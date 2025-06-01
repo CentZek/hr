@@ -12,7 +12,6 @@ interface TimeEditModalProps {
 }
 
 const TimeEditModal: React.FC<TimeEditModalProps> = ({ employee, day, onClose, onSave }) => {
-  // Initialize with empty strings when times are missing
   const [checkInTime, setCheckInTime] = useState<string>(
     day.firstCheckIn ? format(day.firstCheckIn, 'HH:mm') : ''
   );
@@ -23,13 +22,7 @@ const TimeEditModal: React.FC<TimeEditModalProps> = ({ employee, day, onClose, o
   const [checkOutError, setCheckOutError] = useState<string>('');
   const [showCorrectionInfo, setShowCorrectionInfo] = useState<boolean>(!!day.correctedRecords);
   const [leaveType, setLeaveType] = useState<string>(day.notes === 'OFF-DAY' ? '' : day.notes || '');
-  
-  // Three-way toggle for record type
-  const [recordType, setRecordType] = useState<'regular' | 'off-day' | 'leave'>(
-    day.notes === 'OFF-DAY' ? 'off-day' : 
-    (day.notes && day.notes !== 'Manual entry' && day.notes !== 'OFF-DAY') ? 'leave' : 
-    'regular'
-  );
+  const [isOffDaySelected, setIsOffDaySelected] = useState<boolean>(day.notes === 'OFF-DAY');
 
   const dateStr = format(new Date(day.date), 'yyyy-MM-dd');
   
@@ -141,33 +134,27 @@ const TimeEditModal: React.FC<TimeEditModalProps> = ({ employee, day, onClose, o
     setCheckInTime(checkOutTime);
     setCheckOutTime(tempCheckIn);
     setShowCorrectionInfo(true);
-    
-    // When swapping times, make sure we're in regular mode
-    setRecordType('regular');
+  };
+
+  // Toggle between OFF-DAY and leave type
+  const handleOffDayToggle = (isOff: boolean) => {
+    setIsOffDaySelected(isOff);
+    if (isOff) {
+      setLeaveType('');
+    }
   };
 
   const handleSave = () => {
     setCheckInError('');
     setCheckOutError('');
     
-    // If marked as OFF-DAY, set to OFF-DAY
-    if (recordType === 'off-day') {
-      onSave(null, null, null, 'OFF-DAY');
+    // If marked as OFF-DAY or leave day, and both times are empty
+    if ((isOffDaySelected || leaveType) && !checkInTime.trim() && !checkOutTime.trim()) {
+      // Set to OFF-DAY or leave type by passing null for both values
+      onSave(null, null, null, isOffDaySelected ? 'OFF-DAY' : leaveType);
       return;
     }
     
-    // If marked as leave type, set to the selected leave type
-    if (recordType === 'leave') {
-      if (!leaveType) {
-        // Require a leave type to be selected
-        setCheckInError('Please select a leave type');
-        return;
-      }
-      onSave(null, null, null, leaveType);
-      return;
-    }
-    
-    // For regular time records, validate the entered times
     let checkIn: Date | null = null;
     let checkOut: Date | null = null;
     let hasError = false;
@@ -219,9 +206,7 @@ const TimeEditModal: React.FC<TimeEditModalProps> = ({ employee, day, onClose, o
     }
 
     if (!hasError) {
-      // Use "Manual entry" as the notes for regular time records
-      const shiftType = isNightShift() ? 'night' : null;
-      onSave(checkIn, checkOut, shiftType, 'Manual entry');
+      onSave(checkIn, checkOut, null, isOffDaySelected ? 'OFF-DAY' : leaveType);
     }
   };
 
@@ -275,117 +260,70 @@ const TimeEditModal: React.FC<TimeEditModalProps> = ({ employee, day, onClose, o
             </div>
           )}
           
-          {/* Record Type Selection - Three-way toggle */}
+          {/* OFF-DAY/Leave Type toggle */}
           <div className="mb-4">
-            <div className="text-sm font-medium text-gray-700 mb-3">Record Type:</div>
-            <div className="grid grid-cols-3 gap-2">
-              <label 
-                className={`flex items-center justify-center px-3 py-2 rounded-md border ${
-                  recordType === 'regular' 
-                    ? 'bg-purple-50 border-purple-400 text-purple-700' 
-                    : 'border-gray-300 text-gray-700 hover:bg-gray-50'
-                } cursor-pointer`}
-              >
-                <input
-                  type="radio"
-                  checked={recordType === 'regular'}
-                  onChange={() => setRecordType('regular')}
-                  className="sr-only" // Hide actual radio button
-                />
-                <Clock className="w-4 h-4 mr-2" />
-                Regular
-              </label>
-              
-              <label 
-                className={`flex items-center justify-center px-3 py-2 rounded-md border ${
-                  recordType === 'off-day' 
-                    ? 'bg-gray-200 border-gray-400 text-gray-800' 
-                    : 'border-gray-300 text-gray-700 hover:bg-gray-50'
-                } cursor-pointer`}
-              >
-                <input
-                  type="radio"
-                  checked={recordType === 'off-day'}
-                  onChange={() => setRecordType('off-day')}
-                  className="sr-only" // Hide actual radio button
-                />
-                OFF-DAY
-              </label>
-              
-              <label 
-                className={`flex items-center justify-center px-3 py-2 rounded-md border ${
-                  recordType === 'leave' 
-                    ? 'bg-blue-50 border-blue-400 text-blue-700' 
-                    : 'border-gray-300 text-gray-700 hover:bg-gray-50'
-                } cursor-pointer`}
-              >
-                <input
-                  type="radio"
-                  checked={recordType === 'leave'}
-                  onChange={() => setRecordType('leave')}
-                  className="sr-only" // Hide actual radio button
-                />
-                <Briefcase className="w-4 h-4 mr-2" />
-                Leave
-              </label>
+            <div className="flex items-center mb-3">
+              <p className="text-sm font-medium text-gray-700">Record Type:</p>
+              <div className="ml-4 flex space-x-4">
+                <label className="inline-flex items-center">
+                  <input
+                    type="radio"
+                    checked={isOffDaySelected}
+                    onChange={() => handleOffDayToggle(true)}
+                    className="h-4 w-4 text-purple-600 focus:ring-purple-500"
+                  />
+                  <span className="ml-2 text-sm text-gray-700">OFF-DAY</span>
+                </label>
+                
+                <label className="inline-flex items-center">
+                  <input
+                    type="radio"
+                    checked={!isOffDaySelected}
+                    onChange={() => handleOffDayToggle(false)}
+                    className="h-4 w-4 text-purple-600 focus:ring-purple-500"
+                  />
+                  <span className="ml-2 text-sm text-gray-700">Leave</span>
+                </label>
+              </div>
             </div>
+            
+            {!isOffDaySelected && (
+              <div className="pl-4 mb-4">
+                <label htmlFor="leave-type" className="block text-sm font-medium text-gray-700 mb-1">
+                  Leave Type
+                </label>
+                <select
+                  id="leave-type"
+                  value={leaveType}
+                  onChange={(e) => setLeaveType(e.target.value)}
+                  className="block w-full pl-3 pr-10 py-2 text-base border border-gray-300 focus:outline-none focus:ring-purple-500 focus:border-purple-500 sm:text-sm rounded-md"
+                >
+                  {leaveTypes.map(type => (
+                    <option key={type.value} value={type.value}>{type.label}</option>
+                  ))}
+                </select>
+                {!leaveType && (
+                  <p className="mt-1 text-xs text-amber-600">Please select a leave type</p>
+                )}
+              </div>
+            )}
           </div>
           
-          {/* Leave Type Selection (visible only when Leave is selected) */}
-          {recordType === 'leave' && (
-            <div className="mb-4">
-              <label htmlFor="leave-type" className="block text-sm font-medium text-gray-700 mb-1">
-                Leave Type
-              </label>
-              <select
-                id="leave-type"
-                value={leaveType}
-                onChange={(e) => setLeaveType(e.target.value)}
-                className="block w-full pl-3 pr-10 py-2 text-base border border-gray-300 focus:outline-none focus:ring-purple-500 focus:border-purple-500 sm:text-sm rounded-md"
-              >
-                {leaveTypes.map(type => (
-                  <option key={type.value} value={type.value}>{type.label}</option>
-                ))}
-              </select>
-              {!leaveType && (
-                <p className="mt-1 text-xs text-amber-600">Please select a leave type</p>
-              )}
-            </div>
-          )}
-          
-          {/* Record Type Indicator */}
-          <div className="mb-4 p-3 rounded-md text-sm flex items-start"
-              style={{
-                backgroundColor: recordType === 'regular' ? '#f3f4ff' : // Light purple for regular
-                               recordType === 'off-day' ? '#f3f4f6' : // Light gray for off-day
-                               '#ebf5ff', // Light blue for leave
-                borderWidth: '1px',
-                borderColor: recordType === 'regular' ? '#c7d2fe' : // Purple border for regular
-                            recordType === 'off-day' ? '#d1d5db' : // Gray border for off-day
-                            '#bfdbfe', // Blue border for leave
-              }}
-          >
-            <div className="text-sm">
-              <p className="font-medium" style={{
-                color: recordType === 'regular' ? '#4338ca' : // Purple text for regular
-                      recordType === 'off-day' ? '#374151' : // Gray text for off-day
-                      '#1e40af', // Blue text for leave
-              }}>
-                {recordType === 'regular' 
-                  ? 'Editing Regular Time Record'
-                  : recordType === 'off-day' 
-                    ? 'This will be marked as OFF-DAY'
-                    : `This will be marked as ${leaveTypes.find(t => t.value === leaveType)?.label || 'Leave'}`}
+          <div className="mb-4 p-3 bg-blue-50 border border-blue-100 rounded-md">
+            <div className="flex items-center">
+              <Briefcase className="w-4 h-4 mr-2 text-blue-500" />
+              <p className="text-sm text-blue-700">
+                <span className="font-medium">
+                  {isOffDaySelected 
+                    ? 'This will be marked as an OFF-DAY'
+                    : leaveType 
+                      ? `This will be marked as ${leaveTypes.find(t => t.value === leaveType)?.label || leaveType}` 
+                      : 'Please select a leave type'}
+                </span>
               </p>
-              {recordType === 'regular' && (
-                <p className="mt-1 text-gray-600">
-                  Edit check-in and check-out times for this regular work day
-                </p>
-              )}
             </div>
           </div>
-
-          {/* Time edit fields - always shown but visually de-emphasized when not in regular mode */}
+          
           <div className="space-y-4">
             <div>
               <label htmlFor="check-in-time" className="block text-sm font-medium text-gray-700 mb-1">
@@ -403,20 +341,16 @@ const TimeEditModal: React.FC<TimeEditModalProps> = ({ employee, day, onClose, o
                   onChange={(e) => {
                     setCheckInTime(e.target.value);
                     setCheckInError('');
-                    
-                    // If user starts typing in the time fields, switch to regular mode
-                    if (recordType !== 'regular') {
-                      setRecordType('regular');
-                    }
                   }}
                   className={`block w-full pl-10 pr-3 py-2 sm:text-sm border ${
                     checkInError ? 'border-red-300 focus:ring-red-500 focus:border-red-500' : 
                     'border-gray-300 focus:ring-purple-500 focus:border-purple-500'
-                  } rounded-md ${recordType !== 'regular' ? 'bg-gray-50 opacity-75' : ''}`}
+                  } rounded-md`}
                   placeholder="HH:MM"
+                  disabled={isOffDaySelected || !!leaveType}
                 />
                 <div className="mt-1 text-xs text-gray-600">
-                  {checkInTime && (
+                  {checkInTime && !isOffDaySelected && !leaveType && (
                     <>
                       <span>You entered: {formatTimeWithAmPm(checkInTime)}</span>
                       {isLateForShift(checkInTime) && (
@@ -439,19 +373,19 @@ const TimeEditModal: React.FC<TimeEditModalProps> = ({ employee, day, onClose, o
                 </div>
               </div>
               {checkInError && <p className="mt-1 text-xs text-red-600">{checkInError}</p>}
-              {day.shiftType === 'morning' && (
+              {day.shiftType === 'morning' && !isOffDaySelected && !leaveType && (
                 <p className="mt-1 text-xs text-gray-500">Expected around 05:00</p>
               )}
-              {day.shiftType === 'canteen' && day.firstCheckIn?.getHours() === 7 && (
+              {day.shiftType === 'canteen' && day.firstCheckIn?.getHours() === 7 && !isOffDaySelected && !leaveType && (
                 <p className="mt-1 text-xs text-gray-500">Expected around 07:00</p>
               )}
-              {day.shiftType === 'canteen' && day.firstCheckIn?.getHours() === 8 && (
+              {day.shiftType === 'canteen' && day.firstCheckIn?.getHours() === 8 && !isOffDaySelected && !leaveType && (
                 <p className="mt-1 text-xs text-gray-500">Expected around 08:00</p>
               )}
-              {day.shiftType === 'evening' && (
+              {day.shiftType === 'evening' && !isOffDaySelected && !leaveType && (
                 <p className="mt-1 text-xs text-gray-500">Expected around 13:00</p>
               )}
-              {(isNightShift() || day.shiftType === 'night') && (
+              {(isNightShift() || day.shiftType === 'night') && !isOffDaySelected && !leaveType && (
                 <p className="mt-1 text-xs text-gray-500">Expected around 21:00</p>
               )}
             </div>
@@ -472,52 +406,57 @@ const TimeEditModal: React.FC<TimeEditModalProps> = ({ employee, day, onClose, o
                   onChange={(e) => {
                     setCheckOutTime(e.target.value);
                     setCheckOutError('');
-                    
-                    // If user starts typing in the time fields, switch to regular mode
-                    if (recordType !== 'regular') {
-                      setRecordType('regular');
-                    }
                   }}
                   className={`block w-full pl-10 pr-3 py-2 sm:text-sm border ${
                     checkOutError ? 'border-red-300 focus:ring-red-500 focus:border-red-500' : 
                     'border-gray-300 focus:ring-purple-500 focus:border-purple-500'
-                  } rounded-md ${recordType !== 'regular' ? 'bg-gray-50 opacity-75' : ''}`}
+                  } rounded-md`}
                   placeholder="HH:MM"
+                  disabled={isOffDaySelected || !!leaveType}
                 />
                 <div className="mt-1 text-xs text-gray-600">
-                  {checkOutTime && `You entered: ${formatTimeWithAmPm(checkOutTime)}`}
+                  {checkOutTime && !isOffDaySelected && !leaveType && `You entered: ${formatTimeWithAmPm(checkOutTime)}`}
                 </div>
               </div>
               {checkOutError && <p className="mt-1 text-xs text-red-600">{checkOutError}</p>}
-              {day.shiftType === 'morning' && (
+              {day.shiftType === 'morning' && !isOffDaySelected && !leaveType && (
                 <p className="mt-1 text-xs text-gray-500">Expected around 14:00</p>
               )}
-              {day.shiftType === 'canteen' && day.firstCheckIn?.getHours() === 7 && (
+              {day.shiftType === 'canteen' && day.firstCheckIn?.getHours() === 7 && !isOffDaySelected && !leaveType && (
                 <p className="mt-1 text-xs text-gray-500">Expected around 16:00</p>
               )}
-              {day.shiftType === 'canteen' && day.firstCheckIn?.getHours() === 8 && (
+              {day.shiftType === 'canteen' && day.firstCheckIn?.getHours() === 8 && !isOffDaySelected && !leaveType && (
                 <p className="mt-1 text-xs text-gray-500">Expected around 17:00</p>
               )}
-              {day.shiftType === 'evening' && (
+              {day.shiftType === 'evening' && !isOffDaySelected && !leaveType && (
                 <p className="mt-1 text-xs text-gray-500">Expected around 22:00</p>
               )}
-              {(isNightShift() || day.shiftType === 'night') && (
+              {(isNightShift() || day.shiftType === 'night') && !isOffDaySelected && !leaveType && (
                 <p className="mt-1 text-xs text-gray-500">Expected around 06:00 (next day)</p>
               )}
             </div>
             
-            {/* Swap times button - always visible */}
-            <div className="flex justify-center">
-              <button
-                type="button"
-                onClick={handleSwapTimes}
-                className="flex items-center px-3 py-2 text-sm font-medium text-yellow-700 bg-yellow-100 
-                         rounded-md hover:bg-yellow-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-yellow-500"
-              >
-                <Repeat className="w-4 h-4 mr-2" />
-                Swap Check-In/Out Times
-              </button>
+            <div className="text-amber-600 text-xs text-center">
+              {isOffDaySelected || leaveType ? 
+                `This will be marked as ${isOffDaySelected ? "OFF-DAY" : leaveTypes.find(t => t.value === leaveType)?.label || leaveType}` :
+                "Removing both times will mark this as an OFF-DAY"
+              }
             </div>
+            
+            {/* Swap times button for mislabeled records */}
+            {!isOffDaySelected && !leaveType && (
+              <div className="flex justify-center">
+                <button
+                  type="button"
+                  onClick={handleSwapTimes}
+                  className="flex items-center px-3 py-2 text-sm font-medium text-yellow-700 bg-yellow-100 
+                           rounded-md hover:bg-yellow-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-yellow-500"
+                >
+                  <Repeat className="w-4 h-4 mr-2" />
+                  Swap Check-In/Out Times
+                </button>
+              </div>
+            )}
           </div>
           
           <div className="mt-6 flex justify-end space-x-3">
