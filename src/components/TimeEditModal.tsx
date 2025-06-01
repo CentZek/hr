@@ -24,7 +24,7 @@ const TimeEditModal: React.FC<TimeEditModalProps> = ({ employee, day, onClose, o
   const [showCorrectionInfo, setShowCorrectionInfo] = useState<boolean>(!!day.correctedRecords);
   const [leaveType, setLeaveType] = useState<string>(day.notes === 'OFF-DAY' ? '' : day.notes || '');
   
-  // New approach: use a recordType state instead of separate boolean flags
+  // Three-way toggle for record type
   const [recordType, setRecordType] = useState<'regular' | 'off-day' | 'leave'>(
     day.notes === 'OFF-DAY' ? 'off-day' : 
     (day.notes && day.notes !== 'Manual entry' && day.notes !== 'OFF-DAY') ? 'leave' : 
@@ -142,7 +142,7 @@ const TimeEditModal: React.FC<TimeEditModalProps> = ({ employee, day, onClose, o
     setCheckOutTime(tempCheckIn);
     setShowCorrectionInfo(true);
     
-    // When swapping times, switch to regular mode
+    // When swapping times, make sure we're in regular mode
     setRecordType('regular');
   };
 
@@ -167,7 +167,7 @@ const TimeEditModal: React.FC<TimeEditModalProps> = ({ employee, day, onClose, o
       return;
     }
     
-    // We're in regular time editing mode
+    // For regular time records, validate the entered times
     let checkIn: Date | null = null;
     let checkOut: Date | null = null;
     let hasError = false;
@@ -219,7 +219,7 @@ const TimeEditModal: React.FC<TimeEditModalProps> = ({ employee, day, onClose, o
     }
 
     if (!hasError) {
-      // We're sending the unchanged shift type back
+      // Use "Manual entry" as the notes for regular time records
       onSave(checkIn, checkOut, null, 'Manual entry');
     }
   };
@@ -274,7 +274,7 @@ const TimeEditModal: React.FC<TimeEditModalProps> = ({ employee, day, onClose, o
             </div>
           )}
           
-          {/* Record Type Selection - Now a three-way toggle */}
+          {/* Record Type Selection - Three-way toggle */}
           <div className="mb-4">
             <div className="text-sm font-medium text-gray-700 mb-3">Record Type:</div>
             <div className="grid grid-cols-3 gap-2">
