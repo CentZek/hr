@@ -1,266 +1,337 @@
-/**
- * Time record helper functions for applying changes to daily records
- */
 import { EmployeeRecord, DailyRecord } from '../types';
 import { calculatePayableHours, determineShiftType } from './shiftCalculations';
+import { parse, format, eachDayOfInterval, parseISO } from 'date-fns';
+import { parseShiftTimes } from './dateTimeHelper';
 
-// Calculate statistics from employee records
-export const calculateStats = (records: EmployeeRecord[]) => {
-  const totalEmployees = records.length;
+// Handle adding a manual entry to the employee records
+export const addManualEntryToRecords = (
+  recordData: any,
+  employeeRecords: EmployeeRecord[],
+): {
+  updatedRecords: EmployeeRecord[];
+  employeeIndex: number;
+  isNewEmployee: boolean;
+} => {
+  const { employee, date, checkIn, checkOut, shiftType, checkInDate, checkOutDate } = recordData;
+  
+  if (!employee || !date) {
+    throw new Error("Missing required data for manual entry");
+  }
+  
+  // Use provided date objects if available, otherwise parse from strings
+  let firstCheckIn: Date | null;
+  let lastCheckOut: Date | null;
+  
+  if (checkInDate) {
+    firstCheckIn = checkInDate;
+  } else if (checkIn) {
+    const { checkIn: parsedCheckIn } = parseShiftTimes(date, checkIn, checkOut || '00:00', shiftType);
+    firstCheckIn = parsedCheckIn;
+  } else {
+    firstCheckIn = null;
+  }
+  
+  if (checkOutDate) {
+    lastCheckOut = checkOutDate;
+  } else if (checkOut) {
+    const { checkOut: parsedCheckOut } = parseShiftTimes(date, checkIn || '00:00', checkOut, shiftType);
+    lastCheckOut = parsedCheckOut;
+  } else {
+    lastCheckOut = null;
+  }
+  
+  // Calculate hours - always use standard 9 hours for manual entries
+  const hoursWorked = 9.0;
+  
+  // Create dummy time records for the raw data view
+  const allTimeRecords = [];
+  if (firstCheckIn) {
+    allTimeRecords.push({
+      timestamp: firstCheckIn,
+      status: 'check_in',
+      shift_type: shiftType,
+      notes: 'Manual entry',
+      originalIndex: 0
+    });
+  }
+  
+  if (lastCheckOut) {
+    allTimeRecords.push({
+      timestamp: lastCheckOut,
+      status: 'check_out',
+      shift_type: shiftType,
+      notes: 'Manual entry',
+      originalIndex: 1
+    });
+  }
+  
+  // Get standard display times based on shift
+  const getStandardDisplayTime = (type: string, timeType: 'start' | 'end') => {
+    const displayTimes = {
+      morning: { startTime: '05:00', endTime: '14:00' },
+      evening: { startTime: '13:00', endTime: '22:00' },
+      night: { startTime: '21:00', endTime: '06:00' },
+      canteen: { startTime: '07:00', endTime: '16:00' } // Default to early canteen
+    };
+    
+    if (!type || !displayTimes[type as keyof typeof displayTimes]) return '';
+    
+    return timeType === 'start' ? 
+      displayTimes[type as keyof typeof displayTimes].startTime : 
+      displayTimes[type as keyof typeof displayTimes].endTime;
+  };
+  
+  // Create daily record
+  const newDay: DailyRecord = {
+    date,
+    firstCheckIn,
+    lastCheckOut,
+    hoursWorked,
+    approved: false, // Start as pending, not auto-approved
+    shiftType,
+    notes: 'Manual entry',
+    missingCheckIn: !firstCheckIn,
+    missingCheckOut: !lastCheckOut,
+    isLate: false,
+    earlyLeave: false,
+    excessiveOvertime: false,
+    penaltyMinutes: 0,
+    allTimeRecords: allTimeRecords,
+    hasMultipleRecords: allTimeRecords.length > 0,
+    isCrossDay: shiftType === 'night',
+    checkOutNextDay: shiftType === 'night',
+    // Add display values for consistent viewing
+    displayCheckIn: getStandardDisplayTime(shiftType, 'start'),
+    displayCheckOut: getStandardDisplayTime(shiftType, 'end')
+  };
+  
+  // Get normalized employee info for matching
+  const empNumber = String(employee.employee_number || employee.employeeNumber || "").trim();
+  const empName = employee.name || "";
+
+  // Find employee by number or name
+  let employeeIndex = -1;
+  
+  for (let i = 0; i < employeeRecords.length; i++) {
+    const emp = employeeRecords[i];
+    
+    // Try exact match on employee number
+    if (String(emp.employeeNumber).trim() === empNumber) {
+      employeeIndex = i;
+      break;
+    }
+    
+    // If no match by number, try matching by name
+    if (emp.name.toLowerCase() === empName.toLowerCase()) {
+      employeeIndex = i;
+      break;
+    }
+  }
+  
+  // Create copy of records to modify
+  const newRecords = [...employeeRecords];
+  let isNewEmployee = false;
+  
+  if (employeeIndex >= 0) {
+    // Employee exists, add or update day
+    const existingDayIndex = newRecords[employeeIndex].days.findIndex(
+      d => d.date === date
+    );
+    
+    if (existingDayIndex >= 0) {
+      // Update existing day
+      newRecords[employeeIndex].days[existingDayIndex] = newDay;
+    } else {
+      // Add new day
+      newRecords[employeeIndex].days.push(newDay);
+      newRecords[employeeIndex].totalDays += 1;
+    }
+    
+    // Sort days by date
+    newRecords[employeeIndex].days.sort((a, b) => a.date.localeCompare(b.date));
+    
+    newRecords[employeeIndex].expanded = true; // Auto-expand to show the new entry
+  } else {
+    // Employee doesn't exist in current records, create a new entry
+    isNewEmployee = true;
+    newRecords.push({
+      employeeNumber: empNumber,
+      name: empName,
+      department: '',
+      days: [newDay],
+      totalDays: 1,
+      expanded: true // Auto-expand to show the new entry
+    });
+    employeeIndex = newRecords.length - 1;
+  }
+  
+  return { 
+    updatedRecords: newRecords,
+    employeeIndex,
+    isNewEmployee
+  };
+};
+
+// Calculate updated statistics after data modification
+export const calculateStats = (employeeRecords: EmployeeRecord[]) => {
+  const totalEmployees = employeeRecords.length;
   let totalDays = 0;
   
-  records.forEach(employee => {
-    totalDays += employee.days.length;
+  employeeRecords.forEach(emp => {
+    totalDays += emp.days.length;
   });
   
   return { totalEmployees, totalDays };
 };
 
-// Add a manual entry to the employee records
-export const addManualEntryToRecords = (
-  recordData: any, 
-  employeeRecords: EmployeeRecord[]
-): { updatedRecords: EmployeeRecord[], employeeIndex: number, isNewEmployee: boolean } => {
-  // Create a copy of the records to avoid direct state mutation
-  const updatedRecords = [...employeeRecords];
-  
-  // Extract data from the record
-  const employeeNumber = String(recordData.employee.employee_number || recordData.employee.employeeNumber || "").trim();
-  const employeeName = recordData.employee.name;
-  const date = recordData.date;
-  const checkIn = recordData.checkIn;
-  const checkOut = recordData.checkOut;
-  const shiftType = recordData.shiftType;
-  const notes = recordData.notes || 'Manual entry';
-  
-  // Check if this is an off day
-  const isOffDay = !checkIn && !checkOut;
-  
-  // Create the daily record
-  const dailyRecord: DailyRecord = {
-    date,
-    firstCheckIn: checkIn,
-    lastCheckOut: checkOut,
-    hoursWorked: recordData.hoursWorked || 0,
+// Process employee record updates after saving to database
+export const processRecordsAfterSave = (employeeRecords: EmployeeRecord[]) => {
+  const updatedRecords = employeeRecords
+    .map(emp => ({
+      ...emp,
+      days: emp.days.filter(d => !d.approved) // Remove approved days
+    }))
+    .filter(emp => emp.days.length > 0); // Remove employees with no remaining days
+    
+  return updatedRecords;
+};
+
+// Add OFF-DAY markers for any missing days in the date range
+export const addOffDaysToRecords = (employeeRecords: EmployeeRecord[]): EmployeeRecord[] => {
+  return employeeRecords.map(employee => {
+    // Skip if no days or only one day
+    if (employee.days.length <= 1) return employee;
+    
+    // Sort days by date
+    const sortedDays = [...employee.days].sort((a, b) => a.date.localeCompare(b.date));
+    
+    // Find earliest and latest dates
+    const earliestDate = new Date(sortedDays[0].date);
+    const latestDate = new Date(sortedDays[sortedDays.length - 1].date);
+    
+    // Get all dates in the range
+    const dateRange = eachDayOfInterval({ start: earliestDate, end: latestDate });
+    const existingDates = new Set(sortedDays.map(day => day.date));
+    
+    // Create OFF-DAY entries for missing dates
+    const offDays: DailyRecord[] = [];
+    
+    dateRange.forEach(date => {
+      const dateStr = format(date, 'yyyy-MM-dd');
+      if (!existingDates.has(dateStr)) {
+        offDays.push(createOffDayRecord(dateStr));
+      }
+    });
+    
+    // Add OFF-DAYs to the employee record
+    const updatedDays = [...sortedDays, ...offDays].sort((a, b) => a.date.localeCompare(b.date));
+    
+    return {
+      ...employee,
+      days: updatedDays,
+      totalDays: updatedDays.length
+    };
+  });
+};
+
+// Helper function to create an OFF-DAY record
+export const createOffDayRecord = (dateStr: string): DailyRecord => {
+  return {
+    date: dateStr,
+    firstCheckIn: null,
+    lastCheckOut: null,
+    hoursWorked: 0,
     approved: false,
-    shiftType: isOffDay ? 'off_day' : (shiftType || (checkIn ? determineShiftType(checkIn) : null)),
-    notes: isOffDay ? 'OFF-DAY' : notes,
-    missingCheckIn: !checkIn,
-    missingCheckOut: !checkOut,
+    shiftType: null,
+    notes: 'OFF-DAY',
+    missingCheckIn: true,
+    missingCheckOut: true,
     isLate: false,
     earlyLeave: false,
     excessiveOvertime: false,
     penaltyMinutes: 0,
-    displayCheckIn: isOffDay ? 'OFF-DAY' : undefined,
-    displayCheckOut: isOffDay ? 'OFF-DAY' : undefined
+    allTimeRecords: [],
+    hasMultipleRecords: false,
+    displayCheckIn: 'OFF-DAY',
+    displayCheckOut: 'OFF-DAY'
   };
-  
-  // Find employee index in records
-  let employeeIndex = updatedRecords.findIndex(emp => 
-    String(emp.employeeNumber).trim() === employeeNumber
-  );
-  
-  let isNewEmployee = false;
-  
-  if (employeeIndex >= 0) {
-    // Employee exists, add or update the day
-    const dayIndex = updatedRecords[employeeIndex].days.findIndex(day => day.date === date);
-    
-    if (dayIndex >= 0) {
-      // Update existing day
-      updatedRecords[employeeIndex].days[dayIndex] = dailyRecord;
-    } else {
-      // Add new day
-      updatedRecords[employeeIndex].days.push(dailyRecord);
-      updatedRecords[employeeIndex].totalDays += 1;
-    }
-  } else {
-    // Employee doesn't exist, create new record
-    isNewEmployee = true;
-    employeeIndex = updatedRecords.length;
-    updatedRecords.push({
-      employeeNumber,
-      name: employeeName,
-      department: recordData.department || '',
-      days: [dailyRecord],
-      totalDays: 1,
-      expanded: true // Auto-expand to show the new entry
-    });
-  }
-  
-  return { updatedRecords, employeeIndex, isNewEmployee };
 };
 
-// Process records after saving (removing approved days)
-export const processRecordsAfterSave = (employeeRecords: EmployeeRecord[]): EmployeeRecord[] => {
-  // Create a deep copy of employee records
-  const updatedRecords = employeeRecords.map(employee => {
-    // Filter out approved days
-    const remainingDays = employee.days.filter(day => !day.approved);
+// Fetch employee shift requests and convert to EmployeeRecord format
+export const convertShiftRequestsToRecords = async () => {
+  try {
+    const { data: pendingShifts, error } = await fetch('/api/pending-shifts')
+      .then(res => res.json());
     
-    return {
-      ...employee,
-      days: remainingDays,
-      totalDays: remainingDays.length,
-      // Keep expanded state for employees with remaining days
-      expanded: remainingDays.length > 0 ? employee.expanded : false
-    };
-  });
-  
-  // Filter out employees with no remaining days
-  return updatedRecords.filter(employee => employee.days.length > 0);
-};
-
-// Apply a penalty to a specific day
-export const applyPenaltyToDay = (day: DailyRecord, penaltyMinutes: number): DailyRecord => {
-  const updatedDay = { ...day };
-  
-  // Update penalty minutes
-  updatedDay.penaltyMinutes = penaltyMinutes;
-  
-  // Recalculate hours worked with the penalty applied
-  if (updatedDay.firstCheckIn && updatedDay.lastCheckOut) {
-    // Derive shift type if missing
-    const shiftType = updatedDay.shiftType || determineShiftType(updatedDay.firstCheckIn);
+    if (error) throw error;
     
-    // Update the shift type if it was missing
-    if (!updatedDay.shiftType) {
-      updatedDay.shiftType = shiftType;
-    }
+    const employeeMap = new Map();
     
-    console.log(`TimeRecordHelpers - Before recalculation, hours were: ${updatedDay.hoursWorked.toFixed(2)}`);
-    
-    // Calculate new hours with penalty applied
-    updatedDay.hoursWorked = calculatePayableHours(
-      updatedDay.firstCheckIn, 
-      updatedDay.lastCheckOut, 
-      shiftType, 
-      penaltyMinutes,
-      true // Mark as manual edit to use exact time calculation
-    );
-    
-    console.log(`TimeRecordHelpers - After recalculation with ${penaltyMinutes} minute penalty, hours are: ${updatedDay.hoursWorked.toFixed(2)}`);
-  } else {
-    console.log(`Missing check-in or check-out for this day, cannot recalculate hours`);
-  }
-  
-  return updatedDay;
-};
-
-// Update check-in and check-out times for a day
-export const updateTimeRecords = (
-  day: DailyRecord,
-  checkIn: Date | null,
-  checkOut: Date | null,
-  shiftType: string | null,
-  notes: string
-): DailyRecord => {
-  const updatedDay = { ...day };
-  let didUpdate = false;
-  
-  // If both check-in and check-out are null, and notes indicate a leave day
-  if (checkIn === null && checkOut === null && notes !== 'OFF-DAY' && notes.trim() !== '') {
-    updatedDay.firstCheckIn = null;
-    updatedDay.lastCheckOut = null;
-    updatedDay.missingCheckIn = true;
-    updatedDay.missingCheckOut = true;
-    updatedDay.hoursWorked = 0;
-    updatedDay.notes = notes;
-    updatedDay.shiftType = 'off_day'; // Keep shift type as 'off_day' for leave records
-    updatedDay.isLate = false;
-    updatedDay.earlyLeave = false;
-    updatedDay.excessiveOvertime = false;
-    updatedDay.penaltyMinutes = 0;
-    // Set display values for leave types
-    updatedDay.displayCheckIn = notes;
-    updatedDay.displayCheckOut = notes;
-    
-    return updatedDay;
-  }
-  
-  // If both check-in and check-out are null, mark as OFF-DAY
-  if (checkIn === null && checkOut === null) {
-    updatedDay.firstCheckIn = null;
-    updatedDay.lastCheckOut = null;
-    updatedDay.missingCheckIn = true;
-    updatedDay.missingCheckOut = true;
-    updatedDay.hoursWorked = 0;
-    updatedDay.notes = 'OFF-DAY';
-    updatedDay.shiftType = 'off_day';
-    updatedDay.isLate = false;
-    updatedDay.earlyLeave = false;
-    updatedDay.excessiveOvertime = false;
-    updatedDay.penaltyMinutes = 0;
-    // Set display values for OFF-DAY
-    updatedDay.displayCheckIn = 'OFF-DAY';
-    updatedDay.displayCheckOut = 'OFF-DAY';
-    
-    return updatedDay;
-  }
-  
-  // Update check-in and check-out times
-  if (checkIn !== null && (!updatedDay.firstCheckIn || checkIn.getTime() !== updatedDay.firstCheckIn.getTime())) {
-    updatedDay.firstCheckIn = checkIn;
-    updatedDay.missingCheckIn = false;
-    didUpdate = true;
-  }
-  
-  if (checkOut !== null && (!updatedDay.lastCheckOut || checkOut.getTime() !== updatedDay.lastCheckOut.getTime())) {
-    updatedDay.lastCheckOut = checkOut;
-    updatedDay.missingCheckOut = false;
-    didUpdate = true;
-  }
-  
-  // Determine shift type if not already set or if this was an OFF-DAY
-  if ((!updatedDay.shiftType || updatedDay.notes === 'OFF-DAY') && updatedDay.firstCheckIn) {
-    updatedDay.shiftType = determineShiftType(updatedDay.firstCheckIn);
-    // If we're changing from OFF-DAY, we need to update the notes
-    if (updatedDay.notes === 'OFF-DAY') {
-      updatedDay.notes = 'Manual entry';
-    }
-    didUpdate = true;
-  }
-  
-  // Recalculate hours and flags
-  if ((updatedDay.firstCheckIn && updatedDay.lastCheckOut && didUpdate) || 
-      (updatedDay.notes === 'OFF-DAY' && (checkIn || checkOut))) {
-    // If we have check-in and check-out times but this was an OFF-DAY, we need to update it
-    if (updatedDay.notes === 'OFF-DAY' && checkIn && checkOut) {
-      updatedDay.notes = 'Manual entry';
-      updatedDay.shiftType = determineShiftType(checkIn);
-    }
-
-    const shiftType = updatedDay.shiftType || (updatedDay.firstCheckIn ? determineShiftType(updatedDay.firstCheckIn) : null);
-    
-    if (shiftType && updatedDay.firstCheckIn && updatedDay.lastCheckOut) {
-      // Always recalculate hours when either check-in or check-out changes
-      updatedDay.hoursWorked = calculatePayableHours(
-        updatedDay.firstCheckIn, 
-        updatedDay.lastCheckOut, 
-        shiftType,
-        updatedDay.penaltyMinutes,
-        true // Mark as manual edit to use exact time calculation
+    // Group shifts by employee
+    pendingShifts.forEach(shift => {
+      if (!employeeMap.has(shift.employee_id)) {
+        employeeMap.set(shift.employee_id, {
+          employeeNumber: shift.employee_number,
+          name: shift.employee_name,
+          department: '',
+          days: [],
+          totalDays: 0,
+          expanded: false
+        });
+      }
+      
+      const emp = employeeMap.get(shift.employee_id);
+      
+      // Use our helper function to properly handle night shifts
+      const { checkIn, checkOut } = parseShiftTimes(
+        shift.date,
+        shift.start_time,
+        shift.end_time,
+        shift.shift_type
       );
       
-      console.log(`Calculated ${updatedDay.hoursWorked.toFixed(2)} hours for edited time records with ${updatedDay.penaltyMinutes} minute penalty`);
-    }
+      const hoursWorked = calculatePayableHours(checkIn, checkOut, shift.shift_type);
+      
+      // Get standard display times based on shift type
+      const getStandardDisplayTime = (shiftType: string, timeType: 'start' | 'end') => {
+        const displayTimes = {
+          morning: { startTime: '05:00', endTime: '14:00' },
+          evening: { startTime: '13:00', endTime: '22:00' },
+          night: { startTime: '21:00', endTime: '06:00' },
+          canteen: { startTime: '07:00', endTime: '16:00' }
+        };
+        
+        if (!displayTimes[shiftType as keyof typeof displayTimes]) return '';
+        
+        return timeType === 'start' ? 
+          displayTimes[shiftType as keyof typeof displayTimes].startTime : 
+          displayTimes[shiftType as keyof typeof displayTimes].endTime;
+      };
+      
+      emp.days.push({
+        date: shift.date,
+        firstCheckIn: checkIn,
+        lastCheckOut: checkOut,
+        hoursWorked,
+        approved: false,
+        shiftType: shift.shift_type,
+        notes: shift.notes || 'Employee submitted shift',
+        missingCheckIn: false,
+        missingCheckOut: false,
+        isLate: false,
+        earlyLeave: false,
+        excessiveOvertime: false,
+        penaltyMinutes: 0,
+        displayCheckIn: getStandardDisplayTime(shift.shift_type, 'start'),
+        displayCheckOut: getStandardDisplayTime(shift.shift_type, 'end')
+      });
+      
+      emp.totalDays++;
+    });
+    
+    return Array.from(employeeMap.values());
+  } catch (error) {
+    console.error('Error converting shift requests to records:', error);
+    return [];
   }
-  
-  return updatedDay;
-};
-
-// Set approval status for a day
-export const setDayApprovalStatus = (day: DailyRecord, isApproved: boolean): DailyRecord => {
-  return {
-    ...day,
-    approved: isApproved
-  };
-};
-
-// Apply approval status to all days in a collection
-export const approveAllDays = (days: DailyRecord[]): DailyRecord[] => {
-  return days.map(day => ({
-    ...day,
-    approved: true
-  }));
 };

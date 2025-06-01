@@ -409,8 +409,7 @@ export const checkExistingTimeRecord = async (
   employeeId: string, 
   shiftType: string, 
   status: string, 
-  workingWeekStart: string,
-  isManualEntry: boolean = true
+  workingWeekStart: string
 ): Promise<string | null> => {
   try {
     // Log the search parameters for debugging
@@ -419,7 +418,7 @@ export const checkExistingTimeRecord = async (
       shiftType,
       status,
       workingWeekStart,
-      is_manual_entry: isManualEntry
+      is_manual_entry: true
     });
 
     const { data, error } = await supabase
@@ -429,7 +428,7 @@ export const checkExistingTimeRecord = async (
       .eq('shift_type', shiftType)
       .eq('status', status) // IMPORTANT: Filter by status to prevent mix-ups
       .eq('working_week_start', workingWeekStart)
-      .eq('is_manual_entry', isManualEntry)
+      .eq('is_manual_entry', true)
       .maybeSingle();
 
     if (error) throw error;
@@ -479,8 +478,7 @@ export const safeUpsertTimeRecord = async (recordData: any, existingId: string |
             recordData.employee_id,
             recordData.shift_type,
             recordData.status,
-            recordData.working_week_start,
-            recordData.is_manual_entry
+            recordData.working_week_start
           );
           
           if (existingRecord) {
@@ -543,59 +541,39 @@ export const saveRecordsToDatabase = async (employeeRecords: EmployeeRecord[]): 
     
     for (const day of approvedDays) {
       try {
-        // Handle leave days (OFF-DAYs and other leave types)
-        const isLeaveDay = (
-          (day.notes && 
-            (day.notes.includes('OFF-DAY') || 
-             day.notes.includes('LEAVE') || 
-             day.notes.toUpperCase().includes('OFF') || 
-             day.notes.toUpperCase().includes('LEAVE'))
-          ) || 
-          (!day.firstCheckIn && !day.lastCheckOut && day.approved)
-        );
-        
-        if (isLeaveDay) {
-          // Get employee ID
-          const employeeId = await getEmployeeId(employee.employeeNumber);
-          
-          // Determine shift type - default to off_day if not specified
-          const shiftType = day.shiftType || 'off_day';
-          
-          // Default note if not provided
-          const noteText = day.notes || 'OFF-DAY';
-          
-          // Check if leave record already exists
-          const existingLeaveId = await checkExistingTimeRecord(
-            employeeId,
-            shiftType,
+        // Skip if this is an OFF-DAY with no hours
+        if (day.notes === 'OFF-DAY' && day.hoursWorked === 0) {
+          // Check if OFF-DAY record already exists
+          const existingOffDayId = await checkExistingTimeRecord(
+            await getEmployeeId(employee.employeeNumber),
             'off_day',
-            day.date,
-            false // Set is_manual_entry to false for Excel imports
+            'off_day',
+            day.date
           );
 
-          const leaveData = {
-            employee_id: employeeId,
+          const offDayData = {
+            employee_id: await getEmployeeId(employee.employeeNumber),
             timestamp: `${day.date}T12:00:00`, // Use local date-time string
             status: 'off_day',
-            shift_type: shiftType,
-            notes: noteText,
+            shift_type: 'off_day',
+            notes: 'OFF-DAY',
             is_manual_entry: false, // Mark as non-manual entry since it's from Excel
             exact_hours: 0,
             working_week_start: day.date // Set working_week_start for proper grouping
           };
 
           // Use the safe upsert function
-          const success = await safeUpsertTimeRecord(leaveData, existingLeaveId);
+          const success = await safeUpsertTimeRecord(offDayData, existingOffDayId);
           
           if (success) {
             successCount++;
           } else {
-            throw new Error(`Failed to save leave record: ${noteText}`);
+            throw new Error('Failed to save OFF-DAY record');
           }
           continue;
         }
         
-        // For regular work days, check if we have check-in and check-out times
+        // Skip if missing both check-in and check-out
         if (!day.firstCheckIn && !day.lastCheckOut) {
           errorCount++;
           errorDetails.push({
@@ -625,8 +603,7 @@ export const saveRecordsToDatabase = async (employeeRecords: EmployeeRecord[]): 
             employeeId,
             day.shiftType || '',
             'check_in',
-            day.date,
-            false // Set is_manual_entry to false for Excel imports
+            day.date
           );
           
           // Add double-time indicator to notes if applicable
@@ -675,8 +652,7 @@ export const saveRecordsToDatabase = async (employeeRecords: EmployeeRecord[]): 
             employeeId,
             day.shiftType || '',
             'check_out',
-            day.date,
-            false // Set is_manual_entry to false for Excel imports
+            day.date
           );
           
           // Add double-time indicator to notes if applicable
