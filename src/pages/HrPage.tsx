@@ -228,20 +228,23 @@ function HrPage() {
     toast.success(`Penalty applied: ${penaltyMinutes} minutes (${(penaltyMinutes / 60).toFixed(2)} hours)`);
   };
 
-  const handleEditTime = (employeeIndex: number, dayIndex: number, checkIn: Date | null, checkOut: Date | null) => {
+  const handleEditTime = (employeeIndex: number, dayIndex: number, checkIn: Date | null, checkOut: Date | null, shiftType: string | null, notes: string) => {
     setEmployeeRecords(prev => {
       const newRecords = [...prev];
       const day = newRecords[employeeIndex].days[dayIndex];
       
-      // If both check-in and check-out are null, mark as OFF-DAY
+      // If notes is provided and it's not "OFF-DAY", it's a leave request
+      const isLeaveRequest = notes && notes !== 'OFF-DAY';
+      
+      // If both check-in and check-out are null, mark as OFF-DAY or leave type
       if (checkIn === null && checkOut === null) {
         day.firstCheckIn = null;
         day.lastCheckOut = null;
         day.missingCheckIn = true;
         day.missingCheckOut = true;
         day.hoursWorked = 0;
-        day.notes = 'OFF-DAY';
-        day.shiftType = null;
+        day.notes = notes || 'OFF-DAY';
+        day.shiftType = isLeaveRequest ? null : 'off_day';
         day.isLate = false;
         day.earlyLeave = false;
         day.excessiveOvertime = false;
@@ -261,8 +264,8 @@ function HrPage() {
         day.missingCheckOut = false;
       }
       
-      // If changing from OFF-DAY, we need to update the notes and determine shift type
-      if (day.notes === 'OFF-DAY') {
+      // If changing from OFF-DAY or leave, we need to update the notes and determine shift type
+      if (day.notes === 'OFF-DAY' || isLeaveRequest) {
         day.notes = 'Manual entry';
       }
       
