@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { format, parseISO, isValid } from 'date-fns';
-import { Clock, AlertCircle, CheckCircle, XCircle, Info } from 'lucide-react';
-import { supabase } from '../lib/supabase';
+import { Clock, AlertCircle, CheckCircle, XCircle, Info, RefreshCw } from 'lucide-react';
+import { supabase, testSupabaseConnectivity } from '../lib/supabase';
 import toast from 'react-hot-toast';
 import { DISPLAY_SHIFT_TIMES } from '../types';
 import { parseShiftTimes } from '../utils/dateTimeHelper';
@@ -16,6 +16,7 @@ const EmployeeShiftRequest: React.FC<EmployeeShiftRequestProps> = ({ onShiftAppr
   const [isLoading, setIsLoading] = useState(true);
   const [isProcessing, setIsProcessing] = useState<Record<string, boolean>>({});
   const [isMobile, setIsMobile] = useState(false);
+  const [connectionError, setConnectionError] = useState<string | null>(null);
 
   useEffect(() => {
     const checkIfMobile = () => setIsMobile(window.innerWidth < 640);
@@ -30,7 +31,17 @@ const EmployeeShiftRequest: React.FC<EmployeeShiftRequestProps> = ({ onShiftAppr
 
   const fetchEmployeeShiftRequests = async () => {
     setIsLoading(true);
+    setConnectionError(null);
+    
     try {
+      // First test the connectivity
+      const isConnected = await testSupabaseConnectivity();
+      if (!isConnected) {
+        setConnectionError("Unable to connect to the database. Please check your internet connection and try again.");
+        setIsLoading(false);
+        return;
+      }
+      
       const { data, error } = await supabase
         .from('employee_shifts')
         .select(`
@@ -43,6 +54,7 @@ const EmployeeShiftRequest: React.FC<EmployeeShiftRequestProps> = ({ onShiftAppr
       setEmployeeShiftRequests(data || []);
     } catch (error) {
       console.error('Error fetching employee shift requests:', error);
+      setConnectionError("Failed to load employee shift requests. Please try again later.");
       toast.error('Failed to load employee shift requests');
     } finally {
       setIsLoading(false);
@@ -216,6 +228,28 @@ const EmployeeShiftRequest: React.FC<EmployeeShiftRequestProps> = ({ onShiftAppr
       setIsProcessing(prev => ({ ...prev, [shiftId]: false }));
     }
   };
+
+  // Function to retry loading data
+  const handleRetry = () => {
+    fetchEmployeeShiftRequests();
+  };
+
+  // Show connection error state
+  if (connectionError) {
+    return (
+      <div className="bg-white border border-gray-200 rounded-md p-4 text-center">
+        <AlertCircle className="w-6 h-6 text-red-500 mx-auto mb-2" />
+        <p className="text-sm text-gray-600 mb-3">{connectionError}</p>
+        <button
+          onClick={handleRetry}
+          className="inline-flex items-center px-3 py-2 bg-blue-100 text-blue-700 rounded text-sm hover:bg-blue-200"
+        >
+          <RefreshCw className="w-4 h-4 mr-2" />
+          Retry Connection
+        </button>
+      </div>
+    );
+  }
 
   if (isLoading) {
     return (

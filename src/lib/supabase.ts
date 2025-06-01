@@ -11,7 +11,16 @@ if (!supabaseUrl || !supabaseAnonKey) {
 // Function to implement retry logic with exponential backoff
 const fetchWithRetry = async (url, options, retries = 3, backoff = 300) => {
   try {
-    return await fetch(url, options);
+    const response = await fetch(url, options);
+    
+    // Check if the response is ok (status in the range 200-299)
+    if (!response.ok) {
+      // For non-2xx responses, throw an error to trigger retry
+      const errorText = await response.text().catch(() => 'Unknown error');
+      throw new Error(`HTTP error! Status: ${response.status}, Details: ${errorText}`);
+    }
+    
+    return response;
   } catch (err) {
     if (retries <= 0) {
       console.error('Supabase fetch failed after multiple retries:', err);
@@ -37,7 +46,7 @@ const options = {
   global: {
     fetch: (url, options) => {
       // Add enhanced retry logic for network errors
-      return fetchWithRetry(url, options);
+      return fetchWithRetry(url, options, 5, 500); // Increased retries and initial backoff
     },
     headers: {
       'X-Client-Info': 'supabase-js/2.x',
@@ -73,4 +82,22 @@ export const isSupabaseConfigValid = () => {
     return false;
   }
   return true;
+};
+
+// Function to perform a connectivity test before making critical requests
+export const testSupabaseConnectivity = async () => {
+  try {
+    const testResponse = await fetch(`${supabaseUrl}/rest/v1/?apikey=${supabaseAnonKey}`, {
+      method: 'HEAD',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': supabaseAnonKey,
+      },
+    });
+    
+    return testResponse.ok;
+  } catch (error) {
+    console.error('Supabase connectivity test failed:', error);
+    return false;
+  }
 };
