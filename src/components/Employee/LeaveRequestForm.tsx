@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { format } from 'date-fns';
-import { Calendar, X, AlertCircle, Upload } from 'lucide-react';
+import { Calendar, X, AlertCircle } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import toast from 'react-hot-toast';
 
@@ -19,9 +19,6 @@ const LeaveRequestForm: React.FC<LeaveRequestFormProps> = ({ employeeId, onClose
   const [reason, setReason] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [file, setFile] = useState<File | null>(null);
-  const [uploadProgress, setUploadProgress] = useState<number>(0);
-  const [uploadError, setUploadError] = useState<string>('');
 
   const leaveTypes: { value: LeaveType, label: string }[] = [
     { value: 'sick-leave', label: 'Sick Leave' },
@@ -56,52 +53,6 @@ const LeaveRequestForm: React.FC<LeaveRequestFormProps> = ({ employeeId, onClose
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0) {
-      setFile(e.target.files[0]);
-      setUploadError('');
-    }
-  };
-
-  const uploadFile = async (file: File): Promise<string | null> => {
-    try {
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${Date.now().toString().replace(/\D/g, '')}_${file.name.replace(/\s+/g, '_')}`;
-      const filePath = `public/${employeeId}/${fileName}`;
-      
-      setUploadProgress(10);
-      
-      // Create the upload
-      const { data, error: uploadError } = await supabase.storage
-        .from('leave-documents')
-        .upload(filePath, file, {
-          cacheControl: '3600',
-          upsert: false
-        });
-      
-      if (uploadError) {
-        console.error('Storage error:', uploadError);
-        setUploadError(uploadError.message || 'Upload error');
-        throw new Error(`Upload error: ${uploadError.message}`);
-      }
-      
-      setUploadProgress(90);
-      
-      // Get the public URL
-      const { data: { publicUrl } } = supabase.storage
-        .from('leave-documents')
-        .getPublicUrl(filePath);
-        
-      setUploadProgress(100);
-      
-      return publicUrl;
-    } catch (error: any) {
-      console.error('Error uploading file:', error);
-      setUploadError(`Storage permission error:\n${error.message}`);
-      throw new Error(`Error uploading file:\n${error.message}`);
-    }
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -110,19 +61,7 @@ const LeaveRequestForm: React.FC<LeaveRequestFormProps> = ({ employeeId, onClose
     }
     
     setIsSubmitting(true);
-    let documentUrl = null;
-    let documentName = null;
-    let documentType = null;
-    
     try {
-      // Upload document if provided
-      if (file) {
-        documentUrl = await uploadFile(file);
-        documentName = file.name;
-        documentType = file.type;
-      }
-      
-      // Submit leave request with document info if available
       const { data, error } = await supabase
         .from('leave_requests')
         .insert({
@@ -131,10 +70,7 @@ const LeaveRequestForm: React.FC<LeaveRequestFormProps> = ({ employeeId, onClose
           start_date: startDate,
           end_date: endDate,
           reason: reason,
-          status: 'pending',
-          document_url: documentUrl,
-          document_name: documentName,
-          document_type: documentType
+          status: 'pending'
         })
         .select();
         
@@ -142,9 +78,9 @@ const LeaveRequestForm: React.FC<LeaveRequestFormProps> = ({ employeeId, onClose
       
       toast.success('Leave request submitted successfully');
       onSubmit();
-    } catch (error: any) {
+    } catch (error) {
       console.error('Error submitting leave request:', error);
-      toast.error(`Error submitting leave request: ${error.message}`);
+      toast.error('Failed to submit leave request');
     } finally {
       setIsSubmitting(false);
     }
@@ -228,59 +164,6 @@ const LeaveRequestForm: React.FC<LeaveRequestFormProps> = ({ employeeId, onClose
               />
             </div>
             {errors.endDate && <p className="mt-1 text-xs text-red-600">{errors.endDate}</p>}
-          </div>
-        </div>
-        
-        {/* Supporting Document */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Supporting Document (Optional)
-          </label>
-          <div className="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-md">
-            <div className="space-y-1 text-center">
-              <Upload className="mx-auto h-12 w-12 text-gray-400" />
-              <div className="flex text-sm text-gray-600">
-                <label htmlFor="file-upload" className="relative cursor-pointer bg-white rounded-md font-medium text-purple-600 hover:text-purple-500 focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-purple-500">
-                  <span>Upload a file</span>
-                  <input
-                    id="file-upload"
-                    name="file-upload"
-                    type="file"
-                    className="sr-only"
-                    onChange={handleFileChange}
-                  />
-                </label>
-                <p className="pl-1">or drag and drop</p>
-              </div>
-              <p className="text-xs text-gray-500">
-                PDF, PNG, JPG, GIF up to 10MB
-              </p>
-              
-              {file && (
-                <div className="mt-2 text-left">
-                  <p className="text-xs font-medium text-gray-900">{file.name}</p>
-                  <p className="text-xs text-gray-500">{(file.size / 1024 / 1024).toFixed(2)} MB</p>
-                </div>
-              )}
-              
-              {uploadError && (
-                <div className="mt-2 text-xs text-red-500 text-left">
-                  {uploadError}
-                </div>
-              )}
-              
-              {uploadProgress > 0 && uploadProgress < 100 && (
-                <div className="mt-2">
-                  <div className="h-1 bg-gray-200 rounded-full overflow-hidden">
-                    <div 
-                      className="h-full bg-purple-600 transition-all duration-300" 
-                      style={{ width: `${uploadProgress}%` }}
-                    ></div>
-                  </div>
-                  <p className="text-xs text-gray-500 mt-1">Uploading: {uploadProgress}%</p>
-                </div>
-              )}
-            </div>
           </div>
         </div>
         
