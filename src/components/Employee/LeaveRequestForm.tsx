@@ -25,6 +25,7 @@ const LeaveRequestForm: React.FC<LeaveRequestFormProps> = ({ employeeId, onClose
   const [isUploading, setIsUploading] = useState<boolean>(false);
   const [uploadProgress, setUploadProgress] = useState<number>(0);
   const [uploadedFileUrl, setUploadedFileUrl] = useState<string>('');
+  const [storagePermissionError, setStoragePermissionError] = useState<boolean>(false);
 
   const leaveTypes: { value: LeaveType, label: string }[] = [
     { value: 'sick-leave', label: 'Sick Leave' },
@@ -76,6 +77,8 @@ const LeaveRequestForm: React.FC<LeaveRequestFormProps> = ({ employeeId, onClose
         return;
       }
       
+      // Reset storage permission error when a new file is selected
+      setStoragePermissionError(false);
       setSelectedFile(file);
       setErrors(prev => {
         const newErrors = { ...prev };
@@ -88,6 +91,7 @@ const LeaveRequestForm: React.FC<LeaveRequestFormProps> = ({ employeeId, onClose
   const handleRemoveFile = () => {
     setSelectedFile(null);
     setUploadedFileUrl('');
+    setStoragePermissionError(false);
   };
 
   const uploadFile = async (): Promise<string | null> => {
@@ -117,9 +121,11 @@ const LeaveRequestForm: React.FC<LeaveRequestFormProps> = ({ employeeId, onClose
       
       if (error) {
         // Check if this is an RLS policy error
-        if (error.message.includes('row-level security policy') || 
-            error.message.includes('Unauthorized') || 
+        if (error.message?.includes('row-level security policy') || 
+            error.message?.includes('Unauthorized') || 
             error.statusCode === 403) {
+          setStoragePermissionError(true);
+          console.error('Storage permission error:', error);
           throw new Error('Permission denied: Storage access policy restriction. Please contact your administrator.');
         }
         throw error;
@@ -139,7 +145,8 @@ const LeaveRequestForm: React.FC<LeaveRequestFormProps> = ({ employeeId, onClose
       setIsUploading(false);
       
       // Provide a more specific error message for policy violations
-      if (error.message.includes('policy') || error.message.includes('Permission denied')) {
+      if (error.message?.includes('policy') || error.message?.includes('Permission denied')) {
+        setStoragePermissionError(true);
         setErrors(prev => ({ 
           ...prev, 
           file: 'Unable to upload file due to permission restrictions. Your leave request can still be submitted without a document.' 
@@ -164,12 +171,12 @@ const LeaveRequestForm: React.FC<LeaveRequestFormProps> = ({ employeeId, onClose
     setIsSubmitting(true);
     
     try {
-      // Upload document if selected
+      // Upload document if selected (and not already errored)
       let documentUrl = '';
       let documentName = '';
       let documentType = '';
       
-      if (selectedFile) {
+      if (selectedFile && !storagePermissionError) {
         try {
           const uploadedUrl = await uploadFile();
           if (uploadedUrl) {
@@ -321,7 +328,19 @@ const LeaveRequestForm: React.FC<LeaveRequestFormProps> = ({ employeeId, onClose
             Supporting Document (Optional)
           </label>
           
-          {!selectedFile ? (
+          {storagePermissionError && (
+            <div className="mb-3 p-3 bg-yellow-50 border border-yellow-300 rounded-md">
+              <div className="flex items-start">
+                <AlertCircle className="h-5 w-5 text-yellow-500 mr-2 flex-shrink-0" />
+                <div className="text-sm text-yellow-700">
+                  <p className="font-medium">Storage permission error</p>
+                  <p>Document upload is currently unavailable due to storage permission restrictions. Your leave request can still be submitted without a document.</p>
+                </div>
+              </div>
+            </div>
+          )}
+          
+          {!selectedFile && !storagePermissionError ? (
             <div className="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-md">
               <div className="space-y-1 text-center">
                 <Upload className="mx-auto h-12 w-12 text-gray-400" />
@@ -338,6 +357,7 @@ const LeaveRequestForm: React.FC<LeaveRequestFormProps> = ({ employeeId, onClose
                       className="sr-only"
                       accept=".pdf,.jpg,.jpeg,.png"
                       onChange={handleFileChange}
+                      disabled={storagePermissionError}
                     />
                   </label>
                   <p className="pl-1">or drag and drop</p>
@@ -346,24 +366,26 @@ const LeaveRequestForm: React.FC<LeaveRequestFormProps> = ({ employeeId, onClose
               </div>
             </div>
           ) : (
-            <div className="mt-1 flex items-center p-4 border border-gray-300 rounded-md">
-              <div className="flex-shrink-0 h-10 w-10 bg-gray-100 rounded-md flex items-center justify-center">
-                <File className="h-6 w-6 text-gray-500" />
+            !storagePermissionError && selectedFile && (
+              <div className="mt-1 flex items-center p-4 border border-gray-300 rounded-md">
+                <div className="flex-shrink-0 h-10 w-10 bg-gray-100 rounded-md flex items-center justify-center">
+                  <File className="h-6 w-6 text-gray-500" />
+                </div>
+                <div className="ml-4 flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-900 truncate">{selectedFile.name}</p>
+                  <p className="text-xs text-gray-500">{(selectedFile.size / 1024).toFixed(1)} KB</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleRemoveFile}
+                  className="ml-4 bg-white rounded-md text-gray-400 hover:text-gray-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
+                >
+                  <Trash className="h-5 w-5" />
+                </button>
               </div>
-              <div className="ml-4 flex-1 min-w-0">
-                <p className="text-sm font-medium text-gray-900 truncate">{selectedFile.name}</p>
-                <p className="text-xs text-gray-500">{(selectedFile.size / 1024).toFixed(1)} KB</p>
-              </div>
-              <button
-                type="button"
-                onClick={handleRemoveFile}
-                className="ml-4 bg-white rounded-md text-gray-400 hover:text-gray-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
-              >
-                <Trash className="h-5 w-5" />
-              </button>
-            </div>
+            )
           )}
-          {errors.file && (
+          {errors.file && !storagePermissionError && (
             <p className="mt-1 text-xs text-red-600 flex items-start">
               <AlertCircle className="h-3 w-3 mr-1 mt-0.5" />
               {errors.file}
@@ -371,7 +393,7 @@ const LeaveRequestForm: React.FC<LeaveRequestFormProps> = ({ employeeId, onClose
           )}
           
           {/* Upload Progress */}
-          {isUploading && (
+          {isUploading && !storagePermissionError && (
             <div className="mt-2">
               <div className="w-full bg-gray-200 rounded-full h-2.5">
                 <div 
@@ -394,7 +416,11 @@ const LeaveRequestForm: React.FC<LeaveRequestFormProps> = ({ employeeId, onClose
                 <li>You (the employee)</li>
                 <li>Operational managers reviewing leave requests</li>
               </ul>
-              <p className="mt-2 text-xs">Note: If document upload fails due to permissions, your leave request can still be submitted without the document.</p>
+              <p className="mt-2 text-xs">
+                {storagePermissionError 
+                  ? "Note: Document upload is currently unavailable due to storage permission restrictions. Your leave request can still be submitted without a document."
+                  : "Note: If document upload fails due to permissions, your leave request can still be submitted without the document."}
+              </p>
             </div>
           </div>
         </div>
