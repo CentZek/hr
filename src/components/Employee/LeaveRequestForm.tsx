@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { format } from 'date-fns';
-import { Calendar, X, AlertCircle } from 'lucide-react';
+import { Calendar, X, AlertCircle, Upload, File, Check, Trash } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import toast from 'react-hot-toast';
 
@@ -19,6 +19,12 @@ const LeaveRequestForm: React.FC<LeaveRequestFormProps> = ({ employeeId, onClose
   const [reason, setReason] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  
+  // Document upload states
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [isUploading, setIsUploading] = useState<boolean>(false);
+  const [uploadProgress, setUploadProgress] = useState<number>(0);
+  const [uploadedFileUrl, setUploadedFileUrl] = useState<string>('');
 
   const leaveTypes: { value: LeaveType, label: string }[] = [
     { value: 'sick-leave', label: 'Sick Leave' },
@@ -53,6 +59,76 @@ const LeaveRequestForm: React.FC<LeaveRequestFormProps> = ({ employeeId, onClose
     return Object.keys(newErrors).length === 0;
   };
 
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      
+      // Check file size (limit to 5MB)
+      if (file.size > 5 * 1024 * 1024) {
+        setErrors(prev => ({ ...prev, file: 'File size should not exceed 5MB' }));
+        return;
+      }
+      
+      // Check file type (PDF, JPG, PNG, JPEG)
+      const validTypes = ['application/pdf', 'image/jpeg', 'image/png', 'image/jpg'];
+      if (!validTypes.includes(file.type)) {
+        setErrors(prev => ({ ...prev, file: 'Only PDF, JPG, and PNG files are allowed' }));
+        return;
+      }
+      
+      setSelectedFile(file);
+      setErrors(prev => {
+        const newErrors = { ...prev };
+        delete newErrors.file;
+        return newErrors;
+      });
+    }
+  };
+
+  const handleRemoveFile = () => {
+    setSelectedFile(null);
+    setUploadedFileUrl('');
+  };
+
+  const uploadFile = async (): Promise<string | null> => {
+    if (!selectedFile) return null;
+    
+    setIsUploading(true);
+    setUploadProgress(0);
+    
+    try {
+      // Create a unique file path: employeeId/yyyy-mm-dd_filename
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const fileExt = selectedFile.name.split('.').pop();
+      const fileName = `${timestamp}_${selectedFile.name}`;
+      const filePath = `${employeeId}/${fileName}`;
+      
+      const { data, error } = await supabase.storage
+        .from('leave-documents')
+        .upload(filePath, selectedFile, {
+          cacheControl: '3600',
+          upsert: false
+        });
+      
+      if (error) throw error;
+      
+      // Get public URL for the file
+      const { data: urlData } = supabase.storage
+        .from('leave-documents')
+        .getPublicUrl(filePath);
+      
+      setUploadProgress(100);
+      setIsUploading(false);
+      
+      return urlData.publicUrl;
+    } catch (error) {
+      console.error('Error uploading file:', error);
+      setIsUploading(false);
+      setErrors(prev => ({ ...prev, file: 'Failed to upload file. Please try again.' }));
+      return null;
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -61,7 +137,26 @@ const LeaveRequestForm: React.FC<LeaveRequestFormProps> = ({ employeeId, onClose
     }
     
     setIsSubmitting(true);
+    
     try {
+      // Upload document if selected
+      let documentUrl = '';
+      let documentName = '';
+      let documentType = '';
+      
+      if (selectedFile) {
+        const uploadedUrl = await uploadFile();
+        if (!uploadedUrl) {
+          setIsSubmitting(false);
+          return; // Exit if upload failed
+        }
+        
+        documentUrl = uploadedUrl;
+        documentName = selectedFile.name;
+        documentType = selectedFile.type;
+      }
+      
+      // Create the leave request with document info
       const { data, error } = await supabase
         .from('leave_requests')
         .insert({
@@ -70,7 +165,10 @@ const LeaveRequestForm: React.FC<LeaveRequestFormProps> = ({ employeeId, onClose
           start_date: startDate,
           end_date: endDate,
           reason: reason,
-          status: 'pending'
+          status: 'pending',
+          document_url: documentUrl || null,
+          document_name: documentName || null,
+          document_type: documentType || null
         })
         .select();
         
@@ -186,20 +284,98 @@ const LeaveRequestForm: React.FC<LeaveRequestFormProps> = ({ employeeId, onClose
           {errors.reason && <p className="mt-1 text-xs text-red-600">{errors.reason}</p>}
         </div>
         
+        {/* Document Upload */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Supporting Document (Optional)
+          </label>
+          
+          {!selectedFile ? (
+            <div className="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-md">
+              <div className="space-y-1 text-center">
+                <Upload className="mx-auto h-12 w-12 text-gray-400" />
+                <div className="flex text-sm text-gray-600">
+                  <label
+                    htmlFor="file-upload"
+                    className="relative cursor-pointer bg-white rounded-md font-medium text-purple-600 hover:text-purple-500 focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-purple-500"
+                  >
+                    <span>Upload a file</span>
+                    <input
+                      id="file-upload"
+                      name="file-upload"
+                      type="file"
+                      className="sr-only"
+                      accept=".pdf,.jpg,.jpeg,.png"
+                      onChange={handleFileChange}
+                    />
+                  </label>
+                  <p className="pl-1">or drag and drop</p>
+                </div>
+                <p className="text-xs text-gray-500">PDF, JPG or PNG up to 5MB</p>
+              </div>
+            </div>
+          ) : (
+            <div className="mt-1 flex items-center p-4 border border-gray-300 rounded-md">
+              <div className="flex-shrink-0 h-10 w-10 bg-gray-100 rounded-md flex items-center justify-center">
+                <File className="h-6 w-6 text-gray-500" />
+              </div>
+              <div className="ml-4 flex-1 min-w-0">
+                <p className="text-sm font-medium text-gray-900 truncate">{selectedFile.name}</p>
+                <p className="text-xs text-gray-500">{(selectedFile.size / 1024).toFixed(1)} KB</p>
+              </div>
+              <button
+                type="button"
+                onClick={handleRemoveFile}
+                className="ml-4 bg-white rounded-md text-gray-400 hover:text-gray-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
+              >
+                <Trash className="h-5 w-5" />
+              </button>
+            </div>
+          )}
+          {errors.file && <p className="mt-1 text-xs text-red-600">{errors.file}</p>}
+          
+          {/* Upload Progress */}
+          {isUploading && (
+            <div className="mt-2">
+              <div className="w-full bg-gray-200 rounded-full h-2.5">
+                <div 
+                  className="bg-purple-600 h-2.5 rounded-full" 
+                  style={{ width: `${uploadProgress}%` }}
+                ></div>
+              </div>
+              <p className="mt-1 text-xs text-gray-500 text-right">{uploadProgress}% uploaded</p>
+            </div>
+          )}
+        </div>
+        
+        {/* Info about document privacy */}
+        <div className="bg-blue-50 p-4 rounded-md">
+          <div className="flex">
+            <AlertCircle className="h-5 w-5 text-blue-400 mr-3 flex-shrink-0" />
+            <div className="text-sm text-blue-700">
+              <p>Your document will be securely stored and only visible to:</p>
+              <ul className="list-disc ml-5 mt-1 space-y-1">
+                <li>You (the employee)</li>
+                <li>Operational managers reviewing leave requests</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+        
         {/* Submit Button */}
         <div className="flex justify-end space-x-2">
           <button
             type="button"
             onClick={onClose}
             className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
-            disabled={isSubmitting}
+            disabled={isSubmitting || isUploading}
           >
             Cancel
           </button>
           <button
             type="submit"
             className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 disabled:opacity-50 disabled:cursor-not-allowed"
-            disabled={isSubmitting}
+            disabled={isSubmitting || isUploading}
           >
             {isSubmitting ? (
               <>
