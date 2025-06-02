@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL?.trim();
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY?.trim();
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 // Validate that we have the required environment variables
 if (!supabaseUrl || !supabaseAnonKey) {
@@ -9,7 +9,7 @@ if (!supabaseUrl || !supabaseAnonKey) {
 }
 
 // Function to implement retry logic with exponential backoff
-const fetchWithRetry = async (url, options, retries = 3, backoff = 300) => {
+const fetchWithRetry = async (url: string, options: RequestInit, retries = 3, backoff = 300) => {
   try {
     return await fetch(url, options);
   } catch (err) {
@@ -35,7 +35,7 @@ const options = {
     persistSession: true,
   },
   global: {
-    fetch: (url, options) => {
+    fetch: (url: string, options: RequestInit) => {
       // Add enhanced retry logic for network errors
       return fetchWithRetry(url, options);
     },
