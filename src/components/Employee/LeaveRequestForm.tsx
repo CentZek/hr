@@ -31,18 +31,19 @@ const LeaveRequestForm: React.FC<LeaveRequestFormProps> = ({ employeeId, onClose
   useEffect(() => {
     const checkBucketExists = async () => {
       try {
-        const { error } = await supabase.storage.getBucket('leave-documents');
+        // List all buckets and check if 'leave-documents' exists
+        const { data: buckets, error } = await supabase.storage.listBuckets();
         
         if (error) {
-          console.warn('Storage bucket not available:', error);
+          console.warn('Unable to list storage buckets:', error);
           setBucketAvailable(false);
+        } else {
+          const leaveBucket = buckets.find(b => b.name === 'leave-documents');
+          setBucketAvailable(!!leaveBucket);
           
-          // Show a toast notification to indicate the bucket is missing
-          if (error.message.includes('not found') || error.status === 404) {
+          if (!leaveBucket) {
             console.log('The leave-documents bucket does not exist in Supabase storage');
           }
-        } else {
-          setBucketAvailable(true);
         }
       } catch (error) {
         console.error('Error checking bucket:', error);
