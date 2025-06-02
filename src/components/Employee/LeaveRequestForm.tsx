@@ -137,7 +137,7 @@ const LeaveRequestForm: React.FC<LeaveRequestFormProps> = ({ employeeId, onClose
   const uploadFile = async (): Promise<{ url: string, fileName: string, fileType: string } | null> => {
     if (!selectedFile) return null;
     if (!bucketAvailable || !bucketChecked) {
-      toast.error('Document upload is unavailable. The required storage bucket has not been configured.');
+      toast.error('Leave documents storage is not configured correctly. Please contact your administrator.');
       return null;
     }
     
@@ -158,7 +158,7 @@ const LeaveRequestForm: React.FC<LeaveRequestFormProps> = ({ employeeId, onClose
         });
       
       if (error) {
-        console.error('Upload error:', error);
+        console.error('Storage bucket error:', error);
         throw new Error('Failed to upload file. Please try again later.');
       }
       
@@ -177,13 +177,10 @@ const LeaveRequestForm: React.FC<LeaveRequestFormProps> = ({ employeeId, onClose
       
       // More user-friendly error message
       if (error instanceof Error) {
-        toast.error(error.message);
+        throw new Error('Error uploading file: ' + error.message);
       } else {
-        toast.error('Failed to upload file. Please try again later or submit without a document.');
+        throw new Error('Leave documents storage is not configured correctly. Please contact your administrator.');
       }
-      
-      clearSelectedFile();
-      return null;
     } finally {
       setIsUploading(false);
     }
@@ -202,11 +199,12 @@ const LeaveRequestForm: React.FC<LeaveRequestFormProps> = ({ employeeId, onClose
       // Handle file upload if selected
       let documentData = null;
       if (selectedFile && bucketAvailable) {
-        documentData = await uploadFile();
-        if (!documentData && selectedFile) {
-          // If file upload failed but was selected, clear the file but allow submission to continue
+        try {
+          documentData = await uploadFile();
+        } catch (error) {
+          // If file upload fails but was selected, clear the file but allow submission to continue
           clearSelectedFile();
-          toast.warning('Document upload failed, but you can still submit your request without a document.');
+          toast.warning(error instanceof Error ? error.message : 'Document upload failed, but you can still submit your request without a document.');
         }
       }
       
