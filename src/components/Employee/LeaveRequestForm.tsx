@@ -24,22 +24,31 @@ const LeaveRequestForm: React.FC<LeaveRequestFormProps> = ({ employeeId, onClose
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState<boolean>(false);
   const [uploadProgress, setUploadProgress] = useState<number>(0);
-  const [bucketAvailable, setBucketAvailable] = useState<boolean>(true);
+  const [bucketAvailable, setBucketAvailable] = useState<boolean>(false);
+  const [bucketChecked, setBucketChecked] = useState<boolean>(false);
 
   // Check if the storage bucket exists when component mounts
   useEffect(() => {
     const checkBucketExists = async () => {
       try {
         const { error } = await supabase.storage.getBucket('leave-documents');
+        
         if (error) {
           console.warn('Storage bucket not available:', error);
           setBucketAvailable(false);
+          
+          // Show a toast notification to indicate the bucket is missing
+          if (error.message.includes('not found') || error.status === 404) {
+            console.log('The leave-documents bucket does not exist in Supabase storage');
+          }
         } else {
           setBucketAvailable(true);
         }
       } catch (error) {
         console.error('Error checking bucket:', error);
         setBucketAvailable(false);
+      } finally {
+        setBucketChecked(true);
       }
     };
     
@@ -93,6 +102,8 @@ const LeaveRequestForm: React.FC<LeaveRequestFormProps> = ({ employeeId, onClose
       // Check if bucket is available
       if (!bucketAvailable) {
         newErrors.file = 'Document upload is not available. You can still submit your request without a document.';
+        // Auto-clear the selected file when bucket is unavailable
+        clearSelectedFile();
       }
     }
     
@@ -101,6 +112,12 @@ const LeaveRequestForm: React.FC<LeaveRequestFormProps> = ({ employeeId, onClose
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!bucketAvailable) {
+      toast.error('Document upload is unavailable. The required storage bucket has not been configured.');
+      e.target.value = '';
+      return;
+    }
+    
     const files = e.target.files;
     if (files && files.length > 0) {
       setSelectedFile(files[0]);
@@ -118,7 +135,7 @@ const LeaveRequestForm: React.FC<LeaveRequestFormProps> = ({ employeeId, onClose
 
   const uploadFile = async (): Promise<{ url: string, fileName: string, fileType: string } | null> => {
     if (!selectedFile) return null;
-    if (!bucketAvailable) {
+    if (!bucketAvailable || !bucketChecked) {
       toast.error('Document upload is unavailable. The required storage bucket has not been configured.');
       return null;
     }
@@ -164,6 +181,7 @@ const LeaveRequestForm: React.FC<LeaveRequestFormProps> = ({ employeeId, onClose
         toast.error('Failed to upload file. Please try again later or submit without a document.');
       }
       
+      clearSelectedFile();
       return null;
     } finally {
       setIsUploading(false);
@@ -185,10 +203,9 @@ const LeaveRequestForm: React.FC<LeaveRequestFormProps> = ({ employeeId, onClose
       if (selectedFile && bucketAvailable) {
         documentData = await uploadFile();
         if (!documentData && selectedFile) {
-          // If file upload failed but was selected, ask user if they want to continue
-          setErrors({ ...errors, file: 'File upload failed. You can submit without a document or try again.' });
-          setIsSubmitting(false);
-          return;
+          // If file upload failed but was selected, clear the file but allow submission to continue
+          clearSelectedFile();
+          toast.warning('Document upload failed, but you can still submit your request without a document.');
         }
       }
       
@@ -329,13 +346,13 @@ const LeaveRequestForm: React.FC<LeaveRequestFormProps> = ({ employeeId, onClose
             Supporting Document (Optional)
           </label>
           
-          {!bucketAvailable && (
+          {bucketChecked && !bucketAvailable && (
             <div className="mb-3 flex items-center p-3 bg-yellow-50 text-yellow-800 rounded-md border border-yellow-200">
               <AlertCircle className="h-5 w-5 mr-2 flex-shrink-0" />
               <p className="text-sm">
-                Document upload is currently unavailable. Please submit your request without a document. 
-                <span className="block mt-1 text-xs">
-                  Note for admin: The 'leave-documents' storage bucket needs to be created in Supabase.
+                <span className="font-medium">Document upload is currently unavailable.</span> Please submit your request without a document.
+                <span className="block mt-1 text-xs font-medium">
+                  Note for admin: The 'leave-documents' storage bucket needs to be created in your Supabase project.
                 </span>
               </p>
             </div>
@@ -373,6 +390,11 @@ const LeaveRequestForm: React.FC<LeaveRequestFormProps> = ({ employeeId, onClose
                   <p className="text-xs text-gray-500">
                     PDF, DOC, DOCX, JPG, PNG up to 5MB
                   </p>
+                  {!bucketAvailable && (
+                    <p className="text-xs text-red-500 mt-1">
+                      Document upload is disabled due to missing storage configuration
+                    </p>
+                  )}
                 </div>
               </div>
             ) : (
