@@ -24,6 +24,27 @@ const LeaveRequestForm: React.FC<LeaveRequestFormProps> = ({ employeeId, onClose
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState<boolean>(false);
   const [uploadProgress, setUploadProgress] = useState<number>(0);
+  const [bucketAvailable, setBucketAvailable] = useState<boolean>(true);
+
+  // Check if the storage bucket exists when component mounts
+  useEffect(() => {
+    const checkBucketExists = async () => {
+      try {
+        const { error } = await supabase.storage.getBucket('leave-documents');
+        if (error) {
+          console.warn('Storage bucket not available:', error);
+          setBucketAvailable(false);
+        } else {
+          setBucketAvailable(true);
+        }
+      } catch (error) {
+        console.error('Error checking bucket:', error);
+        setBucketAvailable(false);
+      }
+    };
+    
+    checkBucketExists();
+  }, []);
 
   const leaveTypes: { value: LeaveType, label: string }[] = [
     { value: 'sick-leave', label: 'Sick Leave' },
@@ -68,6 +89,11 @@ const LeaveRequestForm: React.FC<LeaveRequestFormProps> = ({ employeeId, onClose
       if (!allowedTypes.includes(selectedFile.type)) {
         newErrors.file = 'Only PDF, DOC, DOCX, JPG, or PNG files are allowed';
       }
+      
+      // Check if bucket is available
+      if (!bucketAvailable) {
+        newErrors.file = 'Document upload is not available. You can still submit your request without a document.';
+      }
     }
     
     setErrors(newErrors);
@@ -92,6 +118,10 @@ const LeaveRequestForm: React.FC<LeaveRequestFormProps> = ({ employeeId, onClose
 
   const uploadFile = async (): Promise<{ url: string, fileName: string, fileType: string } | null> => {
     if (!selectedFile) return null;
+    if (!bucketAvailable) {
+      toast.error('Document upload is unavailable. The required storage bucket has not been configured.');
+      return null;
+    }
     
     setIsUploading(true);
     setUploadProgress(0);
@@ -99,16 +129,7 @@ const LeaveRequestForm: React.FC<LeaveRequestFormProps> = ({ employeeId, onClose
     try {
       // Create a unique file path using employee ID and timestamp
       const timestamp = new Date().getTime();
-      const fileExt = selectedFile.name.split('.').pop();
       const filePath = `${employeeId}/${timestamp}_${selectedFile.name}`;
-      
-      // Check if bucket exists before attempting upload
-      const { error: bucketError } = await supabase.storage.getBucket('leave-documents');
-      
-      if (bucketError) {
-        console.error('Storage bucket error:', bucketError);
-        throw new Error('Leave documents storage is not configured correctly. Please contact your administrator.');
-      }
       
       // Upload the file to Supabase Storage
       const { data, error } = await supabase.storage
@@ -118,7 +139,10 @@ const LeaveRequestForm: React.FC<LeaveRequestFormProps> = ({ employeeId, onClose
           upsert: false
         });
       
-      if (error) throw error;
+      if (error) {
+        console.error('Upload error:', error);
+        throw new Error('Failed to upload file. Please try again later.');
+      }
       
       // Get the public URL for the file
       const { data: urlData } = supabase.storage
@@ -137,7 +161,7 @@ const LeaveRequestForm: React.FC<LeaveRequestFormProps> = ({ employeeId, onClose
       if (error instanceof Error) {
         toast.error(error.message);
       } else {
-        toast.error('Failed to upload file. The storage system may not be properly configured.');
+        toast.error('Failed to upload file. Please try again later or submit without a document.');
       }
       
       return null;
@@ -158,11 +182,11 @@ const LeaveRequestForm: React.FC<LeaveRequestFormProps> = ({ employeeId, onClose
     try {
       // Handle file upload if selected
       let documentData = null;
-      if (selectedFile) {
+      if (selectedFile && bucketAvailable) {
         documentData = await uploadFile();
         if (!documentData && selectedFile) {
-          // If file upload failed but was selected, show error and stop
-          setErrors({ ...errors, file: 'File upload failed. Please try again or submit without a document.' });
+          // If file upload failed but was selected, ask user if they want to continue
+          setErrors({ ...errors, file: 'File upload failed. You can submit without a document or try again.' });
           setIsSubmitting(false);
           return;
         }
@@ -305,15 +329,33 @@ const LeaveRequestForm: React.FC<LeaveRequestFormProps> = ({ employeeId, onClose
             Supporting Document (Optional)
           </label>
           
+          {!bucketAvailable && (
+            <div className="mb-3 flex items-center p-3 bg-yellow-50 text-yellow-800 rounded-md border border-yellow-200">
+              <AlertCircle className="h-5 w-5 mr-2 flex-shrink-0" />
+              <p className="text-sm">
+                Document upload is currently unavailable. Please submit your request without a document. 
+                <span className="block mt-1 text-xs">
+                  Note for admin: The 'leave-documents' storage bucket needs to be created in Supabase.
+                </span>
+              </p>
+            </div>
+          )}
+          
           <div className="mt-1 flex flex-col space-y-2">
             {!selectedFile ? (
-              <div className="flex items-center justify-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-md">
+              <div className={`flex items-center justify-center px-6 pt-5 pb-6 border-2 
+                ${!bucketAvailable ? 'border-gray-200 bg-gray-50' : 'border-gray-300'} 
+                border-dashed rounded-md ${!bucketAvailable ? 'opacity-50' : ''}`}
+              >
                 <div className="space-y-1 text-center">
                   <Paperclip className="mx-auto h-10 w-10 text-gray-400" />
                   <div className="flex text-sm text-gray-600">
                     <label
                       htmlFor="document-upload"
-                      className="relative cursor-pointer rounded-md font-medium text-purple-600 hover:text-purple-500 focus-within:outline-none"
+                      className={`relative ${bucketAvailable ? 'cursor-pointer' : 'cursor-not-allowed'} 
+                        rounded-md font-medium 
+                        ${bucketAvailable ? 'text-purple-600 hover:text-purple-500' : 'text-gray-400'} 
+                        focus-within:outline-none`}
                     >
                       <span>Upload a file</span>
                       <input
@@ -323,6 +365,7 @@ const LeaveRequestForm: React.FC<LeaveRequestFormProps> = ({ employeeId, onClose
                         className="sr-only"
                         onChange={handleFileChange}
                         accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                        disabled={!bucketAvailable}
                       />
                     </label>
                     <p className="pl-1">or drag and drop</p>
