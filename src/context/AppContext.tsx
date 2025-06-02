@@ -7,7 +7,7 @@ import {
   updateProcessedEmployeeData,
   deleteProcessedExcelData
 } from '../services/excelDataService';
-import { supabase, checkSupabaseConnection } from '../lib/supabase';
+import { supabase } from '../lib/supabase';
 
 interface AppContextType {
   // HR page state
@@ -46,22 +46,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Supabase integration
   const [activeFileId, setActiveFileId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [connectionError, setConnectionError] = useState<string | null>(null);
-
-  // Check Supabase connection on initial load
-  useEffect(() => {
-    const verifyConnection = async () => {
-      const { connected, error } = await checkSupabaseConnection();
-      if (!connected) {
-        console.error('Supabase connection failed:', error);
-        setConnectionError(error);
-      } else {
-        setConnectionError(null);
-      }
-    };
-    
-    verifyConnection();
-  }, []);
 
   // Load active file data from Supabase on initial render
   useEffect(() => {

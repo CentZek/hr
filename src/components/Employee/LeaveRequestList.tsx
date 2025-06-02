@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { format, parseISO } from 'date-fns';
-import { Calendar, CheckCircle, XCircle, Clock, Clock4, Download, File } from 'lucide-react';
+import { Calendar, CheckCircle, XCircle, Clock, Clock4 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 
 interface LeaveRequestListProps {
@@ -57,10 +57,6 @@ const LeaveRequestList: React.FC<LeaveRequestListProps> = ({ employeeId, onNewRe
   
   const formatLeaveType = (type: string): string => {
     return type.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
-  };
-
-  const handleViewDocument = async (documentUrl: string) => {
-    window.open(documentUrl, '_blank');
   };
 
   if (isLoading) {
@@ -125,19 +121,6 @@ const LeaveRequestList: React.FC<LeaveRequestListProps> = ({ employeeId, onNewRe
                     </span>
                   </div>
                   <p className="mt-1 text-sm text-gray-500">{request.reason}</p>
-                  
-                  {/* Document attachment section */}
-                  {request.document_url && (
-                    <div className="mt-2 flex items-center">
-                      <button
-                        onClick={() => handleViewDocument(request.document_url)}
-                        className="inline-flex items-center px-2 py-1 text-xs rounded bg-blue-50 text-blue-600 hover:bg-blue-100"
-                      >
-                        <File className="w-3 h-3 mr-1" />
-                        {request.document_name || 'View Document'}
-                      </button>
-                    </div>
-                  )}
                 </div>
                 <div className="text-xs text-gray-500">
                   {format(parseISO(request.created_at), 'MMM d, yyyy')}

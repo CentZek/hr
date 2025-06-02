@@ -153,9 +153,6 @@ export const saveProcessedExcelFile = async (
     const fileId = fileData.id;
     console.log('Created file with ID:', fileId);
     
-    // Add a delay to ensure the file record is committed
-    await delay(500);
-    
     // Verify the file exists before proceeding
     const fileExists = await checkFileExists(fileId);
     if (!fileExists) {
@@ -538,9 +535,6 @@ export const updateProcessedEmployeeData = async (
         actualFileId = newFile.id;
         console.log('Created new file with ID:', actualFileId);
         
-        // Add a delay to ensure the file record is committed
-        await delay(500);
-        
         // Store file ID in localStorage for immediate persistence
         localStorage.setItem('activeFileId', actualFileId);
       } catch (err) {
@@ -666,6 +660,13 @@ export const updateProcessedEmployeeData = async (
             employeeId = newEmp.id;
           }
           
+          // Check if employee exists in database
+          const employeeExists = await checkEmployeeExists(employeeId);
+          if (!employeeExists) {
+            console.error(`Employee ${employeeId} no longer exists before processing daily records`);
+            return;
+          }
+          
           // Delete existing daily records for this employee
           await supabase
             .from('processed_daily_records')
@@ -698,6 +699,13 @@ export const updateProcessedEmployeeData = async (
               working_week_start: day.working_week_start || null,
               all_time_records: day.allTimeRecords ? JSON.stringify(day.allTimeRecords) : null
             }));
+            
+            // Final check to ensure employee still exists
+            const empStillExists = await checkEmployeeExists(employeeId);
+            if (!empStillExists) {
+              console.error(`Employee ${employeeId} no longer exists before batch insert`);
+              continue;
+            }
             
             // Insert the batch with retry
             await retry(async () => {

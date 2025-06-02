@@ -282,7 +282,7 @@ function HrPage() {
         day.hoursWorked = calculatePayableHours(
           day.firstCheckIn, 
           day.lastCheckOut, 
-          shiftType, 
+          shiftType,
           day.penaltyMinutes,
           true // Mark as manual edit to use exact time calculation
         );

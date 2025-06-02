@@ -9,7 +9,7 @@ if (!supabaseUrl || !supabaseAnonKey) {
 }
 
 // Function to implement retry logic with exponential backoff
-const fetchWithRetry = async (url: string, options: RequestInit, retries = 3, backoff = 300) => {
+const fetchWithRetry = async (url, options, retries = 3, backoff = 300) => {
   try {
     return await fetch(url, options);
   } catch (err) {
@@ -35,7 +35,7 @@ const options = {
     persistSession: true,
   },
   global: {
-    fetch: (url: string, options: RequestInit) => {
+    fetch: (url, options) => {
       // Add enhanced retry logic for network errors
       return fetchWithRetry(url, options);
     },

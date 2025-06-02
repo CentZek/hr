@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { format, parseISO } from 'date-fns';
-import { Users, Calendar, LogOut, Home, CheckCircle, XCircle, Clock, File, Download } from 'lucide-react';
+import { Users, Calendar, LogOut, Home, CheckCircle, XCircle, Clock } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import toast, { Toaster } from 'react-hot-toast';
 import NavigationTabs from '../components/NavigationTabs';
@@ -11,7 +11,6 @@ const OperationalManagerPage: React.FC = () => {
   const [leaveRequests, setLeaveRequests] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isProcessing, setIsProcessing] = useState<Record<string, boolean>>({});
-  const [viewingDocument, setViewingDocument] = useState<string | null>(null);
   
   useEffect(() => {
     fetchLeaveRequests();
@@ -31,9 +30,6 @@ const OperationalManagerPage: React.FC = () => {
           status, 
           created_at,
           employee_id,
-          document_url,
-          document_name,
-          document_type,
           employees (
             id,
             name,
@@ -104,10 +100,6 @@ const OperationalManagerPage: React.FC = () => {
   const formatLeaveType = (type: string): string => {
     return type.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
   };
-  
-  const handleViewDocument = (documentUrl: string) => {
-    window.open(documentUrl, '_blank');
-  };
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -177,8 +169,8 @@ const OperationalManagerPage: React.FC = () => {
                       <div className="sm:flex sm:justify-between sm:items-start">
                         <div>
                           <div className="flex items-center">
-                            <h3 className="text-base font-medium text-gray-900">{request.employees?.name || 'Unknown Employee'}</h3>
-                            <span className="ml-2 text-sm text-gray-500">#{request.employees?.employee_number || 'N/A'}</span>
+                            <h3 className="text-base font-medium text-gray-900">{request.employees.name}</h3>
+                            <span className="ml-2 text-sm text-gray-500">#{request.employees.employee_number}</span>
                             <span className={`ml-2 px-2 py-0.5 text-xs rounded-full flex items-center ${
                               request.status === 'approved' ? 'bg-green-100 text-green-800' : 
                               request.status === 'rejected' ? 'bg-red-100 text-red-800' : 
@@ -205,19 +197,6 @@ const OperationalManagerPage: React.FC = () => {
                           <div className="mt-1 text-xs text-gray-500">
                             Requested on {format(parseISO(request.created_at), 'MMM d, yyyy')}
                           </div>
-                          
-                          {/* Document attachment */}
-                          {request.document_url && (
-                            <div className="mt-2">
-                              <button
-                                onClick={() => handleViewDocument(request.document_url)}
-                                className="inline-flex items-center px-2 py-1 text-xs bg-blue-50 text-blue-600 rounded hover:bg-blue-100"
-                              >
-                                <File className="w-3.5 h-3.5 mr-1" />
-                                {request.document_name || 'View Attachment'}
-                              </button>
-                            </div>
-                          )}
                         </div>
                         
                         {request.status === 'pending' && (
