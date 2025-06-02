@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { format, parseISO } from 'date-fns';
-import { Calendar, CheckCircle, XCircle, Clock, Clock4, FileText, ExternalLink } from 'lucide-react';
+import { Calendar, CheckCircle, XCircle, Clock, Clock4 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 
 interface LeaveRequestListProps {
@@ -21,7 +21,7 @@ const LeaveRequestList: React.FC<LeaveRequestListProps> = ({ employeeId, onNewRe
     try {
       const { data, error } = await supabase
         .from('leave_requests')
-        .select('*, document_url, document_name, document_type')
+        .select('*')
         .eq('employee_id', employeeId)
         .order('created_at', { ascending: false });
         
@@ -121,22 +121,6 @@ const LeaveRequestList: React.FC<LeaveRequestListProps> = ({ employeeId, onNewRe
                     </span>
                   </div>
                   <p className="mt-1 text-sm text-gray-500">{request.reason}</p>
-                  
-                  {/* Document attachment link */}
-                  {request.document_url && (
-                    <div className="mt-2">
-                      <a 
-                        href={request.document_url} 
-                        target="_blank" 
-                        rel="noopener noreferrer" 
-                        className="inline-flex items-center px-2.5 py-1.5 text-xs font-medium rounded text-purple-700 bg-purple-100 hover:bg-purple-200"
-                      >
-                        <FileText className="w-3.5 h-3.5 mr-1" />
-                        {request.document_name || 'View Attached Document'}
-                        <ExternalLink className="w-3 h-3 ml-1" />
-                      </a>
-                    </div>
-                  )}
                 </div>
                 <div className="text-xs text-gray-500">
                   {format(parseISO(request.created_at), 'MMM d, yyyy')}
