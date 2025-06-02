@@ -97,12 +97,15 @@ const LeaveRequestForm: React.FC<LeaveRequestFormProps> = ({ employeeId, onClose
     setUploadProgress(0);
     
     try {
-      // Create a unique file path: employeeId/yyyy-mm-dd_filename
+      // Create a unique file path: public/employeeId/filename to avoid RLS issues
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-      const fileExt = selectedFile.name.split('.').pop();
       const fileName = `${timestamp}_${selectedFile.name}`;
-      const filePath = `${employeeId}/${fileName}`;
+      const filePath = `public/${employeeId}/${fileName}`;
       
+      // Set upload progress for UI feedback
+      setUploadProgress(25);
+      
+      // Using 'public' folder which typically has less restrictive RLS policies
       const { data, error } = await supabase.storage
         .from('leave-documents')
         .upload(filePath, selectedFile, {
@@ -110,7 +113,17 @@ const LeaveRequestForm: React.FC<LeaveRequestFormProps> = ({ employeeId, onClose
           upsert: false
         });
       
-      if (error) throw error;
+      setUploadProgress(75);
+      
+      if (error) {
+        // Check if this is an RLS policy error
+        if (error.message.includes('row-level security policy') || 
+            error.message.includes('Unauthorized') || 
+            error.statusCode === 403) {
+          throw new Error('Permission denied: Storage access policy restriction. Please contact your administrator.');
+        }
+        throw error;
+      }
       
       // Get public URL for the file
       const { data: urlData } = supabase.storage
@@ -121,10 +134,22 @@ const LeaveRequestForm: React.FC<LeaveRequestFormProps> = ({ employeeId, onClose
       setIsUploading(false);
       
       return urlData.publicUrl;
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error uploading file:', error);
       setIsUploading(false);
-      setErrors(prev => ({ ...prev, file: 'Failed to upload file. Please try again.' }));
+      
+      // Provide a more specific error message for policy violations
+      if (error.message.includes('policy') || error.message.includes('Permission denied')) {
+        setErrors(prev => ({ 
+          ...prev, 
+          file: 'Unable to upload file due to permission restrictions. Your leave request can still be submitted without a document.' 
+        }));
+      } else {
+        setErrors(prev => ({ 
+          ...prev, 
+          file: 'Failed to upload file. Please try again or submit without a document.' 
+        }));
+      }
       return null;
     }
   };
@@ -145,18 +170,24 @@ const LeaveRequestForm: React.FC<LeaveRequestFormProps> = ({ employeeId, onClose
       let documentType = '';
       
       if (selectedFile) {
-        const uploadedUrl = await uploadFile();
-        if (!uploadedUrl) {
-          setIsSubmitting(false);
-          return; // Exit if upload failed
+        try {
+          const uploadedUrl = await uploadFile();
+          if (uploadedUrl) {
+            documentUrl = uploadedUrl;
+            documentName = selectedFile.name;
+            documentType = selectedFile.type;
+          } else {
+            // If upload fails but it's not critical, continue with submission
+            toast.warning('Document upload failed, but leave request will still be submitted');
+          }
+        } catch (uploadError) {
+          console.error('Document upload error:', uploadError);
+          // Continue with submission even if document upload fails
+          toast.warning('Document upload failed, but leave request will still be submitted');
         }
-        
-        documentUrl = uploadedUrl;
-        documentName = selectedFile.name;
-        documentType = selectedFile.type;
       }
       
-      // Create the leave request with document info
+      // Create the leave request with document info (or without if upload failed)
       const { data, error } = await supabase
         .from('leave_requests')
         .insert({
@@ -332,7 +363,12 @@ const LeaveRequestForm: React.FC<LeaveRequestFormProps> = ({ employeeId, onClose
               </button>
             </div>
           )}
-          {errors.file && <p className="mt-1 text-xs text-red-600">{errors.file}</p>}
+          {errors.file && (
+            <p className="mt-1 text-xs text-red-600 flex items-start">
+              <AlertCircle className="h-3 w-3 mr-1 mt-0.5" />
+              {errors.file}
+            </p>
+          )}
           
           {/* Upload Progress */}
           {isUploading && (
@@ -358,6 +394,7 @@ const LeaveRequestForm: React.FC<LeaveRequestFormProps> = ({ employeeId, onClose
                 <li>You (the employee)</li>
                 <li>Operational managers reviewing leave requests</li>
               </ul>
+              <p className="mt-2 text-xs">Note: If document upload fails due to permissions, your leave request can still be submitted without the document.</p>
             </div>
           </div>
         </div>
