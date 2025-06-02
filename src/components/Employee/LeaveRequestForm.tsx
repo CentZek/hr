@@ -102,6 +102,14 @@ const LeaveRequestForm: React.FC<LeaveRequestFormProps> = ({ employeeId, onClose
       const fileExt = selectedFile.name.split('.').pop();
       const filePath = `${employeeId}/${timestamp}_${selectedFile.name}`;
       
+      // Check if bucket exists before attempting upload
+      const { error: bucketError } = await supabase.storage.getBucket('leave-documents');
+      
+      if (bucketError) {
+        console.error('Storage bucket error:', bucketError);
+        throw new Error('Leave documents storage is not configured correctly. Please contact your administrator.');
+      }
+      
       // Upload the file to Supabase Storage
       const { data, error } = await supabase.storage
         .from('leave-documents')
@@ -124,7 +132,14 @@ const LeaveRequestForm: React.FC<LeaveRequestFormProps> = ({ employeeId, onClose
       };
     } catch (error) {
       console.error('Error uploading file:', error);
-      toast.error('Failed to upload file');
+      
+      // More user-friendly error message
+      if (error instanceof Error) {
+        toast.error(error.message);
+      } else {
+        toast.error('Failed to upload file. The storage system may not be properly configured.');
+      }
+      
       return null;
     } finally {
       setIsUploading(false);
@@ -147,7 +162,7 @@ const LeaveRequestForm: React.FC<LeaveRequestFormProps> = ({ employeeId, onClose
         documentData = await uploadFile();
         if (!documentData && selectedFile) {
           // If file upload failed but was selected, show error and stop
-          setErrors({ ...errors, file: 'File upload failed. Please try again.' });
+          setErrors({ ...errors, file: 'File upload failed. Please try again or submit without a document.' });
           setIsSubmitting(false);
           return;
         }
