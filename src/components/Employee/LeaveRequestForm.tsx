@@ -178,12 +178,12 @@ const LeaveRequestForm: React.FC<LeaveRequestFormProps> = ({ employeeId, onClose
             documentType = selectedFile.type;
           } else {
             // If upload fails but it's not critical, continue with submission
-            toast.warning('Document upload failed, but leave request will still be submitted');
+            toast('Document upload failed, but leave request will still be submitted', { icon: '⚠️' });
           }
         } catch (uploadError) {
           console.error('Document upload error:', uploadError);
           // Continue with submission even if document upload fails
-          toast.warning('Document upload failed, but leave request will still be submitted');
+          toast('Document upload failed, but leave request will still be submitted', { icon: '⚠️' });
         }
       }
       
