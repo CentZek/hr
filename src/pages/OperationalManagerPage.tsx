@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { format, parseISO } from 'date-fns';
-import { Users, Calendar, LogOut, Home, CheckCircle, XCircle, Clock } from 'lucide-react';
+import { Users, Calendar, LogOut, Home, CheckCircle, XCircle, Clock, FileText, ExternalLink } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import toast, { Toaster } from 'react-hot-toast';
 import NavigationTabs from '../components/NavigationTabs';
@@ -30,6 +30,9 @@ const OperationalManagerPage: React.FC = () => {
           status, 
           created_at,
           employee_id,
+          document_url,
+          document_name,
+          document_type,
           employees (
             id,
             name,
@@ -193,6 +196,22 @@ const OperationalManagerPage: React.FC = () => {
                             </div>
                             <p className="mt-1 text-gray-600">{request.reason}</p>
                           </div>
+                          
+                          {/* Document attachment */}
+                          {request.document_url && (
+                            <div className="mt-2">
+                              <a 
+                                href={request.document_url} 
+                                target="_blank" 
+                                rel="noopener noreferrer" 
+                                className="inline-flex items-center px-2.5 py-1.5 text-xs font-medium rounded text-purple-700 bg-purple-100 hover:bg-purple-200 mt-2"
+                              >
+                                <FileText className="w-3.5 h-3.5 mr-1" />
+                                {request.document_name || 'View Supporting Document'}
+                                <ExternalLink className="w-3 h-3 ml-1" />
+                              </a>
+                            </div>
+                          )}
                           
                           <div className="mt-1 text-xs text-gray-500">
                             Requested on {format(parseISO(request.created_at), 'MMM d, yyyy')}
