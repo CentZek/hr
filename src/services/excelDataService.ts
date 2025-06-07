@@ -12,10 +12,10 @@ const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 // Worker cache to avoid duplicate work
 const processingCache = new Map<string, Promise<any>>();
 
-// Retry function with exponential backoff
+// Retry function with exponential backoff - increased retries from 3 to 5
 const retry = async <T>(
   fn: () => Promise<T>,
-  retries = 3,
+  retries = 5,
   initialDelay = 500,
   maxDelay = 5000
 ): Promise<T> => {
@@ -153,11 +153,7 @@ export const saveProcessedExcelFile = async (
     const fileId = fileData.id;
     console.log('Created file with ID:', fileId);
     
-    // Verify the file exists before proceeding
-    const fileExists = await checkFileExists(fileId);
-    if (!fileExists) {
-      console.warn('File verification failed, proceeding with caution');
-    }
+    // Removed redundant checkFileExists call after insert
 
     // Step 2: Prepare employee data batch
     console.time('Process employee records');
@@ -679,12 +675,7 @@ export const updateProcessedEmployeeData = async (
             employeeId = newEmp.id;
           }
           
-          // Check if employee exists in database
-          const employeeExists = await checkEmployeeExists(employeeId);
-          if (!employeeExists) {
-            console.error(`Employee ${employeeId} no longer exists before processing daily records`);
-            return;
-          }
+          // Removed redundant checkEmployeeExists call after operations
           
           // Delete existing daily records for this employee
           await supabase
@@ -719,12 +710,7 @@ export const updateProcessedEmployeeData = async (
               all_time_records: day.allTimeRecords ? JSON.stringify(day.allTimeRecords) : null
             }));
             
-            // Final check to ensure employee still exists
-            const empStillExists = await checkEmployeeExists(employeeId);
-            if (!empStillExists) {
-              console.error(`Employee ${employeeId} no longer exists before batch insert`);
-              continue;
-            }
+            // Removed redundant final check before batch insert
             
             // Insert the batch with retry
             await retry(async () => {
