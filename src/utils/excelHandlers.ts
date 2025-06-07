@@ -1258,7 +1258,7 @@ export const exportApprovedHoursToExcel = (data: {
       }, 0);
     }
     
-    // Convert overtime hours to days (assuming 8-hour workday for overtime calculation)
+    // Convert overtime hours to days (assuming 9-hour workday for overtime calculation)
     const overtimeDays = parseFloat((overtimeHours / 9).toFixed(2));
     
     // Get working days and off days
