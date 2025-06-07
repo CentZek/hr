@@ -1411,8 +1411,8 @@ export const exportApprovedHoursToExcel = (data: {
     totalPayableHours += parseFloat(summaryData[i][10]) || 0;
   }
   
-  // Convert overtime hours to days (assuming 8-hour workday for overtime calculation)
-  const totalOvertimeDays = parseFloat((totalOvertimeHours / 8).toFixed(2));
+  // Convert overtime hours to days (assuming 9-hour workday for overtime calculation)
+  const totalOvertimeDays = parseFloat((totalOvertimeHours / 9).toFixed(2));
   
   // Add statistics rows
   statsData.push(['Total Employees', summaryData.length - 1]);
