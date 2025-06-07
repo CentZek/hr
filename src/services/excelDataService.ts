@@ -445,27 +445,46 @@ export const getProcessedEmployees = async (fileId: string): Promise<EmployeeRec
         }
 
         // Convert database records to DailyRecord format
-        const days: DailyRecord[] = (daysData || []).map(day => ({
-          date: day.date,
-          firstCheckIn: day.first_check_in ? new Date(day.first_check_in) : null,
-          lastCheckOut: day.last_check_out ? new Date(day.last_check_out) : null,
-          hoursWorked: day.hours_worked,
-          approved: day.approved,
-          shiftType: day.shift_type as any, // Cast to the expected type
-          notes: day.notes,
-          missingCheckIn: day.missing_check_in,
-          missingCheckOut: day.missing_check_out,
-          isLate: day.is_late,
-          earlyLeave: day.early_leave,
-          excessiveOvertime: day.excessive_overtime,
-          penaltyMinutes: day.penalty_minutes,
-          correctedRecords: day.corrected_records,
-          displayCheckIn: day.display_check_in,
-          displayCheckOut: day.display_check_out,
-          working_week_start: day.working_week_start,
-          allTimeRecords: day.all_time_records ? JSON.parse(day.all_time_records) : [],
-          hasMultipleRecords: (day.all_time_records && JSON.parse(day.all_time_records).length > 1) || false
-        }));
+        const days: DailyRecord[] = (daysData || []).map(day => {
+          // Parse all_time_records and convert timestamp strings to Date objects
+          let allTimeRecords = [];
+          if (day.all_time_records) {
+            try {
+              const parsedRecords = JSON.parse(day.all_time_records);
+              if (Array.isArray(parsedRecords)) {
+                allTimeRecords = parsedRecords.map(record => ({
+                  ...record,
+                  timestamp: record.timestamp ? new Date(record.timestamp) : null
+                }));
+              }
+            } catch (error) {
+              console.error('Error parsing all_time_records:', error);
+              allTimeRecords = [];
+            }
+          }
+
+          return {
+            date: day.date,
+            firstCheckIn: day.first_check_in ? new Date(day.first_check_in) : null,
+            lastCheckOut: day.last_check_out ? new Date(day.last_check_out) : null,
+            hoursWorked: day.hours_worked,
+            approved: day.approved,
+            shiftType: day.shift_type as any, // Cast to the expected type
+            notes: day.notes,
+            missingCheckIn: day.missing_check_in,
+            missingCheckOut: day.missing_check_out,
+            isLate: day.is_late,
+            earlyLeave: day.early_leave,
+            excessiveOvertime: day.excessive_overtime,
+            penaltyMinutes: day.penalty_minutes,
+            correctedRecords: day.corrected_records,
+            displayCheckIn: day.display_check_in,
+            displayCheckOut: day.display_check_out,
+            working_week_start: day.working_week_start,
+            allTimeRecords: allTimeRecords,
+            hasMultipleRecords: allTimeRecords.length > 1
+          };
+        });
 
         return {
           employeeNumber: emp.employee_number,
