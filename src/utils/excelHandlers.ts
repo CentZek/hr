@@ -1442,3 +1442,7 @@ export const exportApprovedHoursToExcel = (data: {
   // Export file
   writeFile(wb, fileName);
 };
+
+export { exportToExcel }
+
+export { exportApprovedHoursToExcel }
