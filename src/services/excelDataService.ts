@@ -131,24 +131,28 @@ export const saveProcessedExcelFile = async (
     // Calculate total days once instead of repeatedly
     const totalDays = employeeRecords.reduce((sum, emp) => sum + emp.days.length, 0);
     
-    // Step 1: Create a new file record
+    // Step 1: Create a new file record with retry wrapper
     console.time('Create file record');
-    const { data: fileData, error: fileError } = await supabase
-      .from('processed_excel_files')
-      .insert([
-        {
-          file_name: fileName,
-          total_employees: employeeRecords.length,
-          total_days: totalDays,
-          is_active: true
-        }
-      ])
-      .select()
-      .single();
+    const fileData = await retry(async () => {
+      const { data, error } = await supabase
+        .from('processed_excel_files')
+        .insert([
+          {
+            file_name: fileName,
+            total_employees: employeeRecords.length,
+            total_days: totalDays,
+            is_active: true
+          }
+        ])
+        .select()
+        .single();
+        
+      if (error) throw error;
+      if (!data) throw new Error('Failed to create file record');
+      
+      return data;
+    });
     console.timeEnd('Create file record');
-
-    if (fileError) throw fileError;
-    if (!fileData) throw new Error('Failed to create file record');
 
     const fileId = fileData.id;
     console.log('Created file with ID:', fileId);
@@ -527,24 +531,29 @@ export const updateProcessedEmployeeData = async (
       const totalDays = employeeRecords.reduce((sum, emp) => sum + emp.days.length, 0);
       
       try {
-        const { data: newFile, error: createError } = await supabase
-          .from('processed_excel_files')
-          .insert({
-            file_name: fileName,
-            total_employees: employeeRecords.length,
-            total_days: totalDays,
-            is_active: true
-          })
-          .select()
-          .single();
+        // Wrap file creation with retry to handle foreign key constraints
+        const newFile = await retry(async () => {
+          const { data, error } = await supabase
+            .from('processed_excel_files')
+            .insert({
+              file_name: fileName,
+              total_employees: employeeRecords.length,
+              total_days: totalDays,
+              is_active: true
+            })
+            .select()
+            .single();
+            
+          if (error) {
+            throw error;
+          }
           
-        if (createError) {
-          throw createError;
-        }
-        
-        if (!newFile || !newFile.id) {
-          throw new Error('File created but no ID returned');
-        }
+          if (!data || !data.id) {
+            throw new Error('File created but no ID returned');
+          }
+          
+          return data;
+        });
         
         // Use new file ID
         actualFileId = newFile.id;
